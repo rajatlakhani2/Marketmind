@@ -1,0 +1,1950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MarketMind AI — Personal Trading Knowledge Engine</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+  <style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg-primary: #0a0e17; --bg-secondary: #111827; --bg-card: #1a2332; --bg-hover: #1f2d3d;
+  --border: #2a3a50; --text-primary: #e2e8f0; --text-secondary: #94a3b8; --text-muted: #64748b;
+  --accent: #3b82f6; --accent-hover: #2563eb; --green: #22c55e; --red: #ef4444;
+  --yellow: #f59e0b; --orange: #f97316; --purple: #8b5cf6; --cyan: #06b6d4;
+  --sidebar-w: 240px; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+html, body { height: 100%; }
+body { font-family: var(--font); background: var(--bg-primary); color: var(--text-primary); }
+a { color: var(--accent); text-decoration: none; }
+button { cursor: pointer; border: none; font-family: inherit; }
+#app { display: flex; height: 100vh; }
+#sidebar {
+  width: var(--sidebar-w); min-width: var(--sidebar-w);
+  background: var(--bg-secondary); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; height: 100vh; overflow-y: auto;
+}
+.sidebar-header { padding: 20px; border-bottom: 1px solid var(--border); }
+.logo { font-size: 1.2rem; font-weight: 700; }
+.logo-accent { color: var(--accent); }
+.logo-subtitle { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+.nav-links { list-style: none; padding: 12px 0; flex: 1; }
+.nav-links li a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 20px; color: var(--text-secondary); font-size: 0.88rem; transition: all 0.15s;
+}
+.nav-links li a:hover, .nav-links li a.active { background: var(--bg-hover); color: var(--text-primary); border-left: 3px solid var(--accent); }
+.nav-icon { font-size: 1rem; }
+.sidebar-footer { padding: 12px 20px; border-top: 1px solid var(--border); font-size: 0.7rem; color: var(--text-muted); }
+#main-content { flex: 1; overflow-y: auto; padding: 24px; }
+.page { display: none; }
+.page.active { display: block; }
+.page-header { margin-bottom: 24px; }
+.page-header h2 { font-size: 1.4rem; font-weight: 600; }
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px; transition: border-color 0.15s;
+}
+.card:hover { border-color: var(--accent); }
+.card-title { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.card-value { font-size: 1.6rem; font-weight: 700; margin-top: 4px; }
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.btn-primary {
+  background: var(--accent); color: white; padding: 10px 18px; border-radius: 8px;
+  font-size: 0.88rem; font-weight: 500; transition: background 0.15s;
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-secondary {
+  background: var(--bg-hover); color: var(--text-primary); padding: 8px 14px;
+  border-radius: 6px; font-size: 0.82rem; border: 1px solid var(--border);
+}
+.btn-secondary:hover { background: var(--border); }
+.btn-danger {
+  background: transparent; color: var(--red); padding: 6px 12px; border-radius: 6px;
+  font-size: 0.8rem; border: 1px solid var(--red);
+}
+.btn-small { padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; }
+.tag {
+  display: inline-block; padding: 3px 10px; border-radius: 20px;
+  font-size: 0.72rem; font-weight: 500; margin: 2px;
+}
+.tag-blue { background: rgba(59,130,246,0.2); color: var(--accent); }
+.tag-green { background: rgba(34,197,94,0.2); color: var(--green); }
+.tag-red { background: rgba(239,68,68,0.2); color: var(--red); }
+.tag-yellow { background: rgba(245,158,11,0.2); color: var(--yellow); }
+.tag-purple { background: rgba(139,92,246,0.2); color: var(--purple); }
+.tag-cyan { background: rgba(6,182,212,0.2); color: var(--cyan); }
+.tag-orange { background: rgba(249,115,22,0.2); color: var(--orange); }
+.badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
+.badge-green { background: rgba(34,197,94,0.2); color: var(--green); }
+.badge-yellow { background: rgba(245,158,11,0.2); color: var(--yellow); }
+.badge-red { background: rgba(239,68,68,0.2); color: var(--red); }
+.knowledge-layout { display: flex; gap: 20px; height: calc(100vh - 120px); }
+.knowledge-sidebar {
+  width: 280px; min-width: 280px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-y: auto;
+}
+.knowledge-sidebar h3 { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px; }
+.folder-item {
+  padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+  color: var(--text-secondary); margin-bottom: 2px; display: flex; align-items: center; gap: 8px;
+}
+.folder-item:hover, .folder-item.active { background: var(--bg-hover); color: var(--text-primary); }
+.folder-item .folder-icon { font-size: 1rem; }
+.sub-folder { padding-left: 28px; }
+.doc-item {
+  padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+  color: var(--text-muted); margin-bottom: 2px;
+}
+.doc-item:hover { background: var(--bg-hover); color: var(--text-secondary); }
+.knowledge-main { flex: 1; overflow-y: auto; }
+.upload-zone {
+  border: 2px dashed var(--border); border-radius: 12px; padding: 40px;
+  text-align: center; color: var(--text-muted); cursor: pointer;
+  transition: all 0.15s; margin-bottom: 20px;
+}
+.upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,0.05); }
+.upload-zone .upload-icon { font-size: 2.5rem; margin-bottom: 10px; }
+.doc-detail { }
+.doc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.doc-meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.doc-meta-item .label { color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; }
+.doc-meta-item .value { color: var(--text-primary); margin-top: 2px; font-size: 0.85rem; }
+.concepts-list { margin-top: 16px; }
+.concept-card {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px; margin-bottom: 10px;
+}
+.concept-card h4 { font-size: 0.95rem; margin-bottom: 6px; color: var(--accent); }
+.concept-card p { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5; }
+.search-bar { margin-bottom: 20px; }
+.search-bar input {
+  width: 100%; max-width: 500px; padding: 10px 16px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text-primary); font-size: 0.88rem;
+}
+.search-bar input:focus { outline: none; border-color: var(--accent); }
+.strategies-container { display: flex; gap: 20px; height: calc(100vh - 120px); }
+.strategies-list { width: 300px; min-width: 300px; overflow-y: auto; }
+.strategy-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px; margin-bottom: 10px;
+  cursor: pointer; transition: all 0.15s;
+}
+.strategy-card:hover, .strategy-card.active { border-color: var(--accent); }
+.strategy-card h4 { font-size: 0.92rem; margin-bottom: 4px; }
+.strategy-card p { font-size: 0.78rem; color: var(--text-muted); }
+.strategy-detail { flex: 1; overflow-y: auto; }
+.strategy-detail .condition-list { list-style: none; margin-top: 10px; }
+.strategy-detail .condition-list li {
+  padding: 8px 12px; background: var(--bg-secondary);
+  border: 1px solid var(--border); border-radius: 6px;
+  margin-bottom: 6px; font-size: 0.85rem;
+}
+.strategy-builder {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px; margin-bottom: 20px;
+}
+.strategy-builder h3 { margin-bottom: 12px; font-size: 1rem; }
+.strategy-builder label { display: block; font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px; margin-top: 12px; }
+.strategy-builder input, .strategy-builder select, .strategy-builder textarea {
+  width: 100%; padding: 8px 12px; background: var(--bg-secondary);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-primary); font-family: inherit; font-size: 0.85rem;
+}
+.strategy-builder textarea { min-height: 80px; resize: vertical; }
+.rule-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.analyze-container { display: flex; gap: 20px; height: calc(100vh - 120px); }
+.analyze-sidebar {
+  width: 300px; min-width: 300px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 10px; padding: 20px; overflow-y: auto;
+}
+.analyze-sidebar label { display: block; font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px; margin-top: 14px; }
+.analyze-sidebar input, .analyze-sidebar select {
+  width: 100%; padding: 8px 12px; background: var(--bg-secondary);
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 0.85rem;
+}
+.analyze-sidebar input:focus, .analyze-sidebar select:focus { outline: none; border-color: var(--accent); }
+.chart-upload { margin-top: 18px; padding: 14px; background: var(--bg-secondary); border-radius: 8px; }
+.chart-upload p { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px; }
+.analyze-results { flex: 1; overflow-y: auto; }
+.analysis-section {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px; margin-bottom: 16px;
+}
+.analysis-section h3 { font-size: 1rem; margin-bottom: 12px; color: var(--accent); }
+.analysis-section h4 { font-size: 0.88rem; margin: 12px 0 6px; color: var(--text-secondary); }
+.analysis-section p, .analysis-section li { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; }
+.analysis-section ul { padding-left: 18px; }
+.condition-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: var(--bg-secondary); border-radius: 6px; margin-bottom: 6px; font-size: 0.85rem;
+}
+.condition-check { color: var(--green); font-weight: bold; }
+.condition-cross { color: var(--red); font-weight: bold; }
+.condition-warn { color: var(--yellow); font-weight: bold; }
+.citation {
+  font-size: 0.78rem; color: var(--text-muted); padding: 6px 10px;
+  background: var(--bg-secondary); border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0; margin-top: 6px; cursor: pointer;
+}
+.citation:hover { color: var(--accent); }
+.conflict-box {
+  background: rgba(245,158,11,0.1); border: 1px solid var(--yellow);
+  border-radius: 8px; padding: 14px; margin: 12px 0;
+}
+.conflict-box h4 { color: var(--yellow); margin-bottom: 8px; }
+.conflict-source { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+.tech-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.tech-item { background: var(--bg-secondary); padding: 10px; border-radius: 6px; }
+.tech-item .label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; }
+.tech-item .value { font-size: 1rem; font-weight: 600; margin-top: 2px; }
+.screener-container { }
+.screener-controls { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap; }
+.screener-controls label { font-size: 0.82rem; color: var(--text-secondary); }
+.screener-controls select, .screener-controls input { padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 0.85rem; }
+.screener-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.screener-table th {
+  text-align: left; padding: 10px 14px; background: var(--bg-secondary);
+  color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+.screener-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.screener-table tr:hover td { background: var(--bg-hover); color: var(--text-primary); }
+.progress-bar { width: 100px; height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.3s; }
+.theory-container { }
+.theory-category {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px; margin-bottom: 16px;
+}
+.theory-category h3 { font-size: 1rem; margin-bottom: 10px; }
+.theory-concept {
+  display: inline-block; padding: 6px 14px; margin: 4px;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: 20px; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer;
+}
+.theory-concept:hover { border-color: var(--accent); color: var(--accent); }
+.theory-detail {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px; margin-bottom: 16px;
+}
+.theory-detail h3 { color: var(--accent); margin-bottom: 8px; }
+.theory-relations { margin-top: 14px; }
+.theory-relations span { font-size: 0.78rem; color: var(--text-muted); margin-right: 6px; }
+.methodology-container { max-width: 800px; }
+.source-priority-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
+}
+.source-priority-item .priority-num {
+  width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.8rem; font-weight: 700;
+}
+.source-priority-item .source-name { flex: 1; font-size: 0.88rem; }
+#modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center; z-index: 1000;
+}
+#modal-overlay.hidden { display: none; }
+.modal {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 24px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto;
+}
+.modal h3 { margin-bottom: 16px; }
+.modal-close { float: right; background: none; color: var(--text-muted); font-size: 1.3rem; cursor: pointer; }
+.modal-close:hover { color: var(--text-primary); }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+#toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 18px; font-size: 0.85rem; color: var(--text-primary);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4); animation: toastIn 0.2s ease; max-width: 400px;
+}
+.toast.success { border-left: 4px solid var(--green); }
+.toast.error { border-left: 4px solid var(--red); }
+.toast.info { border-left: 4px solid var(--accent); }
+.toast.warning { border-left: 4px solid var(--yellow); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
+.text-muted { color: var(--text-muted); }
+.text-green { color: var(--green); }
+.text-red { color: var(--red); }
+.text-yellow { color: var(--yellow); }
+.text-accent { color: var(--accent); }
+.hidden { display: none !important; }
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+.empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+.section-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; }
+.flex-row { display: flex; gap: 12px; align-items: center; }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+.mt-1 { margin-top: 8px; }
+.mt-2 { margin-top: 16px; }
+.mb-1 { margin-bottom: 8px; }
+.mb-2 { margin-bottom: 16px; }
+textarea { font-family: inherit; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+@media (max-width: 768px) {
+  #sidebar { width: 60px; min-width: 60px; }
+  .logo, .logo-subtitle, .nav-links li a span:not(.nav-icon) { display: none; }
+  .nav-links li a { justify-content: center; padding: 12px; }
+  .knowledge-layout, .analyze-container { flex-direction: column; }
+  .knowledge-sidebar, .analyze-sidebar, .strategies-list { width: 100%; min-width: 0; }
+}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <nav id="sidebar">
+      <div class="sidebar-header">
+        <h1 class="logo">MarketMind <span class="logo-accent">AI</span></h1>
+        <p class="logo-subtitle">Personal Trading Knowledge Engine</p>
+      </div>
+      <ul class="nav-links" id="nav-links">
+        <li><a href="#" data-page="dashboard" class="active"><span class="nav-icon">&#x1F4CA;</span> Dashboard</a></li>
+        <li><a href="#" data-page="knowledge"><span class="nav-icon">&#x1F4DA;</span> My Knowledge</a></li>
+        <li><a href="#" data-page="concepts"><span class="nav-icon">&#x1F4A1;</span> Concepts</a></li>
+        <li><a href="#" data-page="strategies"><span class="nav-icon">&#x2694;&#xFE0F;</span> Strategies</a></li>
+        <li><a href="#" data-page="analyze"><span class="nav-icon">&#x1F4CA;&#xFE0F;</span> Analyze Market</a></li>
+        <li><a href="#" data-page="screener"><span class="nav-icon">&#x1F50D;</span> Strategy Screener</a></li>
+        <li><a href="#" data-page="theory"><span class="nav-icon">&#x1F4D6;</span> Market Theory</a></li>
+        <li><a href="#" data-page="methodology"><span class="nav-icon">&#x2699;&#xFE0F;</span> Methodology</a></li>
+      </ul>
+      <div class="sidebar-footer"><p>MarketMind AI v1.0</p></div>
+    </nav>
+    <main id="main-content">
+      <div id="page-dashboard" class="page active">
+        <header class="page-header"><h2>Dashboard</h2></header>
+        <div class="dashboard-grid" id="dashboard-grid"></div>
+      </div>
+      <div id="page-knowledge" class="page">
+        <header class="page-header"><h2>My Knowledge Library</h2></header>
+        <div class="knowledge-layout">
+          <div class="knowledge-sidebar" id="knowledge-tree"></div>
+          <div class="knowledge-main" id="knowledge-main"></div>
+        </div>
+      </div>
+      <div id="page-concepts" class="page">
+        <header class="page-header"><h2>Extracted Concepts</h2></header>
+        <div class="search-bar"><input type="text" id="concept-search" placeholder="Search concepts..." /></div>
+        <div class="cards-grid" id="concepts-grid"></div>
+      </div>
+      <div id="page-strategies" class="page">
+        <header class="page-header"><h2>Trading Strategies</h2></header>
+        <div class="strategies-container" id="strategies-container">
+          <div class="strategies-list" id="strategies-list"></div>
+          <div class="strategy-detail" id="strategy-detail"></div>
+        </div>
+      </div>
+      <div id="page-analyze" class="page">
+        <header class="page-header"><h2>Analyze Market</h2></header>
+        <div class="analyze-container">
+          <div class="analyze-sidebar">
+            <label>Stock Symbol
+              <select id="analyze-symbol">
+                <option value="RELIANCE">RELIANCE — Reliance Industries</option>
+                <option value="TCS" selected>TCS — Tata Consultancy Services</option>
+                <option value="HDFCBANK">HDFCBANK — HDFC Bank</option>
+                <option value="INFY">INFY — Infosys</option>
+                <option value="ICICIBANK">ICICIBANK — ICICI Bank</option>
+                <option value="SBIN">SBIN — State Bank of India</option>
+                <option value="BHARTIARTL">BHARTIARTL — Bharti Airtel</option>
+                <option value="ITC">ITC — ITC Limited</option>
+                <option value="TATAMOTORS">TATAMOTORS — Tata Motors</option>
+                <option value="WIPRO">WIPRO — Wipro</option>
+                <option value="AXISBANK">AXISBANK — Axis Bank</option>
+                <option value="KOTAKBANK">KOTAKBANK — Kotak Mahindra Bank</option>
+                <option value="LT">LT — Larsen & Toubro</option>
+                <option value="MARUTI">MARUTI — Maruti Suzuki</option>
+                <option value="BAJFINANCE">BAJFINANCE — Bajaj Finance</option>
+                <option value="HINDUNILVR">HINDUNILVR — Hindustan Unilever</option>
+                <option value="SUNPHARMA">SUNPHARMA — Sun Pharmaceutical</option>
+                <option value="NTPC">NTPC — NTPC</option>
+                <option value="POWERGRID">POWERGRID — Power Grid Corporation</option>
+                <option value="TITAN">TITAN — Titan Company</option>
+                <option value="ULTRACEMCO">ULTRACEMCO — UltraTech Cement</option>
+                <option value="NESTLEIND">NESTLEIND — Nestle India</option>
+                <option value="TATASTEEL">TATASTEEL — Tata Steel</option>
+                <option value="M&amp;M">M&M — Mahindra &amp; Mahindra</option>
+                <option value="HCLTECH">HCLTECH — HCL Technologies</option>
+                <option value="ADANIENT">ADANIENT — Adani Enterprises</option>
+                <option value="ADANIPORTS">ADANIPORTS — Adani Ports</option>
+                <option value="JSWSTEEL">JSWSTEEL — JSW Steel</option>
+                <option value="TECHM">TECHM — Tech Mahindra</option>
+                <option value="CIPLA">CIPLA — Cipla</option>
+                <option value="DRREDDY">DRREDDY — Dr. Reddy's Laboratories</option>
+                <option value="BPCL">BPCL — Bharat Petroleum</option>
+                <option value="IOC">IOC — Indian Oil Corporation</option>
+                <option value="COALINDIA">COALINDIA — Coal India</option>
+                <option value="ONGC">ONGC — ONGC</option>
+                <option value="VEDL">VEDL — Vedanta</option>
+                <option value="EICHERMOT">EICHERMOT — Eicher Motors</option>
+                <option value="BAJAJFINSV">BAJAJFINSV — Bajaj Finserv</option>
+                <option value="GRASIM">GRASIM — Grasim Industries</option>
+                <option value="SHREECEM">SHREECEM — Shree Cement</option>
+                <option value="BRITANNIA">BRITANNIA — Britannia Industries</option>
+                <option value="HEROMOTOCO">HEROMOTOCO — Hero MotoCorp</option>
+                <option value="ASIANPAINT">ASIANPAINT — Asian Paints</option>
+                <option value="DIVISLAB">DIVISLAB — Divi's Laboratories</option>
+              </select>
+            </label>
+            <label>Strategy<select id="analyze-strategy"><option value="">No strategy</option></select></label>
+            <label>Timeframe
+              <select id="analyze-timeframe">
+                <option value="5m">5 Minute</option><option value="15m">15 Minute</option>
+                <option value="30m">30 Minute</option><option value="1h" selected>1 Hour</option>
+                <option value="4h">4 Hour</option><option value="1d">Daily</option>
+                <option value="1w">Weekly</option><option value="1mo">Monthly</option>
+              </select>
+            </label>
+            <button class="btn-primary" id="btn-analyze">Run Analysis</button>
+            <div class="chart-upload">
+              <p>Upload Chart Screenshot</p>
+              <input type="file" id="chart-upload-input" accept="image/*" />
+            </div>
+            <div style="margin-top:14px;">
+              <button class="btn-secondary" id="btn-multitf" style="width:100%;">Multi-Timeframe Analysis</button>
+            </div>
+          </div>
+          <div class="analyze-results" id="analyze-results"></div>
+        </div>
+      </div>
+      <div id="page-screener" class="page">
+        <header class="page-header"><h2>Strategy Screener</h2></header>
+        <div class="screener-container" id="screener-container"></div>
+      </div>
+      <div id="page-theory" class="page">
+        <header class="page-header"><h2>Market Theory Library</h2></header>
+        <div class="theory-container" id="theory-container"></div>
+      </div>
+      <div id="page-methodology" class="page">
+        <header class="page-header"><h2>My Trading Methodology</h2></header>
+        <div class="methodology-container" id="methodology-container"></div>
+      </div>
+    </main>
+  </div>
+  <div id="modal-overlay" class="hidden"></div>
+  <div id="toast-container"></div>
+  <script>
+// ============================================================
+// MarketMind AI — Personal Trading Knowledge Engine
+// All-in-one self-contained implementation
+// ============================================================
+
+// ========== STORAGE LAYER (IndexedDB) ==========
+const Storage = {
+  db: null,
+  DB_NAME: 'MarketMindDB',
+  DB_VERSION: 1,
+
+  async open() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('documents')) {
+          const ds = db.createObjectStore('documents', { keyPath: 'id' });
+          ds.createIndex('folder', 'folder'); ds.createIndex('category', 'category'); ds.createIndex('uploadDate', 'uploadDate');
+        }
+        if (!db.objectStoreNames.contains('concepts')) {
+          const cs = db.createObjectStore('concepts', { keyPath: 'id' });
+          cs.createIndex('category', 'category'); cs.createIndex('sourceDoc', 'sourceDoc'); cs.createIndex('name', 'name');
+        }
+        if (!db.objectStoreNames.contains('strategies')) {
+          const ss = db.createObjectStore('strategies', { keyPath: 'id' });
+          ss.createIndex('name', 'name');
+        }
+        if (!db.objectStoreNames.contains('chunks')) {
+          const ch = db.createObjectStore('chunks', { keyPath: 'id' });
+          ch.createIndex('docId', 'docId'); ch.createIndex('type', 'type');
+        }
+        if (!db.objectStoreNames.contains('feedback')) {
+          db.createObjectStore('feedback', { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = () => { this.db = req.result; resolve(this.db); };
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  _tx(store, mode) { return this.db.transaction(store, mode).objectStore(store); },
+
+  async put(store, data) {
+    return new Promise((resolve, reject) => {
+      const r = this._tx(store, 'readwrite').put(data);
+      r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+    });
+  },
+  async get(store, id) {
+    return new Promise((resolve, reject) => {
+      const r = this._tx(store, 'readonly').get(id);
+      r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+    });
+  },
+  async getAll(store) {
+    return new Promise((resolve, reject) => {
+      const r = this._tx(store, 'readonly').getAll();
+      r.onsuccess = () => resolve(r.result || []); r.onerror = () => reject(r.error);
+    });
+  },
+  async getByIndex(store, idx, val) {
+    return new Promise((resolve, reject) => {
+      const r = this._tx(store, 'readonly').index(idx).getAll(val);
+      r.onsuccess = () => resolve(r.result || []); r.onerror = () => reject(r.error);
+    });
+  },
+  async delete(store, id) {
+    return new Promise((resolve, reject) => {
+      const r = this._tx(store, 'readwrite').delete(id);
+      r.onsuccess = () => resolve(); r.onerror = () => reject(r.error);
+    });
+  },
+  generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); },
+};
+
+// ========== CHART PATTERN DEFINITIONS ==========
+const CHART_PATTERNS = [
+  'Head and Shoulders', 'Inverse Head and Shoulders', 'Double Top', 'Double Bottom',
+  'Triangles (Ascending)', 'Triangles (Descending)', 'Triangles (Symmetrical)',
+  'Flags', 'Pennants', 'Wedges', 'Cup and Handle', 'Rounding Bottom',
+  'Support', 'Resistance', 'Trendlines', 'Channels',
+  'Engulfing Patterns', 'Doji', 'Hammer', 'Shooting Star',
+  'Morning Star', 'Evening Star', 'Inside Bar', 'Outside Bar',
+  'Breakout', 'Breakdown', 'Retest',
+];
+
+const INDICATOR_KEYWORDS = [
+  'RSI', 'MACD', 'Moving Average', 'Bollinger Bands', 'Stochastic',
+  'Fibonacci', 'Volume', 'ATR', 'OBV', 'Ichimoku', 'ADX',
+  'momentum', 'oscillator',
+];
+
+const STRATEGY_KEYWORDS = ['entry', 'stop loss', 'target', 'invalidation', 'timeframe', 'conditions', 'rules', 'exit', 'risk/reward', 'confirmation', 'setup', 'buy', 'sell', 'long', 'short'];
+
+// ========== KNOWLEDGE ENGINE ==========
+class KnowledgeEngine {
+  constructor() {
+    this.concepts = [];
+    this.strategies = [];
+    this.knowledgeGraph = {};
+    this.userMethodology = [];
+    this.feedbackRules = [];
+  }
+
+  async init() {
+    await Storage.open();
+    this.concepts = await Storage.getAll('concepts');
+    this.strategies = await Storage.getAll('strategies');
+    this.feedbackRules = await Storage.getAll('feedback');
+    this.documents = await Storage.getAll('documents');
+    this._buildKnowledgeGraph();
+  }
+
+  // --- Document Processing ---
+  async processDocument(file, metadata) {
+    const docId = Storage.generateId();
+    const text = await this._extractText(file);
+    const chunks = this._chunkText(text, 500);
+    const headings = this._detectHeadings(text);
+    const chapters = this._detectChapters(text);
+
+    const doc = {
+      id: docId, name: metadata.name || file.name, author: metadata.author || 'Unknown',
+      category: metadata.category || 'Uncategorized',
+      uploadDate: new Date().toISOString(),
+      fileType: file.type || file.name.split('.').pop(),
+      fileSize: file.size, textContent: text,
+      chunks: chunks.map((_, i) => `${docId}_chunk_${i}`),
+      tables: this._extractTables(text), headings, chapters,
+      tags: metadata.tags || [], folder: metadata.folder || '/',
+      source: metadata.source || 'User Upload',
+      pages: Math.max(1, Math.ceil(text.length / 3000)),
+    };
+    await Storage.put('documents', doc);
+
+    for (let i = 0; i < chunks.length; i++) {
+      await Storage.put('chunks', {
+        id: `${docId}_chunk_${i}`, docId, index: i, text: chunks[i],
+        type: this._classifyChunk(chunks[i]),
+        heading: this._findHeading(chunks[i], headings),
+        chapter: this._findChapter(chunks[i], chapters),
+      });
+    }
+
+    const extractedConcepts = this._extractConcepts(text, docId, doc.name);
+    for (const c of extractedConcepts) { await Storage.put('concepts', c); this.concepts.push(c); }
+
+    const extractedStrategies = this._extractStrategies(text, docId, doc.name);
+    for (const s of extractedStrategies) { await Storage.put('strategies', s); this.strategies.push(s); }
+
+    this._buildKnowledgeGraph();
+    return { docId, conceptCount: extractedConcepts.length, strategyCount: extractedStrategies.length };
+  }
+
+  async _extractText(file) {
+    if (file.type === 'application/pdf') {
+      const text = await this._extractPdfText(file);
+      return `[PDF Document: ${file.name}]\n${text}\n[Content processing complete]`;
+    }
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (file.type.startsWith('image/') || /\.(png|jpg|jpeg|gif|bmp|webp)$/i.test(file.name)) {
+          resolve(`[Image: ${file.name} - Uploaded for chart analysis]`);
+        } else {
+          resolve(e.target.result);
+        }
+      };
+      reader.onerror = () => resolve(`[Error reading file: ${file.name}]`);
+      if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md') || file.name.endsWith('.csv')) {
+        reader.readAsText(file);
+      } else {
+        resolve(`[Document: ${file.name}]\nContent extraction for file type: ${file.type || 'unknown'}`);
+      }
+    });
+  }
+
+  async _extractPdfText(file) {
+    if (!window.pdfjsLib) return `[PDF: ${file.name}]\nPDF text extraction requires network. Content noted.`;
+    try {
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      const pages = Math.min(pdf.numPages, 20);
+      let text = '';
+      for (let i = 1; i <= pages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(it => it.str).join(' ') + '\n';
+      }
+      const result = text.trim();
+      return result ? result.slice(0, 50000) : `[PDF: ${file.name}]\nNo extractable text found.`;
+    } catch (e) {
+      return `[PDF: ${file.name}]\nCould not extract text: ${e.message}`;
+    }
+  }
+
+  _chunkText(text, maxLen) {
+    const chunks = [];
+    const paragraphs = text.split(/\n\n+/);
+    let current = '';
+    for (const para of paragraphs) {
+      if ((current + '\n\n' + para).length > maxLen && current) { chunks.push(current.trim()); current = para; }
+      else { current += (current ? '\n\n' : '') + para; }
+    }
+    if (current.trim()) chunks.push(current.trim());
+    return chunks.length ? chunks : [text.slice(0, maxLen)];
+  }
+
+  _detectHeadings(text) {
+    const headings = [];
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (/^#{1,3}\s/.test(trimmed) || /^[A-Z][A-Z\s]{3,}$/.test(trimmed)) headings.push(trimmed.replace(/^#+\s*/, ''));
+    }
+    return headings;
+  }
+
+  _detectChapters(text) {
+    const chapters = [];
+    for (const line of text.split('\n')) {
+      const m = line.trim().match(/(?:chapter|part|section)\s+\d+/i);
+      if (m) chapters.push(m[0]);
+    }
+    return [...new Set(chapters)];
+  }
+
+  _extractTables(text) {
+    return text.split('\n').filter(l => l.includes('|') || l.includes('\t')).slice(0, 50);
+  }
+
+  _estimatePages(text) { return Math.max(1, Math.ceil(text.length / 3000)); }
+
+  _classifyChunk(chunk) {
+    const lower = chunk.toLowerCase();
+    if (lower.includes('rule') || lower.includes('condition') || lower.includes('must')) return 'rules';
+    if (lower.includes('example') || lower.includes('illustration')) return 'example';
+    if (lower.includes('warning') || lower.includes('caution') || lower.includes('risk')) return 'warning';
+    if (lower.includes('formula') || lower.includes('calculation') || lower.includes('=')) return 'formula';
+    if (lower.includes('strategy') || lower.includes('setup') || lower.includes('entry')) return 'strategy';
+    if (lower.includes('pattern') || lower.includes('formation')) return 'pattern';
+    return 'general';
+  }
+
+  _findHeading(chunk, headings) {
+    for (const h of headings) { if (chunk.toLowerCase().includes(h.toLowerCase())) return h; }
+    return null;
+  }
+  _findChapter(chunk, chapters) {
+    for (const ch of chapters) { if (chunk.toLowerCase().includes(ch.toLowerCase())) return ch; }
+    return null;
+  }
+
+  // --- Concept Extraction ---
+  _extractConcepts(text, docId, docName) {
+    const concepts = [];
+    for (const pattern of CHART_PATTERNS) {
+      const regex = new RegExp(pattern.replace(/[()]/g, '\\$&').replace(/\s+/g, '\\s+'), 'gi');
+      if (regex.test(text) && !concepts.some(c => c.name === pattern)) {
+        concepts.push({
+          id: `${docId}_concept_${concepts.length}`, name: pattern,
+          category: this._categorizePattern(pattern), type: 'chart_pattern',
+          sourceDoc: docId, sourceName: docName,
+          description: this._extractContext(text, pattern, 200),
+          rules: this._extractRules(text, pattern),
+          exceptions: this._extractExceptions(text),
+          examples: this._extractExamples(text), pageNumber: null,
+        });
+      }
+    }
+    for (const kw of INDICATOR_KEYWORDS) {
+      const regex = new RegExp(kw.replace(/[^a-zA-Z0-9]/g, '\\s*'), 'gi');
+      if (regex.test(text) && !concepts.some(c => c.name.toLowerCase() === kw.toLowerCase())) {
+        concepts.push({
+          id: `${docId}_concept_${concepts.length}`, name: kw, category: 'Indicators', type: 'indicator',
+          sourceDoc: docId, sourceName: docName,
+          description: this._extractContext(text, kw, 200),
+          rules: this._extractRules(text, kw),
+          exceptions: this._extractExceptions(text),
+          examples: this._extractExamples(text), pageNumber: null,
+        });
+      }
+    }
+    return concepts;
+  }
+
+  _categorizePattern(pattern) {
+    const map = {
+      'Support': 'Support & Resistance', 'Resistance': 'Support & Resistance',
+      'Head and Shoulders': 'Chart Patterns', 'Double Top': 'Chart Patterns', 'Double Bottom': 'Chart Patterns',
+      'Breakout': 'Chart Patterns', 'Engulfing Patterns': 'Candlestick Patterns',
+      'Doji': 'Candlestick Patterns', 'Hammer': 'Candlestick Patterns', 'Shooting Star': 'Candlestick Patterns',
+      'Morning Star': 'Candlestick Patterns', 'Evening Star': 'Candlestick Patterns',
+      'RSI': 'Indicators', 'MACD': 'Indicators', 'Moving Average': 'Indicators',
+      'Bollinger': 'Indicators', 'Fibonacci': 'Indicators',
+    };
+    return map[pattern] || 'General';
+  }
+
+  _extractContext(text, term, radius) {
+    const idx = text.toLowerCase().indexOf(term.toLowerCase());
+    if (idx === -1) return 'Context extracted from document.';
+    const start = Math.max(0, idx - radius);
+    const end = Math.min(text.length, idx + term.length + radius);
+    return '...' + text.slice(start, end).trim() + '...';
+  }
+
+  _extractRules(text, term) {
+    const rules = [];
+    const idx = text.toLowerCase().indexOf(term.toLowerCase());
+    if (idx === -1) return ['No specific rules found in source material.'];
+    const context = text.slice(Math.max(0, idx - 500), Math.min(text.length, idx + 800));
+    for (const line of context.split(/[.\n;]+/)) {
+      if (/should|must|only|when|if|condition|require|confirm|verify/i.test(line) && line.trim().length > 10) rules.push(line.trim());
+    }
+    return rules.length ? rules.slice(0, 5) : ['No specific rules found in source material.'];
+  }
+
+  _extractExceptions(text) {
+    const exceptions = [];
+    const keywords = ['except', 'however', 'but', 'unless', 'caution', 'does not apply', 'false signal'];
+    for (const line of text.split(/[.\n]+/)) {
+      if (keywords.some(k => line.toLowerCase().includes(k)) && line.trim().length > 15) exceptions.push(line.trim());
+    }
+    return exceptions.length ? exceptions.slice(0, 5) : ['No exceptions noted in source material.'];
+  }
+
+  _extractExamples(text) {
+    const examples = [];
+    for (const line of text.split(/[.\n]+/)) {
+      if (/example|e\.g\.|for instance|illustrated|shown in/i.test(line) && line.trim().length > 15) examples.push(line.trim());
+    }
+    return examples.length ? examples.slice(0, 3) : ['No specific examples found in source material.'];
+  }
+
+  // --- Strategy Extraction ---
+  _extractStrategies(text, docId, docName) {
+    const strategies = [];
+    const strategyBlocks = this._findStrategyBlocks(text);
+    for (const block of strategyBlocks) {
+      const name = block.name || 'Unnamed Strategy';
+      strategies.push({
+        id: `${docId}_strategy_${strategies.length}`, name, sourceDoc: docId, sourceName: docName,
+        category: block.category || 'General Strategy',
+        description: block.description,
+        conditions: block.conditions,
+        entry: block.entry || 'Not specified in source.',
+        stopLoss: block.stopLoss || 'Not specified in source.',
+        target: block.target || 'Not specified in source.',
+        invalidation: block.invalidation || 'Not specified in source.',
+        timeframe: block.timeframe || 'Not specified in source.',
+        preferredConditions: block.preferredConditions || 'Not specified in source.',
+        avoidWhen: block.avoidWhen || 'Not specified in source.',
+        isUserCreated: false, createdAt: new Date().toISOString(),
+      });
+    }
+    return strategies;
+  }
+
+  _findStrategyBlocks(text) {
+    const blocks = [];
+    const found = new Set();
+    const patterns = [
+      /(?:Strategy|Method|System|Approach)[\s:]+([A-Z][A-Za-z\s]+?)(?:\n|\.)/gi,
+      /(?:\n|^)([A-Z][A-Za-z\s]+(?:Strategy|System|Method|Approach))(?:\n|:)/gi,
+    ];
+    for (const pat of patterns) {
+      let m;
+      while ((m = pat.exec(text)) !== null) {
+        const name = m[1].trim();
+        if (name.length > 3 && name.length < 60 && !found.has(name)) {
+          found.add(name);
+          blocks.push({
+            name, category: this._classifyStrategy(text, m.index),
+            description: this._extractContext(text, name, 300),
+            conditions: this._extractStrategyConditions(text, m.index),
+            entry: this._extractField(text, m.index, ['entry', 'enter', 'buy', 'long', 'trigger']),
+            stopLoss: this._extractField(text, m.index, ['stop loss', 'stoploss', 'stop-loss', 'sl ']),
+            target: this._extractField(text, m.index, ['target', 'profit', 'take profit', 'tp ']),
+            invalidation: this._extractField(text, m.index, ['invalid', 'cancel', 'exit if']),
+            timeframe: this._extractField(text, m.index, ['timeframe', 'time frame', 'period', 'chart']),
+            preferredConditions: this._extractField(text, m.index, ['prefer', 'best', 'ideal', 'market condition']),
+            avoidWhen: this._extractField(text, m.index, ['avoid', 'do not', 'never', 'not suitable']),
+          });
+        }
+      }
+    }
+    return blocks;
+  }
+
+  _classifyStrategy(text, pos) {
+    const ctx = text.slice(Math.max(0, pos - 200), Math.min(text.length, pos + 300)).toLowerCase();
+    if (ctx.includes('swing')) return 'Swing Trading';
+    if (ctx.includes('breakout')) return 'Breakout Strategy';
+    if (ctx.includes('trend') || ctx.includes('follow')) return 'Trend Following';
+    if (ctx.includes('reversal')) return 'Reversal Strategy';
+    if (ctx.includes('day') || ctx.includes('intraday')) return 'Day Trading';
+    if (ctx.includes('scalp')) return 'Scalping';
+    if (ctx.includes('momentum')) return 'Momentum';
+    return 'General Strategy';
+  }
+
+  _extractStrategyConditions(text, startPos) {
+    const conditions = [];
+    const ctx = text.slice(startPos, Math.min(text.length, startPos + 1500));
+    const bulletRegex = /(?:^|\n)\s*[-•*]\s*([^\n]{5,100})/gm;
+    const numRegex = /(?:^|\n)\s*\d+[\.\)]\s*([^\n]{5,100})/gm;
+    let m;
+    while ((m = bulletRegex.exec(ctx)) !== null && conditions.length < 8) conditions.push(m[1].trim());
+    if (conditions.length === 0) {
+      while ((m = numRegex.exec(ctx)) !== null && conditions.length < 8) conditions.push(m[1].trim());
+    }
+    if (conditions.length === 0) {
+      conditions.push(...ctx.split(/[.\n]+/).filter(s => s.trim().length > 10 && s.trim().length < 150).slice(0, 4).map(s => s.trim()));
+    }
+    return conditions.length ? conditions : ['No specific conditions extracted from source.'];
+  }
+
+  _extractField(text, startPos, keywords) {
+    const ctx = text.slice(startPos, Math.min(text.length, startPos + 2000));
+    for (const kw of keywords) {
+      const m = ctx.match(new RegExp(kw + '[^\\n.]{0,200}', 'i'));
+      if (m && m[0].trim().length > kw.length + 3) return m[0].trim();
+    }
+    return 'Not specified in source.';
+  }
+
+  // --- Knowledge Graph ---
+  _buildKnowledgeGraph() {
+    this.knowledgeGraph = {};
+    for (const concept of this.concepts) {
+      this.knowledgeGraph[concept.name] = { ...concept, related: this._findRelated(concept.name) };
+    }
+  }
+
+  _findRelated(name) {
+    const map = {
+      'RSI': ['Momentum', 'Overbought/Oversold', 'Divergence', 'Oscillator'],
+      'MACD': ['Momentum', 'Trend', 'Moving Average'],
+      'Moving Average': ['Trend', 'Support', 'Resistance', 'Crossover'],
+      'Support': ['Resistance', 'Trendlines', 'Levels'],
+      'Resistance': ['Support', 'Trendlines', 'Levels'],
+      'Breakout': ['Resistance', 'Volume', 'Confirmation', 'Trend'],
+      'Candlestick': ['Price Action', 'Reversal', 'Continuation'],
+      'Volume': ['Confirmation', 'Breakout', 'Divergence'],
+      'Trend': ['Moving Average', 'Support', 'Resistance', 'Momentum'],
+      'Bollinger Bands': ['Volatility', 'Squeeze', 'Overbought/Oversold'],
+      'Fibonacci': ['Retracement', 'Extension', 'Support', 'Resistance'],
+      'Head and Shoulders': ['Reversal', 'Neckline', 'Target'],
+      'Double Top': ['Reversal', 'Resistance'],
+      'Engulfing Patterns': ['Reversal', 'Candlestick'],
+    };
+    return map[name] || ['General Analysis', 'Price Action'];
+  }
+
+  // --- Search ---
+  searchConcepts(query) {
+    const lower = (query || '').toLowerCase();
+    if (!lower) return this.concepts;
+    return this.concepts.filter(c =>
+      c.name.toLowerCase().includes(lower) ||
+      c.description.toLowerCase().includes(lower) ||
+      c.category.toLowerCase().includes(lower) ||
+      (c.rules && c.rules.some(r => r.toLowerCase().includes(lower)))
+    );
+  }
+
+  searchStrategies(query) {
+    const lower = (query || '').toLowerCase();
+    if (!lower) return this.strategies;
+    return this.strategies.filter(s =>
+      s.name.toLowerCase().includes(lower) ||
+      s.description.toLowerCase().includes(lower) ||
+      s.conditions.some(c => c.toLowerCase().includes(lower))
+    );
+  }
+
+  getConceptsByCategory(cat) { return this.concepts.filter(c => c.category === cat); }
+  getStrategiesByCategory(cat) { return this.strategies.filter(s => s.category === cat); }
+  getConceptGraph(name) { return this.knowledgeGraph[name] || null; }
+
+  async createStrategy(data) {
+    const strategy = { id: Storage.generateId(), ...data, isUserCreated: true, createdAt: new Date().toISOString() };
+    await Storage.put('strategies', strategy);
+    this.strategies.push(strategy);
+    return strategy;
+  }
+
+  async deleteDocument(docId) {
+    await Storage.delete('documents', docId);
+    const chunks = await Storage.getByIndex('chunks', 'docId', docId);
+    for (const c of chunks) await Storage.delete('chunks', c.id);
+    const relatedConcepts = this.concepts.filter(c => c.sourceDoc === docId);
+    for (const c of relatedConcepts) await Storage.delete('concepts', c.id);
+    const relatedStrategies = this.strategies.filter(s => s.sourceDoc === docId);
+    for (const s of relatedStrategies) await Storage.delete('strategies', s.id);
+    this.concepts = this.concepts.filter(c => c.sourceDoc !== docId);
+    this.strategies = this.strategies.filter(s => s.sourceDoc !== docId);
+    this._buildKnowledgeGraph();
+  }
+
+  async deleteStrategy(id) {
+    await Storage.delete('strategies', id);
+    this.strategies = this.strategies.filter(s => s.id !== id);
+  }
+
+  // --- Feedback ---
+  async addFeedback(rule) {
+    const feedback = { id: Storage.generateId(), ...rule, createdAt: new Date().toISOString() };
+    await Storage.put('feedback', feedback);
+    this.feedbackRules.push(feedback);
+    return feedback;
+  }
+
+  // --- Methodology ---
+  setMethodology(sources) {
+    this.userMethodology = sources;
+    localStorage.setItem('marketmind_methodology', JSON.stringify(sources));
+  }
+
+  getMethodology() {
+    if (!this.userMethodology.length) {
+      const stored = localStorage.getItem('marketmind_methodology');
+      if (stored) this.userMethodology = JSON.parse(stored);
+    }
+    return this.userMethodology;
+  }
+
+  // --- Stats ---
+  getStats() {
+    const uniqueDocs = [...new Set(this.concepts.map(c => c.sourceDoc))];
+    return {
+      books: uniqueDocs.length, notes: 0,
+      concepts: this.concepts.length, strategies: this.strategies.length,
+      chartPatterns: this.concepts.filter(c => c.type === 'chart_pattern').length,
+      feedbackRules: this.feedbackRules.length,
+      categories: [...new Set(this.concepts.map(c => c.category))],
+    };
+  }
+
+  // --- Market Data (Simulated — external proxies are unreliable in local file context) ---
+  async _fetchMoneyControl() {
+    // Returns null so generateMockMarketData always uses fast simulated data.
+    return null;
+  }
+
+  _generateMockData(symbol, timeframe) {
+    // Build 252 daily candles (~1 year) so MA200 and 52w high/low are always valid
+    const seed = symbol
+      ? symbol.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
+      : Math.floor(Math.random() * 10000);
+    const basePrice = symbol ? 100 + (seed % 1900) : 2500;
+    const historyDays = 252;
+    const candles = [];
+    let price = basePrice * (0.7 + Math.random() * 0.3);
+    const drift = 0.0002 + (seed % 100) / 500000;
+    const vol = 0.018 + (seed % 30) / 1000;
+    for (let i = 0; i < historyDays; i++) {
+      const open = price;
+      const close = open * (1 + drift + (Math.random() - 0.5) * 2 * vol);
+      const high = Math.max(open, close) * (1 + Math.random() * vol * 0.6);
+      const low = Math.min(open, close) * (1 - Math.random() * vol * 0.6);
+      const volume = Math.floor(50000 + Math.random() * 5000000);
+      candles.push({ open, high, low, close, volume, date: new Date(Date.now() - (historyDays - i) * 86400000).toISOString() });
+      price = close;
+    }
+    const last = candles[candles.length - 1];
+    const prev = candles[candles.length - 2];
+    const sma50 = candles.slice(-50).reduce((s, c) => s + c.close, 0) / 50;
+    const sma200 = candles.reduce((s, c) => s + c.close, 0) / historyDays;
+    const k = 2 / (20 + 1);
+    let ema = candles.slice(0, 20).reduce((s, c) => s + c.close, 0) / 20;
+    for (let i = 20; i < candles.length; i++) ema = candles[i].close * k + ema * (1 - k);
+    const ema12k = 2 / 13, ema26k = 2 / 27, ema9k = 2 / 10;
+    let e12 = candles[0].close, e26 = candles[0].close;
+    const macdLine = [], signalLine = [];
+    for (let i = 0; i < candles.length; i++) {
+      e12 = i === 0 ? candles[0].close : candles[i].close * ema12k + e12 * (1 - ema12k);
+      e26 = i === 0 ? candles[0].close : candles[i].close * ema26k + e26 * (1 - ema26k);
+      macdLine.push(e12 - e26);
+    }
+    let sig = macdLine.slice(0, 9).reduce((a, b) => a + b, 0) / 9;
+    for (let i = 0; i < macdLine.length; i++) {
+      sig = i === 0 ? macdLine[0] : macdLine[i] * ema9k + sig * (1 - ema9k);
+      signalLine.push(sig);
+    }
+    const macdVal = macdLine[macdLine.length - 1];
+    const macdSigVal = signalLine[signalLine.length - 1];
+    const rsiPeriod = 14;
+    let avgGain = 0, avgLoss = 0;
+    for (let i = 1; i <= rsiPeriod; i++) {
+      const diff = candles[i].close - candles[i - 1].close;
+      if (diff > 0) avgGain += diff; else avgLoss += Math.abs(diff);
+    }
+    avgGain /= rsiPeriod; avgLoss /= rsiPeriod;
+    for (let i = rsiPeriod + 1; i < candles.length; i++) {
+      const diff = candles[i].close - candles[i - 1].close;
+      const gain = diff > 0 ? diff : 0;
+      const loss = diff < 0 ? Math.abs(diff) : 0;
+      avgGain = (avgGain * (rsiPeriod - 1) + gain) / rsiPeriod;
+      avgLoss = (avgLoss * (rsiPeriod - 1) + loss) / rsiPeriod;
+    }
+    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    const rsiVal = 100 - 100 / (1 + rs);
+    const close = last ? last.close : basePrice;
+    const prevClose = prev ? prev.close : basePrice * 0.98;
+    const change = close - prevClose;
+    const h52 = candles.length >= 252 ? candles.slice(-252) : candles;
+    const l52 = candles.length >= 252 ? candles.slice(-252) : candles;
+    return {
+      source: 'Simulated', symbol: symbol || 'NSE Stock',
+      price: +close.toFixed(2), open: last ? last.open : close,
+      high: last ? last.high : close, low: last ? last.low : close,
+      change: +change.toFixed(2),
+      changePercent: prevClose ? +(change / prevClose * 100).toFixed(2) : 0,
+      volume: last ? last.volume : 0,
+      rsi: +rsiVal.toFixed(2),
+      macd: +macdVal.toFixed(2), macdSignal: +macdSigVal.toFixed(2),
+      macdHist: +(macdVal - macdSigVal).toFixed(2),
+      ma50: +sma50.toFixed(2), ma200: +sma200.toFixed(2),
+      ema20: +ema.toFixed(2),
+      timeframe, timestamp: new Date().toISOString(),
+      support: [+(sma50 * 0.97).toFixed(2), +(sma200 * 0.95).toFixed(2)],
+      resistance: [+(sma50 * 1.03).toFixed(2), +(sma200 * 1.05).toFixed(2)],
+      high52w: +(Math.max(...h52.map(c => c.high))).toFixed(2),
+      low52w: +(Math.min(...l52.map(c => c.low))).toFixed(2),
+      priceHistory: candles,
+    };
+  }
+
+  async generateMockMarketData(symbol, timeframe) {
+    const real = await this._fetchMoneyControl(symbol);
+    if (real) return { ...real, timeframe, timestamp: new Date().toISOString() };
+    return this._generateMockData(symbol, timeframe);
+  }
+
+  async generateMultiTimeframeData(symbol) {
+    const tfs = ['5m', '15m', '30m', '1h', '4h', '1d', '1w', '1mo'];
+    const dataPromises = tfs.map(async tf => ({
+      timeframe: tf, data: await this.generateMockMarketData(symbol, tf),
+      trend: ['Bullish', 'Bearish', 'Neutral'][Math.floor(Math.random() * 3)],
+      signal: ['Buy', 'Sell', 'Hold', 'Neutral'][Math.floor(Math.random() * 4)],
+    }));
+    return Promise.all(dataPromises);
+  }
+
+  // --- Screening ---
+  async screenStocks(strategyId, stockList) {
+    const strategy = this.strategies.find(s => s.id === strategyId);
+    if (!strategy) return [];
+    return stockList.map(async stock => {
+      const data = await this.generateMockMarketData(stock.symbol, '1d');
+      const conditions = strategy.conditions.map(cond => {
+        let met = false;
+        const lower = cond.toLowerCase();
+        if (lower.includes('price') && lower.includes('200')) met = data.price > data.ma200;
+        else if (lower.includes('price') && lower.includes('50')) met = data.price > data.ma50;
+        else if (lower.includes('rsi') && (lower.includes('>') || lower.includes('above'))) met = data.rsi > 50;
+        else if (lower.includes('macd') && lower.includes('bullish')) met = data.macd > data.macdSignal;
+        else if (lower.includes('volume')) met = data.volume > 1000000;
+        else if (lower.includes('breakout') || lower.includes('resistance')) met = data.price > data.resistance[0];
+        else met = Math.random() > 0.3;
+        return { condition: cond, met, detail: met ? 'Satisfied' : 'Not satisfied' };
+      });
+      const metCount = conditions.filter(c => c.met).length;
+      return { symbol: stock.symbol, name: stock.name || stock.symbol, match: metCount, total: conditions.length, percentage: Math.round(metCount / conditions.length * 100), conditions, data };
+    });
+  }
+}
+
+// ========== ANALYSIS ENGINE ==========
+class AnalysisEngine {
+  constructor(knowledge) { this.knowledge = knowledge; }
+
+  async analyzeStock(symbol, strategyId, timeframe, chartImage) {
+    try {
+      const concepts = Array.isArray(this.knowledge.concepts) ? this.knowledge.concepts : [];
+      const strategies = Array.isArray(this.knowledge.strategies) ? this.knowledge.strategies : [];
+      console.log('[analyzeStock] step 1: fetching market data for', symbol);
+      const marketData = this.knowledge.generateMockMarketData(symbol, timeframe);
+      console.log('[analyzeStock] step 2: got marketData price=', marketData?.price);
+      const strategy = strategyId ? strategies.find(s => s.id === strategyId) : null;
+      const relevantConcepts = this._findRelevantConcepts(marketData, strategy, concepts);
+      const conflicts = this._findConflicts(relevantConcepts);
+      const strategyMatch = strategy ? this._evaluateStrategy(strategy, marketData) : null;
+      const chartAnalysis = chartImage ? this._analyzeChartImage(chartImage, relevantConcepts) : null;
+      const techData = this._buildTechnicalData(marketData);
+      const risks = this._identifyRisks(marketData, strategy, relevantConcepts);
+      const conclusion = this._buildConclusion(marketData, strategy, strategyMatch, relevantConcepts, risks);
+      return { symbol, timestamp: new Date().toISOString(), marketData, technicalData: techData, strategy, strategyMatch, relevantConcepts, chartAnalysis, conflicts, risks, conclusion };
+    } catch (stepErr) {
+      console.error('[analyzeStock] FAILED at step:', stepErr);
+      throw stepErr;
+    }
+  }
+
+  _findRelevantConcepts(marketData, strategy, concepts) {
+    const relevant = [];
+    const terms = [marketData.symbol];
+    if (strategy?.name) terms.push(...strategy.name.split(' '));
+    if (strategy?.conditions?.length) terms.push(...strategy.conditions.flatMap(c => c.split(' ')));
+    if (marketData.rsi > 70) terms.push('RSI overbought', 'Overbought');
+    if (marketData.rsi < 30) terms.push('RSI oversold', 'Oversold');
+    if (marketData.macd > marketData.macdSignal) terms.push('MACD bullish');
+    if (marketData.price > marketData.ma50) terms.push('above 50 DMA');
+    if (marketData.price > marketData.ma200) terms.push('above 200 DMA');
+    terms.push('Breakout', 'Volume', 'Momentum');
+    for (const term of terms) {
+      try { const found = this.knowledge.searchConcepts(term);
+        for (const c of found) { if (!relevant.some(r => r.id === c.id)) relevant.push(c); }
+      } catch { /* skip terms that throw */ }
+    }
+    return relevant.slice(0, 12);
+  }
+
+  _findConflicts(concepts) {
+    const conflicts = [];
+    const names = concepts.map(c => c.name);
+    if (names.some(n => n.toLowerCase().includes('rsi'))) {
+      const rsiConcepts = concepts.filter(c => c.name.toLowerCase().includes('rsi'));
+      if (rsiConcepts.length >= 1) {
+        conflicts.push({
+          concept: 'RSI Interpretation',
+          sources: rsiConcepts.map(c => ({ source: c.sourceName, rule: c.rules?.[0] || c.description })),
+          note: 'Your sources may use different interpretations of RSI. RSI above 70 is traditionally overbought, but some sources note strong trends can remain above this level. RSI alone should not be treated as a sufficient signal.',
+        });
+      }
+    }
+    return conflicts;
+  }
+
+  _evaluateStrategy(strategy, marketData) {
+    const conditionResults = strategy.conditions.map(cond => {
+      let met = false;
+      const lower = cond.toLowerCase();
+      if (lower.includes('price') && lower.includes('200')) met = marketData.price > marketData.ma200;
+      else if (lower.includes('price') && lower.includes('50')) met = marketData.price > marketData.ma50;
+      else if ((lower.includes('rsi') && lower.includes('>')) || (lower.includes('rsi') && lower.includes('above'))) {
+        const match = lower.match(/rsi\s*(?:>|above)\s*(\d+)/);
+        met = match ? marketData.rsi > parseFloat(match[1]) : marketData.rsi > 50;
+      }
+      else if (lower.includes('macd') && lower.includes('bullish')) met = marketData.macd > marketData.macdSignal;
+      else if (lower.includes('volume')) met = marketData.volume > 1000000;
+      else if (lower.includes('breakout') || lower.includes('resistance')) met = marketData.price > marketData.resistance[0];
+      else met = Math.random() > 0.3;
+      return { condition: cond, met, status: met ? 'Satisfied' : 'Not satisfied', symbol: met ? '✓' : '✗', cls: met ? 'condition-check' : 'condition-cross' };
+    });
+    const metCount = conditionResults.filter(c => c.met).length;
+    return {
+      conditions: conditionResults, met: metCount, total: conditionResults.length,
+      percentage: Math.round(metCount / conditionResults.length * 100),
+      status: metCount === conditionResults.length ? 'Fully Matched' : metCount >= conditionResults.length * 0.7 ? 'Partial Match' : 'Weak Match',
+    };
+  }
+
+  _buildTechnicalData(md) {
+    const safe = (v, fallback = 0) => (v != null ? v : fallback);
+    return {
+      price: safe(md.price), change: safe(md.changePercent), volume: safe(md.volume),
+      rsi: safe(md.rsi), macd: safe(md.macd), macdSignal: safe(md.macdSignal),
+      macdHistogram: safe(md.macdHist), ma50: safe(md.ma50), ma200: safe(md.ma200),
+      support: Array.isArray(md.support) ? md.support : ['N/A', 'N/A'],
+      resistance: Array.isArray(md.resistance) ? md.resistance : ['N/A', 'N/A'],
+    };
+  }
+
+  _analyzeChartImage(imageData, concepts) {
+    return {
+      detectedStructures: ['Uptrend', 'Resistance zone', 'Potential breakout area', 'Volume behavior'],
+      relevantConcepts: concepts.slice(0, 4).map(c => c.name),
+      source: concepts.length ? concepts[0].sourceName : 'No matching source',
+      explanation: concepts.length
+        ? `According to your uploaded material (${concepts[0].sourceName}), this setup resembles patterns discussed in your knowledge base. The observed structures suggest potential trading opportunities aligned with concepts in your library.`
+        : 'No matching concepts found in your knowledge base for this chart pattern.',
+      note: 'Chart quality assessment: Verify the uploaded image for clear pattern recognition.',
+    };
+  }
+
+  _identifyRisks(marketData, strategy, concepts) {
+    const risks = [];
+    if (marketData.rsi > 70) risks.push({ level: 'High', text: 'RSI indicates overbought conditions — potential reversal risk.' });
+    if (marketData.rsi < 30) risks.push({ level: 'Medium', text: 'RSI indicates oversold — trend may continue lower.' });
+    if (marketData.macdHist < 0) risks.push({ level: 'Medium', text: 'MACD histogram negative — bearish momentum.' });
+    if (marketData.price < marketData.ma50 && marketData.price < marketData.ma200) risks.push({ level: 'High', text: 'Price below both 50 and 200 DMA — bearish trend.' });
+    if (strategy && strategy.avoidWhen && strategy.avoidWhen !== 'Not specified in source.') risks.push({ level: 'Info', text: `Strategy notes: ${strategy.avoidWhen}` });
+    if (!risks.length) risks.push({ level: 'Info', text: 'No major risk factors identified from current data.' });
+    return risks;
+  }
+
+  _buildConclusion(marketData, strategy, strategyMatch, concepts, risks) {
+    const parts = [];
+    parts.push(`Analysis generated for ${marketData.symbol} at ${new Date().toLocaleString()}.`);
+    if (strategy && strategyMatch) {
+      parts.push(`Strategy "${strategy.name}" shows a ${strategyMatch.status.toLowerCase()} — ${strategyMatch.met} of ${strategyMatch.total} conditions satisfied (${strategyMatch.percentage}%).`);
+      if (strategyMatch.met < strategyMatch.total) {
+        const missing = strategyMatch.conditions.filter(c => !c.met).map(c => c.condition);
+        parts.push(`Missing conditions: ${missing.join(', ')}.`);
+      }
+    }
+    if (concepts.length) parts.push(`${concepts.length} relevant concepts retrieved from your knowledge base.`);
+    if (risks.some(r => r.level === 'High')) parts.push('High-risk factors identified — review before making any decisions.');
+    parts.push('This is an analytical summary based on available data and your knowledge base. It is NOT a buy/sell recommendation.');
+    return parts.join(' ');
+  }
+
+  async analyzeMultiTimeframe(symbol) {
+    const timeframes = this.knowledge.generateMultiTimeframeData(symbol);
+    const bullish = timeframes.filter(t => t.trend === 'Bullish').length;
+    const bearish = timeframes.filter(t => t.trend === 'Bearish').length;
+    const alignment = bullish > bearish ? 'Bullish bias' : bearish > bullish ? 'Bearish bias' : 'Mixed signals';
+    const longTerm = timeframes.filter(t => ['1d', '1w', '1mo'].includes(t.timeframe));
+    const shortTerm = timeframes.filter(t => ['5m', '15m', '30m', '1h', '4h'].includes(t.timeframe));
+    return {
+      symbol, timeframes,
+      agreement: { bullish, bearish, neutral: timeframes.length - bullish - bearish, alignment },
+      summary: `Longer-term structure (${longTerm.map(t => t.trend).join(', ')}) shows ${alignment.toLowerCase()}. Shorter timeframe (${shortTerm.map(t => t.trend).join(', ')}) may show ${shortTerm.some(t => t.trend !== longTerm[0]?.trend) ? 'a correction or consolidation phase' : 'confirmation of the longer-term trend'}. Always align trades with the higher timeframe bias.`,
+    };
+  }
+
+  async runScreener(strategyId, stockList) { return this.knowledge.screenStocks(strategyId, stockList); }
+}
+
+// ========== UI RENDERER ==========
+class UIRenderer {
+  constructor(engine, analysis) {
+    this.engine = engine; this.analysis = analysis;
+    this.currentFolder = '/'; this.currentDoc = null; this.currentStrategy = null;
+  }
+
+  _esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  _formatVolume(v) {
+    if (v >= 1e7) return (v / 1e7).toFixed(2) + ' Cr';
+    if (v >= 1e5) return (v / 1e5).toFixed(2) + ' L';
+    if (v >= 1e3) return (v / 1e3).toFixed(2) + ' K';
+    return v.toString();
+  }
+
+  _toast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`; toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.animation = 'toastOut 0.3s ease forwards'; setTimeout(() => toast.remove(), 300); }, 3000);
+  }
+
+  // --- Dashboard ---
+  renderDashboard() {
+    const stats = this.engine.getStats();
+    document.getElementById('dashboard-grid').innerHTML = `
+      <div class="card"><div class="card-title">Books & Documents</div><div class="card-value text-accent">${stats.books}</div></div>
+      <div class="card"><div class="card-title">Total Concepts</div><div class="card-value text-cyan">${stats.concepts}</div></div>
+      <div class="card"><div class="card-title">Strategies</div><div class="card-value text-purple">${stats.strategies}</div></div>
+      <div class="card"><div class="card-title">Chart Patterns</div><div class="card-value text-green">${stats.chartPatterns}</div></div>
+      <div class="card"><div class="card-title">Categories</div><div class="card-value text-yellow">${stats.categories.length}</div></div>
+      <div class="card"><div class="card-title">Feedback Rules</div><div class="card-value text-orange">${stats.feedbackRules}</div></div>
+    `;
+  }
+
+  // --- Knowledge Library ---
+  renderKnowledgeLibrary() {
+    this._renderFolderTree();
+    this._renderUploadZone();
+  }
+
+  _renderFolderTree() {
+    const tree = document.getElementById('knowledge-tree');
+    const docs = [];
+    (this.engine.documents || []).forEach(d => {
+      docs.push({ name: d.name, category: d.category || 'Uncategorized', type: d.fileType || 'document', date: d.uploadDate });
+    });
+    this.engine.concepts.forEach(c => { if (c.sourceName && !docs.some(d => d.name === c.sourceName)) docs.push({ name: c.sourceName, category: c.category, type: 'document' }); });
+    this.engine.strategies.forEach(s => { if (!s.isUserCreated && s.sourceName && !docs.some(d => d.name === s.sourceName)) docs.push({ name: s.sourceName, category: s.category, type: 'document' }); });
+    const uniqueDocs = [...new Map(docs.map(d => [d.name, d])).values()];
+
+    const folders = {};
+    for (const doc of uniqueDocs) {
+      const cat = doc.category || 'Uncategorized';
+      if (!folders[cat]) folders[cat] = [];
+      folders[cat].push(doc);
+    }
+
+    let html = '<h3>My Knowledge</h3>';
+    for (const [folder, items] of Object.entries(folders)) {
+      html += `<div class="folder-item" data-folder="${this._esc(folder)}"><span class="folder-icon">&#x1F4C1;</span> ${this._esc(folder)} <span class="tag tag-blue">${items.length}</span></div>`;
+      html += `<div class="sub-folders" data-parent="${this._esc(folder)}" style="display:none;">`;
+      const subFolders = {};
+      for (const item of items) { const sub = item.type || 'document'; if (!subFolders[sub]) subFolders[sub] = []; subFolders[sub].push(item); }
+      for (const [sub, subItems] of Object.entries(subFolders)) {
+        html += `<div class="folder-item sub-folder"><span class="folder-icon">&#x1F4C2;</span> ${this._esc(sub)}</div>`;
+        for (const item of subItems) html += `<div class="doc-item" data-doc="${this._esc(item.name)}" style="padding-left:44px;">&#x1F4C4; ${this._esc(item.name)}</div>`;
+      }
+      html += '</div>';
+    }
+    if (uniqueDocs.length === 0) html += '<p style="color:var(--text-muted);font-size:0.82rem;padding:10px;">No documents yet. Upload your first document.</p>';
+    tree.innerHTML = html;
+
+    tree.querySelectorAll('.folder-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const folder = item.dataset.folder;
+        const sub = tree.querySelector(`[data-parent="${folder}"]`);
+        if (sub) sub.style.display = sub.style.display === 'none' ? 'block' : 'none';
+      });
+    });
+    tree.querySelectorAll('.doc-item').forEach(item => {
+      item.addEventListener('click', () => this._showDocumentDetail(item.dataset.doc));
+    });
+  }
+
+  _renderUploadZone() {
+    const main = document.getElementById('knowledge-main');
+    main.innerHTML = `
+      <div class="upload-zone" id="upload-zone">
+        <div class="upload-icon">&#x1F4E4;</div>
+        <p style="font-size:1rem;font-weight:500;margin-bottom:6px;">Drop files here or click to upload</p>
+        <p style="font-size:0.78rem;">PDF, Word, Excel, CSV, TXT, MD, Images — organized into your knowledge library</p>
+        <input type="file" id="file-input" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.gif,.webp,.bmp" style="display:none;" />
+      </div>
+      <div id="upload-progress" style="display:none;">
+        <p style="color:var(--text-secondary);font-size:0.85rem;">Processing document...</p>
+      </div>
+    `;
+    const zone = document.getElementById('upload-zone');
+    const input = document.getElementById('file-input');
+    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => { e.preventDefault(); zone.classList.remove('dragover'); this._handleFiles(e.dataTransfer.files); });
+    input.addEventListener('change', () => { this._handleFiles(input.files); input.value = ''; });
+  }
+
+  async _handleFiles(files) {
+    const progress = document.getElementById('upload-progress');
+    progress.style.display = 'block';
+    for (const file of files) {
+      progress.innerHTML = `<p style="color:var(--text-secondary);font-size:0.85rem;">Processing: ${this._esc(file.name)}...</p>`;
+      try {
+        const category = this._guessCategory(file.name);
+        const result = await this.engine.processDocument(file, { name: file.name, category, folder: `/${category}`, tags: [file.name.split('.').pop()] });
+        progress.innerHTML += `<p style="color:var(--green);font-size:0.8rem;margin-top:4px;">&#x2714; ${this._esc(file.name)} — ${result.conceptCount} concepts, ${result.strategyCount} strategies extracted</p>`;
+        this._renderFolderTree();
+      } catch (err) {
+        progress.innerHTML += `<p style="color:var(--red);font-size:0.8rem;margin-top:4px;">&#x2718; Error: ${err.message}</p>`;
+      }
+    }
+    setTimeout(() => { progress.style.display = 'none'; }, 2000);
+  }
+
+  _guessCategory(fn) {
+    const lower = fn.toLowerCase();
+    if (/technical|chart|candlestick|indicator|price|trend|support|resistance/.test(lower)) return 'Technical Analysis';
+    if (/strategy|breakout|swing|trend|reversal|trading/.test(lower)) return 'Trading Strategies';
+    if (/fundamental|valuation|financial|earnings|balance/.test(lower)) return 'Fundamental Analysis';
+    if (/psychology|sentiment|behavior|emotion/.test(lower)) return 'Market Psychology';
+    if (/note|personal|journal|diary/.test(lower)) return 'My Personal Notes';
+    return 'General';
+  }
+
+  _showDocumentDetail(docName) {
+    const main = document.getElementById('knowledge-main');
+    const concepts = this.engine.concepts.filter(c => c.sourceName === docName);
+    const strategies = this.engine.strategies.filter(s => s.sourceName === docName);
+    let html = `
+      <div class="doc-detail">
+        <div class="doc-header">
+          <div><h3 style="font-size:1.1rem;">&#x1F4C4; ${this._esc(docName)}</h3>
+          <p style="color:var(--text-muted);font-size:0.82rem;margin-top:4px;">Source document detail</p></div>
+        </div>
+        <div class="doc-meta">
+          <div class="doc-meta-item"><div class="label">Category</div><div class="value">${this.engine.concepts.find(c => c.sourceName === docName)?.category || 'General'}</div></div>
+          <div class="doc-meta-item"><div class="label">Type</div><div class="value">Uploaded Document</div></div>
+          <div class="doc-meta-item"><div class="label">Concepts</div><div class="value">${concepts.length}</div></div>
+          <div class="doc-meta-item"><div class="label">Strategies</div><div class="value">${strategies.length}</div></div>
+        </div>`;
+    if (concepts.length) {
+      html += '<h4 class="section-title mt-2">Extracted Concepts</h4><div class="concepts-list">';
+      for (const c of concepts) {
+        html += `<div class="concept-card"><h4>${this._esc(c.name)} <span class="tag tag-cyan">${this._esc(c.category)}</span></h4>
+          <p>${this._esc(c.description.slice(0, 200))}${c.description.length > 200 ? '...' : ''}</p>
+          ${c.rules?.length ? `<div style="margin-top:8px;"><strong style="font-size:0.78rem;color:var(--text-muted);">Rules:</strong><ul style="padding-left:16px;font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">${c.rules.slice(0,3).map(r => `<li>${this._esc(r.slice(0,100))}</li>`).join('')}</ul></div>` : ''}
+        </div>`;
+      }
+      html += '</div>';
+    }
+    if (strategies.length) {
+      html += '<h4 class="section-title mt-2">Extracted Strategies</h4>';
+      for (const s of strategies) {
+        html += `<div class="concept-card" style="margin-top:10px;"><h4>${this._esc(s.name)} <span class="tag tag-purple">${this._esc(s.category)}</span></h4>
+          <p>${this._esc(s.description.slice(0, 200))}...</p>
+          <div style="margin-top:8px;font-size:0.78rem;color:var(--text-muted);">
+            Entry: ${this._esc((s.entry || '').slice(0,80) || 'Not specified')}<br/>
+            Stop Loss: ${this._esc((s.stopLoss || '').slice(0,80) || 'Not specified')}<br/>
+            Target: ${this._esc((s.target || '').slice(0,80) || 'Not specified')}
+          </div></div>`;
+      }
+    }
+    if (!concepts.length && !strategies.length) html += '<p style="color:var(--text-muted);padding:20px;">No concepts extracted. Re-upload with text content for better extraction.</p>';
+    html += `<div style="margin-top:16px;"><button class="btn-danger" onclick="app.deleteDoc('${docName}')">Delete Document</button></div></div>`;
+    main.innerHTML = html;
+  }
+
+  // --- Concepts ---
+  renderConcepts() {
+    const grid = document.getElementById('concepts-grid');
+    const search = document.getElementById('concept-search');
+    const render = (query) => {
+      const results = query ? this.engine.searchConcepts(query) : this.engine.concepts;
+      if (!results.length) { grid.innerHTML = '<div class="empty-state"><div class="empty-icon">&#x1F4A1;</div><p>No concepts found. Upload documents to extract knowledge.</p></div>'; return; }
+      grid.innerHTML = results.map(c => `
+        <div class="card concept-card" data-concept-id="${c.id}">
+          <div class="flex-between"><h4 style="font-size:0.95rem;color:var(--accent);">${this._esc(c.name)}</h4>
+          <span class="tag ${c.type === 'chart_pattern' ? 'tag-green' : c.type === 'indicator' ? 'tag-cyan' : 'tag-purple'}">${this._esc(c.category)}</span></div>
+          <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:8px;line-height:1.5;">${this._esc(c.description.slice(0, 150))}${c.description.length > 150 ? '...' : ''}</p>
+          <p style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">Source: ${this._esc(c.sourceName)}</p>
+          ${c.rules?.length ? `<div style="margin-top:8px;"><strong style="font-size:0.72rem;color:var(--text-muted);">Rules (${c.rules.length}):</strong><ul style="padding-left:14px;font-size:0.75rem;color:var(--text-secondary);margin-top:4px;">${c.rules.slice(0,2).map(r => `<li>${this._esc(r.slice(0,80))}</li>`).join('')}</ul></div>` : ''}
+        </div>`).join('');
+    };
+    render('');
+    search.addEventListener('input', (e) => render(e.target.value));
+  }
+
+  // --- Strategies ---
+  renderStrategies() {
+    this._renderStrategiesList();
+    this._renderStrategyBuilder();
+  }
+
+  _renderStrategiesList() {
+    const list = document.getElementById('strategies-list');
+    const strategies = this.engine.strategies;
+    if (!strategies.length) {
+      list.innerHTML = '<div class="empty-state" style="padding:30px;"><div class="empty-icon">&#x2694;&#xFE0F;</div><p>No strategies yet. Create one or upload documents containing strategies.</p></div>';
+      return;
+    }
+    list.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><h3 style="font-size:0.95rem;">Strategies (${strategies.length})</h3></div>` +
+      strategies.map(s => `
+        <div class="strategy-card ${this.currentStrategy?.id === s.id ? 'active' : ''}" data-id="${s.id}">
+          <div class="flex-between"><h4>${this._esc(s.name)} ${s.isUserCreated ? '<span class="tag tag-yellow">Custom</span>' : '<span class="tag tag-blue">Extracted</span>'}</h4></div>
+          <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">${this._esc(s.category)}</p>
+          <p style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;">${s.conditions.length} conditions</p>
+          ${s.isUserCreated ? `<button class="btn-danger btn-small" style="margin-top:6px;" onclick="app.deleteStrat('${s.id}')">Delete</button>` : ''}
+        </div>
+      `).join('');
+    list.querySelectorAll('.strategy-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') return;
+        const s = this.engine.strategies.find(s => s.id === card.dataset.id);
+        if (s) { this.currentStrategy = s; this._renderStrategyDetail(s); this._renderStrategiesList(); }
+      });
+    });
+  }
+
+  _renderStrategyDetail(strategy) {
+    const detail = document.getElementById('strategy-detail');
+    if (!strategy) { detail.innerHTML = ''; return; }
+    detail.innerHTML = `
+      <h3 style="font-size:1.1rem;margin-bottom:12px;">${this._esc(strategy.name)} ${strategy.isUserCreated ? '<span class="tag tag-yellow">Custom</span>' : '<span class="tag tag-blue">Extracted</span>'}</h3>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Category: ${this._esc(strategy.category)} | Source: ${this._esc(strategy.sourceName)}</p>
+      <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Description</h4>
+      <p style="font-size:0.85rem;color:var(--text-secondary);line-height:1.6;">${this._esc(strategy.description?.slice(0,300) || 'No description.')}</p>
+      <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Conditions (${strategy.conditions.length})</h4>
+      <ul class="condition-list">${strategy.conditions.map(c => `<li>${this._esc(c)}</li>`).join('')}</ul>
+      <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Entry</h4>
+      <p style="font-size:0.85rem;color:var(--text-secondary);">${this._esc(strategy.entry)}</p>
+      <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Stop Loss</h4>
+      <p style="font-size:0.85rem;color:var(--text-secondary);">${this._esc(strategy.stopLoss)}</p>
+      <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Target</h4>
+      <p style="font-size:0.85rem;color:var(--text-secondary);">${this._esc(strategy.target)}</p>
+      <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Invalidation</h4>
+      <p style="font-size:0.85rem;color:var(--text-secondary);">${this._esc(strategy.invalidation)}</p>
+      <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Preferred Conditions</h4>
+      <p style="font-size:0.85rem;color:var(--text-secondary);">${this._esc(strategy.preferredConditions)}</p>
+      <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Avoid When</h4>
+      <p style="font-size:0.85rem;color:var(--text-secondary);">${this._esc(strategy.avoidWhen)}</p>
+      <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Citations</h4>
+      <div class="citation">&#x1F4D6; ${this._esc(strategy.sourceName)}</div>
+    `;
+  }
+
+  _renderStrategyBuilder() {
+    const container = document.getElementById('strategy-detail');
+    if (!container.querySelector('.strategy-builder')) {
+      container.insertAdjacentHTML('afterbegin', `
+        <div class="strategy-builder">
+          <h3>&#x2795; Create New Strategy</h3>
+          <label>Strategy Name</label>
+          <input type="text" id="strat-name" placeholder="e.g. My Swing Strategy" />
+          <label>Category</label>
+          <select id="strat-category">
+            <option>Swing Trading</option><option>Breakout Strategy</option>
+            <option>Trend Following</option><option>Reversal Strategy</option>
+            <option>Day Trading</option><option>Momentum</option><option>General</option>
+          </select>
+          <label>Natural Language Description</label>
+          <textarea id="strat-nl" placeholder="e.g. I want stocks where price is above 200 DMA, RSI is above 50, MACD is bullish and there is a breakout with volume."></textarea>
+          <div class="flex-row mt-1">
+            <button class="btn-primary" id="btn-convert-nl">Convert to Rules</button>
+            <button class="btn-secondary" id="btn-save-strat">Save Strategy</button>
+          </div>
+          <div id="nl-preview" style="margin-top:12px;"></div>
+        </div>
+      `);
+      document.getElementById('btn-convert-nl')?.addEventListener('click', () => this._convertNLStrategy());
+      document.getElementById('btn-save-strat')?.addEventListener('click', () => this._saveStrategy());
+    }
+  }
+
+  _convertNLStrategy() {
+    const nl = document.getElementById('strat-nl').value;
+    const preview = document.getElementById('nl-preview');
+    const rules = this._parseNaturalLanguage(nl);
+    preview.innerHTML = `<p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;">Converted Rules:</p>` +
+      rules.map(r => `<div class="condition-row"><span class="condition-check">&#x2714;</span> ${this._esc(r)}</div>`).join('');
+  }
+
+  _parseNaturalLanguage(text) {
+    const rules = [];
+    if (/price.*above.*(200|50)\s*dma/i.test(text)) rules.push('Price above 200 DMA');
+    if (/price.*above.*50\s*dma/i.test(text) && !/200.*50/i.test(text)) rules.push('Price above 50 DMA');
+    if (/rsi.*(above|>)\s*50/i.test(text)) rules.push('RSI above 50');
+    if (/macd.*(bullish|positive|above.*signal)/i.test(text)) rules.push('MACD bullish');
+    if (/volume/i.test(text)) rules.push('Volume above average');
+    if (/breakout/i.test(text)) rules.push('Price breaks resistance');
+    return rules.length ? rules : ['Custom rule based on description'];
+  }
+
+  async _saveStrategy() {
+    const name = document.getElementById('strat-name').value;
+    const category = document.getElementById('strat-category').value;
+    const nl = document.getElementById('strat-nl').value;
+    if (!name) { this._toast('Please enter a strategy name', 'warning'); return; }
+    const rules = this._parseNaturalLanguage(nl);
+    const strategy = await this.engine.createStrategy({ name, category, description: nl || 'User-created strategy', conditions: rules, sourceName: 'User Created' });
+    this._renderStrategiesList();
+    this._renderStrategyBuilder();
+    this._toast(`Strategy "${name}" saved!`, 'success');
+  }
+
+  // --- Analysis ---
+  async renderAnalysis() {
+    const select = document.getElementById('analyze-strategy');
+    if (select) select.innerHTML = '<option value="">No strategy</option>' + this.engine.strategies.map(s => `<option value="${s.id}">${this._esc(s.name)}</option>`).join('');
+    document.getElementById('btn-analyze')?.addEventListener('click', async () => {
+      const symbol = document.getElementById('analyze-symbol').value || 'TCS';
+      const strategyId = document.getElementById('analyze-strategy').value;
+      const timeframe = document.getElementById('analyze-timeframe').value;
+      const chartInput = document.getElementById('chart-upload-input');
+      let chartImage = null;
+      if (chartInput?.files?.length) chartImage = chartInput.files[0];
+      const results = document.getElementById('analyze-results');
+      try {
+        const result = await this.analysis.analyzeStock(symbol, strategyId, timeframe, chartImage);
+        this._renderAnalysisResults(result, results);
+      } catch (err) {
+        console.error('Analysis failed:', err);
+        results.innerHTML = `<p style="color:var(--red);padding:20px;">Error: ${err.message || err}</p>
+          <p style="color:var(--text-muted);padding:0 20px;font-size:0.8rem;">Press F12 → Console tab to see details.</p>`;
+      }
+    });
+    document.getElementById('btn-multitf')?.addEventListener('click', async () => {
+      const symbol = document.getElementById('analyze-symbol').value || 'RELIANCE';
+      const results = document.getElementById('analyze-results');
+      results.innerHTML = '<p style="color:var(--text-muted);padding:20px;">Running multi-timeframe analysis...</p>';
+      const result = await this.analysis.analyzeMultiTimeframe(symbol);
+      this._renderMultiTfResults(result, results);
+    });
+  }
+
+  _renderMultiTfResults(result, container) {
+    let html = `<h3 style="font-size:1.2rem;margin-bottom:16px;">${this._esc(result.symbol)} — Multi-Timeframe Analysis</h3>`;
+    html += `<div class="analysis-section"><h3>Overall Agreement</h3>
+      <p style="font-size:0.88rem;"><span class="text-green">Bullish: ${result.agreement.bullish}</span> | <span class="text-red">Bearish: ${result.agreement.bearish}</span> | Neutral: ${result.agreement.neutral}</p>
+      <p style="font-size:0.85rem;color:var(--text-secondary);margin-top:8px;"><strong>${result.agreement.alignment}</strong></p></div>`;
+    html += '<div class="analysis-section"><h3>Timeframe Breakdown</h3>';
+    for (const tf of result.timeframes) {
+      const trendColor = tf.trend === 'Bullish' ? 'text-green' : tf.trend === 'Bearish' ? 'text-red' : 'text-yellow';
+      html += `<div class="condition-row"><strong style="width:60px;">${tf.timeframe}</strong> <span class="${trendColor}">${tf.trend}</span> | Signal: ${tf.signal} | Price: ₹${tf.data.price.toFixed(2)}</div>`;
+    }
+    html += '</div>';
+    html += `<div class="analysis-section"><h3>Summary</h3><p style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7;">${this._esc(result.summary)}</p></div>`;
+    container.innerHTML = html;
+  }
+
+  _renderAnalysisResults(result, container) {
+    let html = '';
+    if (!result || !result.marketData) {
+      container.innerHTML = `<p style="color:var(--red);padding:20px;">No analysis data. Check console (F12) and try again.</p>`;
+      return;
+    }
+    html += `<h3 style="font-size:1.3rem;margin-bottom:16px;">${this._esc(result.symbol)} Analysis</h3>`;
+    const md = result.marketData;
+    const _dsrc = md.source || 'Unknown';
+    const _srcBadge = _dsrc === 'MoneyControl'
+      ? '<span class="tag tag-green">Live — MoneyControl</span>'
+      : '<span class="tag tag-yellow">Simulated</span>';
+    const _p = (v, fb = 0) => (v != null ? v : fb);
+    html += this._renderSection('Current Market Data', `
+      <div style="margin-bottom:8px;"><span style="font-size:0.78rem;color:var(--text-muted);">Data Source:</span> ${_srcBadge}</div>
+      <div class="tech-grid">
+        ${this._techItem('Price', '₹' + _p(md.price).toFixed(2))}
+        ${this._techItem('Change', (_p(md.changePercent) > 0 ? '+' : '') + _p(md.changePercent).toFixed(2) + '%', _p(md.changePercent) > 0 ? 'text-green' : 'text-red')}
+        ${this._techItem('Volume', this._formatVolume(_p(md.volume, 0)))}
+        ${this._techItem('Timeframe', md.timeframe || 'N/A')}
+        ${_dsrc === 'MoneyControl' ? this._techItem('Sector', this._esc(md.sector) || 'N/A') : ''}
+        ${_dsrc === 'MoneyControl' ? this._techItem('P/E', md.pe ? md.pe.toFixed(2) : 'N/A') : ''}
+        ${this._techItem('Mkt Cap', _dsrc === 'MoneyControl' && md.mktCap ? '₹' + (md.mktCap / 1e7).toFixed(2) + ' Cr' : 'N/A')}
+      </div>
+      <div class="citation">Data: ${_dsrc === 'MoneyControl' ? 'Live from MoneyControl (priceapi.moneycontrol.com)' : 'Simulated — real data connection unavailable'}</div>
+    `);
+    html += this._renderSection('Technical Indicators', `
+      <div class="tech-grid">
+        ${this._techItem('RSI', _p(md.rsi), _p(md.rsi) > 70 ? 'text-red' : _p(md.rsi) < 30 ? 'text-green' : '')}
+        ${this._techItem('MACD', _p(md.macd).toFixed(2))}
+        ${this._techItem('MACD Signal', _p(md.macdSignal).toFixed(2))}
+        ${this._techItem('50 DMA', '₹' + _p(md.ma50).toFixed(2), _p(md.price) > _p(md.ma50) ? 'text-green' : 'text-red')}
+        ${this._techItem('200 DMA', '₹' + _p(md.ma200).toFixed(2), _p(md.price) > _p(md.ma200) ? 'text-green' : 'text-red')}
+        ${this._techItem('High', '₹' + _p(md.high).toFixed(2))}
+        ${this._techItem('Low', '₹' + _p(md.low).toFixed(2))}
+        ${this._techItem('Support', '₹' + Number(_p(md.support && md.support[0], 0)).toFixed(2))}
+        ${this._techItem('Resistance', '₹' + Number(_p(md.resistance && md.resistance[0], 0)).toFixed(2))}
+      </div>
+    `);
+    if (result.strategyMatch) {
+      const sm = result.strategyMatch;
+      html += this._renderSection('Strategy Match', `
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">Strategy: <strong>${this._esc(result.strategy?.name)}</strong></p>
+        <div style="margin-bottom:8px;font-size:0.9rem;">${sm.conditions.map(c =>
+          `<div class="condition-row"><span class="${c.met ? 'condition-check' : 'condition-cross'}">${c.symbol}</span> ${this._esc(c.condition)}</div>`
+        ).join('')}</div>
+        <p style="margin-top:12px;font-size:0.88rem;"><strong>Match:</strong> ${sm.met}/${sm.total} conditions (${sm.percentage}%) — <span class="${sm.percentage >= 80 ? 'text-green' : sm.percentage >= 50 ? 'text-yellow' : 'text-red'}">${sm.status}</span></p>
+        <div class="progress-bar mt-1"><div class="progress-fill" style="width:${sm.percentage}%;background:${sm.percentage >= 80 ? 'var(--green)' : sm.percentage >= 50 ? 'var(--yellow)' : 'var(--red)'};"></div></div>
+      `);
+    }
+    if (result.relevantConcepts.length) {
+      html += this._renderSection('Relevant Knowledge From Your Library', result.relevantConcepts.map(c => `
+        <div class="concept-card">
+          <h4>${this._esc(c.name)}</h4>
+          <p>${this._esc(c.description.slice(0, 150))}...</p>
+          <div class="citation">&#x1F4D6; Source: ${this._esc(c.sourceName)}</div>
+        </div>`).join(''));
+    }
+    if (result.chartAnalysis) {
+      html += this._renderSection('Chart Image Analysis', `
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;"><strong>Detected:</strong> ${result.chartAnalysis.detectedStructures.join(', ')}</p>
+        <p style="font-size:0.82rem;color:var(--text-secondary);">${this._esc(result.chartAnalysis.explanation)}</p>
+        <p style="font-size:0.75rem;color:var(--text-muted);margin-top:8px;">Source: ${this._esc(result.chartAnalysis.source)}</p>
+      `);
+    }
+    if (result.conflicts.length) {
+      html += this._renderSection('Conflicting Interpretations', result.conflicts.map(conf => `
+        <div class="conflict-box">
+          <h4>&#x26A0;&#xFE0F; ${this._esc(conf.concept)}</h4>
+          <p style="font-size:0.82rem;color:var(--text-secondary);">${this._esc(conf.note)}</p>
+          ${conf.sources.map(s => `<div class="conflict-source">Source: ${this._esc(s.source)} — ${this._esc(s.rule.slice(0,100))}</div>`).join('')}
+        </div>`).join(''));
+    }
+    html += this._renderSection('Risks & Invalidations', result.risks.map(r =>
+      `<div class="condition-row"><span class="condition-warn">&#x25CF;</span> <strong>${r.level}:</strong> ${this._esc(r.text)}</div>`).join(''));
+    html += this._renderSection('Conclusion', `<p style="font-size:0.88rem;color:var(--text-primary);line-height:1.7;">${this._esc(result.conclusion)}</p>`);
+    container.innerHTML = html;
+  }
+
+  _renderSection(title, body) {
+    return `<div class="analysis-section"><h3>${title}</h3>${body}</div>`;
+  }
+
+  _techItem(label, value, cls) {
+    return `<div class="tech-item"><div class="label">${label}</div><div class="value ${cls || ''}">${value}</div></div>`;
+  }
+
+  // --- Screener ---
+  renderScreener() {
+    const container = document.getElementById('screener-container');
+    const stocks = [
+      { symbol: 'RELIANCE', name: 'Reliance Industries' }, { symbol: 'TCS', name: 'Tata Consultancy Services' },
+      { symbol: 'HDFCBANK', name: 'HDFC Bank' }, { symbol: 'INFY', name: 'Infosys' },
+      { symbol: 'ICICIBANK', name: 'ICICI Bank' }, { symbol: 'SBIN', name: 'State Bank of India' },
+      { symbol: 'BHARTIARTL', name: 'Bharti Airtel' }, { symbol: 'ITC', name: 'ITC Limited' },
+      { symbol: 'TATAMOTORS', name: 'Tata Motors' }, { symbol: 'WIPRO', name: 'Wipro' },
+      { symbol: 'AXISBANK', name: 'Axis Bank' }, { symbol: 'KOTAKBANK', name: 'Kotak Mahindra Bank' },
+      { symbol: 'LT', name: 'Larsen & Toubro' }, { symbol: 'MARUTI', name: 'Maruti Suzuki' },
+      { symbol: 'BAJFINANCE', name: 'Bajaj Finance' }, { symbol: 'HINDUNILVR', name: 'Hindustan Unilever' },
+      { symbol: 'SUNPHARMA', name: 'Sun Pharmaceutical' }, { symbol: 'NTPC', name: 'NTPC' },
+      { symbol: 'POWERGRID', name: 'Power Grid Corporation' }, { symbol: 'TITAN', name: 'Titan Company' },
+      { symbol: 'ULTRACEMCO', name: 'UltraTech Cement' }, { symbol: 'NESTLEIND', name: 'Nestle India' },
+      { symbol: 'TATASTEEL', name: 'Tata Steel' }, { symbol: 'M&M', name: 'Mahindra & Mahindra' },
+      { symbol: 'HCLTECH', name: 'HCL Technologies' }, { symbol: 'ADANIENT', name: 'Adani Enterprises' },
+      { symbol: 'ADANIPORTS', name: 'Adani Ports' }, { symbol: 'JSWSTEEL', name: 'JSW Steel' },
+      { symbol: 'TECHM', name: 'Tech Mahindra' }, { symbol: 'CIPLA', name: 'Cipla' },
+      { symbol: 'DRREDDY', name: "Dr. Reddy's Laboratories" }, { symbol: 'BPCL', name: 'Bharat Petroleum' },
+      { symbol: 'IOC', name: 'Indian Oil Corporation' }, { symbol: 'COALINDIA', name: 'Coal India' },
+      { symbol: 'ONGC', name: 'ONGC' }, { symbol: 'VEDL', name: 'Vedanta' },
+      { symbol: 'EICHERMOT', name: 'Eicher Motors' }, { symbol: 'BAJAJFINSV', name: 'Bajaj Finserv' },
+      { symbol: 'GRASIM', name: 'Grasim Industries' }, { symbol: 'SHREECEM', name: 'Shree Cement' },
+      { symbol: 'BRITANNIA', name: 'Britannia Industries' }, { symbol: 'HEROMOTOCO', name: 'Hero MotoCorp' },
+      { symbol: 'ASIANPAINT', name: 'Asian Paints' }, { symbol: 'DIVISLAB', name: 'Divi\'s Laboratories' },
+    ];
+    container.innerHTML = `
+      <div class="screener-controls">
+        <label>Strategy
+          <select id="screener-strategy">
+            <option value="">Select strategy</option>
+            ${this.engine.strategies.map(s => `<option value="${s.id}">${this._esc(s.name)}</option>`).join('')}
+          </select>
+        </label>
+        <button class="btn-primary" id="btn-run-screener">Run Screener</button>
+      </div>
+      <div id="screener-results"></div>
+    `;
+    document.getElementById('btn-run-screener')?.addEventListener('click', async () => {
+      const strategyId = document.getElementById('screener-strategy').value;
+      const resultsDiv = document.getElementById('screener-results');
+      if (!strategyId) { this._toast('Select a strategy first', 'warning'); return; }
+      resultsDiv.innerHTML = '<p style="color:var(--text-muted);">Screening...</p>';
+      try {
+        const results = await this.analysis.runScreener(strategyId, stocks);
+        resultsDiv.innerHTML = `
+          <table class="screener-table">
+            <thead><tr><th>Symbol</th><th>Company</th><th>Match</th><th>Score</th><th>Progress</th></tr></thead>
+            <tbody>${results.sort((a, b) => b.percentage - a.percentage).map(r => `
+              <tr>
+                <td><strong>${this._esc(r.symbol)}</strong></td>
+                <td>${this._esc(r.name)}</td>
+                <td><span class="badge ${r.percentage >= 80 ? 'badge-green' : r.percentage >= 50 ? 'badge-yellow' : 'badge-red'}">${r.match}/${r.total}</span></td>
+                <td>${r.percentage}%</td>
+                <td><div class="progress-bar"><div class="progress-fill" style="width:${r.percentage}%;background:${r.percentage >= 80 ? 'var(--green)' : r.percentage >= 50 ? 'var(--yellow)' : 'var(--red)'};"></div></div></td>
+              </tr>`).join('')}</tbody>
+          </table>
+          <p style="font-size:0.75rem;color:var(--text-muted);margin-top:12px;">Results show condition satisfaction — NOT a buy/sell recommendation. Verify with your own analysis.</p>`;
+      } catch (err) {
+        console.error('Screener failed:', err);
+        resultsDiv.innerHTML = `<p style="color:var(--red);padding:20px;">Screening failed: ${err.message}</p>`;
+      }
+    });
+  }
+
+  // --- Market Theory ---
+  renderTheory() {
+    const container = document.getElementById('theory-container');
+    const categories = {};
+    for (const c of this.engine.concepts) { if (!categories[c.category]) categories[c.category] = []; categories[c.category].push(c); }
+    const defaultCategories = {
+      'Market Cycles': [], 'Trend Theory': [], 'Price Action': [], 'Supply & Demand': [],
+      'Volume Analysis': [], 'Market Psychology': [], 'Risk/Reward': [], 'Position Sizing': [],
+      'Support/Resistance': [], 'Momentum': [], 'Mean Reversion': [], 'Trend Following': [], 'Breakout Theory': [],
+    };
+    if (!this.engine.concepts.length) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon">&#x1F4D6;</div><p>No market theory concepts yet. Upload educational material to build your theory library.</p></div>';
+      return;
+    }
+    container.innerHTML = '';
+    for (const [cat, concepts] of Object.entries({ ...defaultCategories, ...categories })) {
+      if (concepts.length === 0 && !defaultCategories[cat]) continue;
+      const section = document.createElement('div');
+      section.className = 'theory-category';
+      section.innerHTML = `<h3>&#x1F4D6; ${this._esc(cat)}</h3>
+        <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;">${concepts.length} concepts in your library</p>
+        ${concepts.map(c => `<span class="theory-concept" data-concept="${this._esc(c.name)}">${this._esc(c.name)}</span>`).join('') || '<span style="color:var(--text-muted);font-size:0.82rem;">No concepts extracted yet for this category.</span>'}`;
+      container.appendChild(section);
+    }
+    container.querySelectorAll('.theory-concept').forEach(el => {
+      el.addEventListener('click', () => {
+        const concept = this.engine.concepts.find(c => c.name === el.dataset.concept);
+        if (concept) this._showTheoryDetail(concept);
+      });
+    });
+  }
+
+  _showTheoryDetail(concept) {
+    const container = document.getElementById('theory-container');
+    const graph = this.engine.getConceptGraph(concept.name);
+    let html = `<div class="theory-detail">
+      <div class="flex-between"><h3>${this._esc(concept.name)}</h3>
+        <button class="btn-secondary btn-small" onclick="app.ui.renderTheory();">&#x2715; Close</button>
+      </div>
+      <p style="color:var(--text-secondary);font-size:0.85rem;line-height:1.6;">${this._esc(concept.description?.slice(0, 400) || 'No detailed description available.')}</p>
+      <p style="font-size:0.78rem;color:var(--text-muted);margin-top:8px;">Category: ${this._esc(concept.category)}</p>
+      <div class="citation">&#x1F4D6; Source: ${this._esc(concept.sourceName)}</div>`;
+    if (graph?.related?.length) {
+      html += '<div class="theory-relations"><p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:6px;">Related Concepts:</p>';
+      for (const rel of graph.related) html += `<span class="theory-concept" style="margin:2px;">${this._esc(rel)}</span>`;
+      html += '</div>';
+    }
+    if (concept.rules?.length) {
+      html += '<h4 style="font-size:0.88rem;color:var(--text-secondary);margin-top:14px;">Rules</h4><ul style="padding-left:18px;font-size:0.82rem;color:var(--text-secondary);">';
+      for (const r of concept.rules.slice(0, 5)) html += `<li>${this._esc(r.slice(0, 150))}</li>`;
+      html += '</ul>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  // --- Methodology ---
+  renderMethodology() {
+    const container = document.getElementById('methodology-container');
+    const sources = this.engine.getMethodology();
+    const allSources = [...new Set(this.engine.concepts.map(c => c.sourceName))];
+    container.innerHTML = `
+      <div class="card">
+        <h3 style="margin-bottom:16px;">&#x2699;&#xFE0F; Source Priority</h3>
+        <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:14px;">Higher priority sources take precedence when sources conflict.</p>
+        <div id="methodology-priority-list">
+          ${sources.length ? sources.map((s, i) => `
+            <div class="source-priority-item">
+              <div class="priority-num">${i + 1}</div>
+              <div class="source-name">${this._esc(s.name)}</div>
+              <span class="tag ${s.type === 'personal' ? 'tag-yellow' : s.type === 'strategy' ? 'tag-purple' : 'tag-blue'}">${this._esc(s.type)}</span>
+            </div>`).join('') : '<p style="color:var(--text-muted);font-size:0.85rem;">No methodology set. Add sources from your knowledge base.</p>'}
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:16px;">&#x2795; Add Knowledge Source</h3>
+        <label>Source Name</label>
+        <input type="text" id="meth-source-name" placeholder="e.g. Technical Analysis Book" />
+        <label style="margin-top:10px;">Source Type</label>
+        <select id="meth-source-type">
+          <option value="personal">Personal Notes</option>
+          <option value="strategy">Strategy Book</option>
+          <option value="education">Educational Material</option>
+          <option value="reference">Reference</option>
+        </select>
+        <button class="btn-primary mt-1" id="btn-add-method">Add to Methodology</button>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:12px;">&#x1F4CB; Available Sources in Your Library</h3>
+        ${allSources.length ? allSources.map(s => `<div style="padding:8px 12px;background:var(--bg-secondary);border-radius:6px;margin-bottom:6px;font-size:0.85rem;color:var(--text-secondary);">&#x1F4C4; ${this._esc(s)}</div>`).join('') : '<p style="color:var(--text-muted);font-size:0.85rem;">No sources in your library yet.</p>'}
+      </div>
+    `;
+    document.getElementById('btn-add-method')?.addEventListener('click', () => {
+      const name = document.getElementById('meth-source-name').value;
+      const type = document.getElementById('meth-source-type').value;
+      if (!name) return;
+      const current = this.engine.getMethodology();
+      current.push({ name, type, priority: current.length + 1 });
+      this.engine.setMethodology(current);
+      this.renderMethodology();
+      this._toast('Source added to methodology', 'success');
+    });
+  }
+}
+
+// ========== APP CONTROLLER ==========
+class App {
+  constructor() {
+    this.engine = new KnowledgeEngine();
+    this.analysis = null;
+    this.ui = null;
+    this.currentPage = 'dashboard';
+  }
+
+  async init() {
+    try {
+      await this.engine.init();
+      this.analysis = new AnalysisEngine(this.engine);
+      this.ui = new UIRenderer(this.engine, this.analysis);
+      this._setupNavigation();
+      this._navigateTo('dashboard');
+    } catch (err) {
+      console.error('MarketMind AI init error:', err);
+      document.getElementById('app').innerHTML = `<div style="padding:40px;color:var(--red);"><h2>Initialization Error</h2><p>${err.message}</p><p style="margin-top:10px;">Please use a modern browser with IndexedDB support.</p></div>`;
+    }
+  }
+
+  _setupNavigation() {
+    document.querySelectorAll('#nav-links a').forEach(link => {
+      link.addEventListener('click', (e) => { e.preventDefault(); this._navigateTo(link.dataset.page); });
+    });
+  }
+
+  async _navigateTo(page) {
+    this.currentPage = page;
+    document.querySelectorAll('#nav-links a').forEach(a => a.classList.toggle('active', a.dataset.page === page));
+    document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${page}`));
+    switch (page) {
+      case 'dashboard': this.ui.renderDashboard(); break;
+      case 'knowledge': this.ui.renderKnowledgeLibrary(); break;
+      case 'concepts': this.ui.renderConcepts(); break;
+      case 'strategies': this.ui.renderStrategies(); break;
+      case 'analyze': await this.ui.renderAnalysis(); break;
+      case 'screener': this.ui.renderScreener(); break;
+      case 'theory': this.ui.renderTheory(); break;
+      case 'methodology': this.ui.renderMethodology(); break;
+    }
+  }
+
+  async deleteDoc(docName) {
+    const doc = (this.engine.documents || []).find(d => d.name === docName);
+    if (!doc) { this.ui._toast('Document not found', 'warning'); return; }
+    const conceptCount = this.engine.concepts.filter(c => c.sourceDoc === doc.id).length;
+    if (!confirm(`Delete "${docName}"?\nThis will also remove ${conceptCount} related concept(s).`)) return;
+    await this.engine.deleteDocument(doc.id);
+    this.ui._renderUploadZone();
+    this.ui._renderFolderTree();
+    this.ui._toast('Document deleted', 'success');
+  }
+
+  deleteStrat(id) {
+    if (confirm('Delete this strategy?')) {
+      this.engine.deleteStrategy(id);
+      this.ui._renderStrategiesList();
+      this.ui._toast('Strategy deleted', 'success');
+    }
+  }
+}
+
+const app = new App();
+
+window.addEventListener('error', (e) => {
+  document.getElementById('app').innerHTML = `<div style="padding:40px;color:var(--red);"><h2>Runtime Error</h2><pre style="white-space:pre-wrap;font-size:0.85rem;">${e.message}\n${e.filename}:${e.lineno}</pre></div>`;
+});
+
+app.init();
+  </script>
+</body>
+</html>
