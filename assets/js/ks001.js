@@ -246,6 +246,64 @@
     };
   }
 
-  const KS001 = { DEFAULTS, TF_LADDER, trend, detectZones, scoreZone, positionSize, analyze, ema };
+  // ---------- Live order-book pressure ----------
+  // samples: [{ bidQty, askQty, ltp }] oldest first (top of book only).
+  function pressure(samples) {
+    const valid = (samples || []).filter(s => s && s.bidQty > 0 && s.askQty > 0);
+    if (!valid.length) return null;
+    const recent = valid.slice(-12);
+    const bidShare = recent.reduce((a, s) => a + s.bidQty / (s.bidQty + s.askQty), 0) / recent.length;
+    let upTicks = 0, downTicks = 0;
+    for (let i = 1; i < recent.length; i++) {
+      if (recent[i].ltp > recent[i - 1].ltp) upTicks++;
+      else if (recent[i].ltp < recent[i - 1].ltp) downTicks++;
+    }
+    let side = 'Balanced';
+    if (bidShare >= 0.6) side = 'Buyers stronger';
+    else if (bidShare <= 0.4) side = 'Sellers stronger';
+    return { bidShare, upTicks, downTicks, samples: recent.length, side, score: bidShare >= 0.6 ? 1 : bidShare <= 0.4 ? -1 : 0 };
+  }
+
+  // ---------- Price outlook: probable range + which way it leans ----------
+  // Uses the zones as floor/ceiling, the 20 EMA trends for direction, and
+  // (when available) live top-of-book pressure. It is a reading of the
+  // current structure, not a prediction.
+  function outlook({ ks, price, support, resistance, pressure: pr }) {
+    const dem = ks.nearestDemand || [], sup = ks.nearestSupply || [];
+    const floorZone = dem[0] || null, ceilZone = sup[0] || null;
+    const floor = floorZone
+      ? { price: floorZone.proximal, distal: floorZone.distal, source: `${floorZone.pattern} demand zone (${floorZone.score.total}/10)`, zone: floorZone }
+      : (support && support[0] != null ? { price: support[0], distal: null, source: 'swing low (no demand zone below)' } : null);
+    const ceiling = ceilZone
+      ? { price: ceilZone.proximal, distal: ceilZone.distal, source: `${ceilZone.pattern} supply zone (${ceilZone.score.total}/10)`, zone: ceilZone }
+      : (resistance && resistance[0] != null ? { price: resistance[0], distal: null, source: 'swing high (no supply zone above)' } : null);
+    const nextBelow = dem[1] ? { price: dem[1].proximal, source: `${dem[1].pattern} demand zone` } : null;
+    const nextAbove = sup[1] ? { price: sup[1].proximal, source: `${sup[1].pattern} supply zone` } : null;
+    const inDemand = !!(floorZone && price <= floorZone.proximal && price >= floorZone.distal);
+    const inSupply = !!(ceilZone && price >= ceilZone.proximal && price <= ceilZone.distal);
+
+    const factors = [];
+    const add = (label, score) => factors.push({ label, score });
+    const tScore = t => (t === 'Bullish' ? 1 : t === 'Bearish' ? -1 : 0);
+    add(`Higher timeframe (${ks.trends.htf.tf}) ${ks.trends.htf.trend.toLowerCase()}`, 2 * tScore(ks.trends.htf.trend));
+    add(`Middle timeframe (${ks.trends.itf.tf}) ${ks.trends.itf.trend.toLowerCase()}`, tScore(ks.trends.itf.trend));
+    add(`Chart timeframe (${ks.trends.ltf.tf}) ${ks.trends.ltf.trend.toLowerCase()}`, tScore(ks.trends.ltf.trend));
+    if (inDemand) add('Price is inside a demand zone (buyers expected)', 1);
+    if (inSupply) add('Price is inside a supply zone (sellers expected)', -1);
+    if (pr) add(`Live order book: ${pr.side.toLowerCase()} (${Math.round(pr.bidShare * 100)}% of top-of-book quantity on the bid)`, pr.score);
+    const score = factors.reduce((a, f) => a + f.score, 0);
+    const lean = score >= 2 ? 'Up' : score <= -2 ? 'Down' : 'Sideways';
+
+    const room = (a, b) => (a != null && b != null ? Math.abs(a - b) / price * 100 : null);
+    return {
+      price, floor, ceiling, nextBelow, nextAbove, inDemand, inSupply,
+      upsidePct: ceiling ? room(ceiling.price, price) : null,
+      downsidePct: floor ? room(price, floor.price) : null,
+      factors, score, lean,
+      firstTarget: lean === 'Up' ? ceiling : lean === 'Down' ? floor : null,
+    };
+  }
+
+  const KS001 = { DEFAULTS, TF_LADDER, trend, detectZones, scoreZone, positionSize, analyze, ema, pressure, outlook };
   root.KS001 = KS001;
 })(typeof window !== 'undefined' ? window : globalThis);

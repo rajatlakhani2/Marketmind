@@ -310,6 +310,33 @@ textarea { font-family: inherit; }
 .zone-garbage { opacity: 0.6; }
 .sizing-inputs { border-top: 1px solid var(--border); margin-top: 14px; }
 .btn-primary:disabled { opacity: 0.6; cursor: wait; }
+.broker-status { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.7; }
+.broker-status a { font-size: 0.72rem; margin-left: 4px; }
+.broker-status .btn-broker { display: inline-block; margin: 4px 0 0; padding: 4px 10px; border-radius: 6px; background: var(--accent); color: #fff; }
+.broker-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; background: var(--text-muted); }
+.broker-dot.on { background: var(--green); }
+.outlook-range { display: grid; grid-template-columns: 130px 1fr 130px; gap: 14px; align-items: center; }
+.outlook-end .label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.outlook-end .value { font-size: 1.15rem; font-weight: 700; }
+.outlook-end .src { font-size: 0.72rem; color: var(--text-muted); }
+.outlook-end.right { text-align: right; }
+.outlook-bar { position: relative; height: 34px; }
+.outlook-track { position: absolute; top: 15px; left: 0; right: 0; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--green), var(--yellow), var(--red)); opacity: 0.7; }
+.outlook-marker { position: absolute; top: 9px; width: 4px; height: 18px; margin-left: -2px; background: var(--text-primary); border-radius: 2px; }
+.outlook-marker span { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 0.72rem; white-space: nowrap; color: var(--text-primary); }
+.outlook-note { font-size: 0.8rem; color: var(--text-secondary); margin-top: 8px; }
+.outlook-breaks { font-size: 0.8rem; color: var(--text-secondary); margin-top: 8px; padding: 8px 12px; background: var(--bg-secondary); border-radius: 6px; line-height: 1.7; }
+.outlook-lean { font-size: 0.95rem; margin-top: 12px; }
+.outlook-factors { font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px; line-height: 1.7; }
+.outlook-factors span { display: inline-block; width: 24px; font-weight: 700; }
+.outlook-live { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.outlook-live small { font-size: 0.7rem; color: var(--text-muted); }
+.pressure-bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; margin-top: 10px; font-size: 0.72rem; font-weight: 600; }
+.pressure-bar .buy { background: rgba(34,197,94,0.35); color: var(--green); padding: 3px 8px; white-space: nowrap; transition: width 0.4s; }
+.pressure-bar .sell { flex: 1; background: rgba(239,68,68,0.3); color: var(--red); padding: 3px 8px; text-align: right; white-space: nowrap; }
+.live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-left: 6px; animation: pulse 1.5s infinite; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+@media (max-width: 700px) { .outlook-range { grid-template-columns: 1fr; } .outlook-end.right { text-align: left; } } .broker-dot.warn { background: var(--yellow); }
   </style>
 </head>
 <body>
@@ -329,7 +356,7 @@ textarea { font-family: inherit; }
         <li><a href="#" data-page="theory"><span class="nav-icon">&#x1F4D6;</span> Market Theory</a></li>
         <li><a href="#" data-page="methodology"><span class="nav-icon">&#x2699;&#xFE0F;</span> Methodology</a></li>
       </ul>
-      <div class="sidebar-footer"><p>MarketMind AI v1.1</p></div>
+      <div class="sidebar-footer"><div id="broker-status" class="broker-status"></div><p>MarketMind AI v1.2</p></div>
     </nav>
     <main id="main-content">
       <div id="page-dashboard" class="page active">
@@ -1055,7 +1082,7 @@ class KnowledgeEngine {
         const checkable = conditions.filter(c => !c.unknown);
         const metCount = checkable.filter(c => c.met).length;
         results.push({
-          symbol: stock.symbol, name: stock.name || stock.symbol, source: data.source,
+          symbol: stock.symbol, name: stock.name || stock.symbol, source: data.source, live: !!data.live,
           match: metCount, total: checkable.length, unchecked: conditions.length - checkable.length,
           percentage: checkable.length ? Math.round(metCount / checkable.length * 100) : 0, conditions, data,
         });
@@ -1084,6 +1111,18 @@ class AnalysisEngine {
         this.knowledge.getMarketData(symbol, itfTf),
         this.knowledge.getMarketData(symbol, htfTf),
       ]);
+      // With ICICI connected, use the live traded price instead of the last candle close
+      if (marketData.source === 'ICICI Breeze') {
+        try {
+          const q = await MarketData.getQuote(symbol);
+          if (q && q.ltp) {
+            marketData.price = q.ltp;
+            if (q.changePct != null) marketData.changePercent = q.changePct;
+            if (q.volume != null && timeframe === '1d') marketData.volume = q.volume;
+            marketData.quote = q;
+          }
+        } catch (e) { console.warn('Quote failed, using last candle close:', e.message); }
+      }
       const ks001 = KS001.analyze({
         price: marketData.price,
         ltf: { tf: timeframe, candles: marketData.priceHistory },
@@ -1183,7 +1222,7 @@ class AnalysisEngine {
 
   _identifyRisks(marketData, strategy, concepts) {
     const risks = [];
-    if (marketData.source !== 'Live') risks.push({ level: 'High', text: `Live data unavailable (${marketData.liveError || 'unknown error'}) — every number in this report is SIMULATED. Do not trade on it.` });
+    if (!marketData.live) risks.push({ level: 'High', text: `Live data unavailable (${marketData.liveError || 'unknown error'}) — every number in this report is SIMULATED. Do not trade on it.` });
     if (marketData.rsi > 70) risks.push({ level: 'High', text: 'RSI indicates overbought conditions — potential reversal risk.' });
     if (marketData.rsi < 30) risks.push({ level: 'Medium', text: 'RSI indicates oversold — trend may continue lower.' });
     if (marketData.macdHist < 0) risks.push({ level: 'Medium', text: 'MACD histogram negative — bearish momentum.' });
@@ -1607,11 +1646,11 @@ class UIRenderer {
     for (const tf of result.timeframes) {
       const trendColor = tf.trend === 'Bullish' ? 'text-green' : tf.trend === 'Bearish' ? 'text-red' : 'text-yellow';
       const emaTxt = tf.ema20 != null ? ` | 20 EMA: ₹${tf.ema20.toFixed(2)}` : '';
-      const sim = tf.data.source !== 'Live' ? ' <span class="tag tag-yellow">Simulated</span>' : '';
+      const sim = !tf.data.live ? ' <span class="tag tag-yellow">Simulated</span>' : '';
       html += `<div class="condition-row"><strong style="width:60px;">${tf.timeframe}</strong> <span class="${trendColor}">${tf.trend}</span> | ${tf.signal} | Price: ₹${tf.data.price.toFixed(2)}${emaTxt}${sim}</div>`;
     }
     html += '</div>';
-    if (result.timeframes.some(t => t.data.source !== 'Live')) {
+    if (result.timeframes.some(t => !t.data.live)) {
       html = `<div class="data-warning">&#x26A0;&#xFE0F; Live data couldn't be loaded for some timeframes, so those rows use simulated prices.</div>` + html;
     }
     html += `<div class="analysis-section"><h3>Summary</h3><p style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7;">${this._esc(result.summary)}</p></div>`;
@@ -1625,13 +1664,14 @@ class UIRenderer {
       return;
     }
     const md = result.marketData;
-    const live = md.source === 'Live';
+    const live = !!md.live;
     const title = md.name && md.name !== result.symbol ? `${this._esc(result.symbol)} — ${this._esc(md.name)}` : this._esc(result.symbol);
     html += `<h3 style="font-size:1.3rem;margin-bottom:16px;">${title}</h3>`;
     if (!live) {
       html += `<div class="data-warning">&#x26A0;&#xFE0F; <strong>Simulated data.</strong> Live prices couldn't be loaded (${this._esc(md.liveError || 'unknown error')}). Everything below is generated for demo purposes — do not trade on it.</div>`;
     }
-    const _srcBadge = live ? '<span class="tag tag-green">Live</span>' : '<span class="tag tag-yellow">Simulated</span>';
+    html += this._renderOutlook(result);
+    const _srcBadge = live ? `<span class="tag tag-green">Live — ${this._esc(md.source)}</span>` : '<span class="tag tag-yellow">Simulated</span>';
     const money = v => (v != null && isFinite(v) ? '₹' + Number(v).toFixed(2) : 'N/A');
     const num = v => (v != null && isFinite(v) ? Number(v).toFixed(2) : 'N/A');
     html += this._renderSection('Current Market Data', `
@@ -1644,7 +1684,7 @@ class UIRenderer {
         ${this._techItem('52W High', money(md.high52w))}
         ${this._techItem('52W Low', money(md.low52w))}
       </div>
-      <div class="citation">Data: ${live ? `Yahoo Finance (NSE) via the app's data proxy · last candle ${new Date(md.lastCandleTime).toLocaleString('en-IN')}` : 'Simulated — live data connection unavailable'}</div>
+      <div class="citation">Data: ${live ? `${this._esc(md.source)} (NSE) · last candle ${new Date(md.lastCandleTime).toLocaleString('en-IN')}${md.sourceNotes && md.sourceNotes.length ? ' · ' + this._esc(md.sourceNotes.join('; ')) : ''}` : 'Simulated — live data connection unavailable'}</div>
     `);
     html += this._renderSection('Technical Indicators', `
       <div class="tech-grid">
@@ -1698,6 +1738,7 @@ class UIRenderer {
       `<div class="condition-row"><span class="condition-warn">&#x25CF;</span> <strong>${r.level}:</strong> ${this._esc(r.text)}</div>`).join(''));
     html += this._renderSection('Conclusion', `<p style="font-size:0.88rem;color:var(--text-primary);line-height:1.7;">${this._esc(result.conclusion)}</p>`);
     container.innerHTML = html;
+    this._startPressure(result);
   }
 
   _renderSection(title, body) {
@@ -1706,6 +1747,108 @@ class UIRenderer {
 
   _techItem(label, value, cls) {
     return `<div class="tech-item"><div class="label">${label}</div><div class="value ${cls || ''}">${value}</div></div>`;
+  }
+
+  // --- Price Outlook: probable range + lean + live pressure ---
+  _renderOutlook(result) {
+    const md = result.marketData, ks = result.ks001;
+    if (!ks) return '';
+    const o = KS001.outlook({ ks, price: md.price, support: md.support, resistance: md.resistance });
+    const liveBox = !md.live
+      ? ''
+      : md.source === 'ICICI Breeze'
+        ? '<div id="outlook-live" class="outlook-live"><p style="color:var(--text-muted);font-size:0.82rem;">Loading live order book…</p></div>'
+        : '<div class="outlook-live"><p style="color:var(--text-muted);font-size:0.82rem;">Connect ICICI Direct (see the sidebar) to add live buyer vs seller pressure from the order book.</p></div>';
+    return this._renderSection('Price Outlook', `
+      <div id="outlook-range">${this._renderRange(o, md.price)}</div>
+      <div id="outlook-lean">${this._renderLean(o)}</div>
+      ${liveBox}
+      <p class="citation">A reading of current demand/supply structure and live order flow — not a prediction or a recommendation. Zones on the ${this._esc(md.timeframe)} chart.</p>`);
+  }
+
+  // Range bar + break levels for a given price (re-rendered on every live reading)
+  _renderRange(o, price) {
+    const f = v => (v != null && isFinite(v) ? '₹' + Number(v).toFixed(2) : 'N/A');
+    let rangeHtml;
+    if (o.floor && o.ceiling) {
+      const lo = Math.min(o.floor.price, price), hi = Math.max(o.ceiling.price, price);
+      const pos = hi > lo ? (price - lo) / (hi - lo) * 100 : 50;
+      rangeHtml = `
+        <div class="outlook-range">
+          <div class="outlook-end"><div class="label">Probable floor</div><div class="value text-green">${f(o.floor.price)}</div><div class="src">${this._esc(o.floor.source)}</div></div>
+          <div class="outlook-bar"><div class="outlook-track"></div><div class="outlook-marker" style="left:${pos.toFixed(1)}%"><span>${f(price)}</span></div></div>
+          <div class="outlook-end right"><div class="label">Probable ceiling</div><div class="value text-red">${f(o.ceiling.price)}</div><div class="src">${this._esc(o.ceiling.source)}</div></div>
+        </div>
+        <p class="outlook-note">Room down ${o.downsidePct.toFixed(1)}% · room up ${o.upsidePct.toFixed(1)}%${o.inDemand ? ' · price is <strong>inside the demand zone</strong> now' : ''}${o.inSupply ? ' · price is <strong>inside the supply zone</strong> now' : ''}</p>`;
+    } else {
+      rangeHtml = `<p class="outlook-note">Probable floor: ${o.floor ? f(o.floor.price) + ' (' + this._esc(o.floor.source) + ')' : 'none found'} · Probable ceiling: ${o.ceiling ? f(o.ceiling.price) + ' (' + this._esc(o.ceiling.source) + ')' : 'none found'}</p>`;
+    }
+    const breaks = [];
+    if (o.floor && o.floor.distal != null) breaks.push(`Close below ${f(o.floor.distal)} → next support ${o.nextBelow ? f(o.nextBelow.price) + ' (' + this._esc(o.nextBelow.source) + ')' : 'not mapped yet'}`);
+    if (o.ceiling && o.ceiling.distal != null) breaks.push(`Close above ${f(o.ceiling.distal)} → next resistance ${o.nextAbove ? f(o.nextAbove.price) + ' (' + this._esc(o.nextAbove.source) + ')' : 'not mapped yet'}`);
+    return rangeHtml + (breaks.length ? `<div class="outlook-breaks">${breaks.map(b => `<div>${b}</div>`).join('')}</div>` : '');
+  }
+
+  _renderLean(o) {
+    const cls = o.lean === 'Up' ? 'text-green' : o.lean === 'Down' ? 'text-red' : 'text-yellow';
+    const f = v => (v != null && isFinite(v) ? '₹' + Number(v).toFixed(2) : '');
+    const where = o.firstTarget ? ` — more likely to test ${f(o.firstTarget.price)} first` : ' — no clear edge; expect movement within the range';
+    return `<p class="outlook-lean">Lean: <strong class="${cls}">${o.lean}</strong>${where}</p>
+      <div class="outlook-factors">${o.factors.map(x => `<div><span class="${x.score > 0 ? 'text-green' : x.score < 0 ? 'text-red' : ''}">${x.score > 0 ? '+' + x.score : x.score}</span> ${this._esc(x.label)}</div>`).join('')}</div>`;
+  }
+
+  _isMarketOpen() {
+    const ist = new Date(Date.now() + 5.5 * 3600 * 1000);
+    const day = ist.getUTCDay(), mins = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+    return day >= 1 && day <= 5 && mins >= 555 && mins <= 930; // 9:15–15:30 IST (exchange holidays not checked)
+  }
+
+  // Poll ICICI quotes every 5s while the outlook is on screen (market hours only)
+  _startPressure(result) {
+    clearInterval(this._pressureTimer);
+    const md = result.marketData;
+    if (md.source !== 'ICICI Breeze' || !result.ks001) return;
+    const samples = [];
+    if (md.quote) samples.push(md.quote);
+    const f = v => (v != null && isFinite(v) ? Number(v).toFixed(2) : '—');
+    const tick = async () => {
+      const box = document.getElementById('outlook-live');
+      if (!box) { clearInterval(this._pressureTimer); return; } // results replaced or page changed
+      if (document.hidden) return;
+      let q;
+      try { q = await MarketData.getQuote(result.symbol); }
+      catch (e) {
+        box.innerHTML = `<p style="color:var(--yellow);font-size:0.82rem;">Live quote unavailable: ${this._esc(e.message)}</p>`;
+        if (e.needsLogin) { clearInterval(this._pressureTimer); window.app && app.renderBrokerStatus(true); }
+        return;
+      }
+      samples.push(q);
+      if (samples.length > 60) samples.shift();
+      const pr = KS001.pressure(samples);
+      const open = this._isMarketOpen();
+      const bidPct = q.bidQty + q.askQty > 0 ? q.bidQty / (q.bidQty + q.askQty) * 100 : 50;
+      box.innerHTML = `
+        <h4>Live order book (ICICI) ${open ? '<span class="live-dot"></span>' : '<span class="tag tag-yellow">Market closed</span>'}</h4>
+        <div class="tech-grid">
+          ${this._techItem('LTP', '₹' + f(q.ltp))}
+          ${this._techItem('Best bid', '₹' + f(q.bid) + ` <small>× ${(q.bidQty || 0).toLocaleString('en-IN')}</small>`, 'text-green')}
+          ${this._techItem('Best offer', '₹' + f(q.ask) + ` <small>× ${(q.askQty || 0).toLocaleString('en-IN')}</small>`, 'text-red')}
+          ${this._techItem('Day range', '₹' + f(q.low) + ' – ₹' + f(q.high))}
+        </div>
+        <div class="pressure-bar" title="Share of top-of-book quantity on each side"><div class="buy" style="width:${bidPct.toFixed(0)}%">Buyers ${bidPct.toFixed(0)}%</div><div class="sell">Sellers ${(100 - bidPct).toFixed(0)}%</div></div>
+        <p class="outlook-note">${pr ? `Last ${pr.samples} readings: <strong>${pr.side}</strong> (avg ${Math.round(pr.bidShare * 100)}% bid) · ${pr.upTicks} up-ticks / ${pr.downTicks} down-ticks` : ''}${open ? ' · refreshes every 5s' : ''}</p>
+        <p class="citation">Top-of-book only (best bid and offer). Large orders can sit deeper in the book or be hidden, so treat this as one input.</p>`;
+      if (q.ltp) {
+        const o = KS001.outlook({ ks: result.ks001, price: q.ltp, support: md.support, resistance: md.resistance, pressure: pr });
+        const leanEl = document.getElementById('outlook-lean');
+        if (leanEl) leanEl.innerHTML = this._renderLean(o);
+        const rangeEl = document.getElementById('outlook-range');
+        if (rangeEl) rangeEl.innerHTML = this._renderRange(o, q.ltp);
+      }
+      if (!open) clearInterval(this._pressureTimer); // one reading is enough outside market hours
+    };
+    tick();
+    this._pressureTimer = setInterval(tick, 5000);
   }
 
   // --- KS-001 Demand & Supply report ---
@@ -1726,7 +1869,7 @@ class UIRenderer {
     `);
 
     // 2. Trade plan — only on live data; never show entries/quantities for simulated prices
-    if (ks.plan && md.source !== 'Live') {
+    if (ks.plan && !md.live) {
       html += this._renderSection('Trade Plan', '<p style="font-size:0.85rem;color:var(--yellow);">Hidden: entry, stop-loss and position size are only shown when live data is loaded.</p>');
     } else if (ks.plan) {
       const p = ks.plan, z = p.zone, s = p.sizing;
@@ -1755,7 +1898,7 @@ class UIRenderer {
     }
 
     // 3. Chart with zones
-    html += this._renderSection(`Zones on ${this._esc(md.timeframe)} chart`, this._zoneChart(md.priceHistory, md.source === 'Live' ? ks : { ...ks, plan: null }) +
+    html += this._renderSection(`Zones on ${this._esc(md.timeframe)} chart`, this._zoneChart(md.priceHistory, md.live ? ks : { ...ks, plan: null }) +
       '<p class="citation">Green = demand, red = supply. Solid edge = proximal, dashed = distal. Faded zones don\'t qualify (score below ' + ks.minScore + '/10 or R:R below 1:' + ks.minRR + ').</p>');
 
     // 4. Zone table (nearest first)
@@ -1882,7 +2025,7 @@ class UIRenderer {
           const el = document.getElementById('screener-progress');
           if (el) el.textContent = `Screening ${done}/${total}…`;
         });
-        const simCount = results.filter(r => r.source !== 'Live').length;
+        const simCount = results.filter(r => !r.live).length;
         const unchecked = results[0] ? results[0].unchecked : 0;
         resultsDiv.innerHTML = `
           ${simCount ? `<div class="data-warning">&#x26A0;&#xFE0F; ${simCount} of ${results.length} stocks couldn't load live data and use simulated prices (marked below).</div>` : ''}
@@ -1891,7 +2034,7 @@ class UIRenderer {
             <thead><tr><th>Symbol</th><th>Company</th><th>Match</th><th>Score</th><th>Progress</th></tr></thead>
             <tbody>${results.sort((a, b) => b.percentage - a.percentage).map(r => `
               <tr>
-                <td><strong>${this._esc(r.symbol)}</strong>${r.source !== 'Live' ? ' <span class="tag tag-yellow">Sim</span>' : ''}</td>
+                <td><strong>${this._esc(r.symbol)}</strong>${!r.live ? ' <span class="tag tag-yellow">Sim</span>' : ''}</td>
                 <td>${this._esc(r.name)}</td>
                 <td><span class="badge ${r.percentage >= 80 ? 'badge-green' : r.percentage >= 50 ? 'badge-yellow' : 'badge-red'}">${r.match}/${r.total}</span></td>
                 <td>${r.percentage}%</td>
@@ -2027,9 +2170,42 @@ class App {
       this.ui = new UIRenderer(this.engine, this.analysis);
       this._setupNavigation();
       this._navigateTo('dashboard');
+      this.renderBrokerStatus(true);
+      if (location.hash === '#icici=connected') {
+        this.ui._toast('ICICI Direct connected — live data enabled', 'success');
+        history.replaceState(null, '', location.pathname + location.search);
+      }
     } catch (err) {
       console.error('MarketMind AI init error:', err);
       document.getElementById('app').innerHTML = `<div style="padding:40px;color:var(--red);"><h2>Initialization Error</h2><p>${err.message}</p><p style="margin-top:10px;">Please use a modern browser with IndexedDB support.</p></div>`;
+    }
+  }
+
+  // ICICI Direct connection status in the sidebar
+  async renderBrokerStatus(force) {
+    const el = document.getElementById('broker-status');
+    if (!el) return;
+    const st = await MarketData.breezeStatus(force);
+    if (!st.configured) {
+      el.innerHTML = '<span class="broker-dot off"></span> Data: Yahoo Finance';
+      el.title = st.unavailable ? 'ICICI connector not reachable (needs PHP hosting)' : 'Add breeze-config.php to connect ICICI Direct';
+      return;
+    }
+    if (st.loggedIn) {
+      el.innerHTML = '<span class="broker-dot on"></span> ICICI connected <a href="#" id="broker-logout">Log out</a>';
+      document.getElementById('broker-logout').onclick = async (e) => {
+        e.preventDefault();
+        try { await fetch('api/breeze.php?action=logout'); } catch { /* ignore */ }
+        this.renderBrokerStatus(true);
+      };
+    } else {
+      el.innerHTML = '<span class="broker-dot warn"></span> ICICI not logged in<br><a href="api/breeze.php?action=login" class="btn-broker">Log in to ICICI</a> <a href="#" id="broker-paste">Paste code</a>';
+      document.getElementById('broker-paste').onclick = (e) => {
+        e.preventDefault();
+        const code = (prompt('Paste the API session code from the ICICI redirect URL (the number after apisession=):') || '').trim();
+        if (/^[A-Za-z0-9]{4,64}$/.test(code)) location.href = 'api/breeze.php?apisession=' + encodeURIComponent(code);
+        else if (code) this.ui._toast("That doesn't look like a session code", 'warning');
+      };
     }
   }
 

@@ -29,3 +29,8 @@ npm-debug.log*
 
 # TenaxCode local files
 .tenaxcode/
+
+# ICICI Breeze secrets and runtime data
+breeze-config.php
+.breeze-session.php
+.breeze-cache/

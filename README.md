@@ -6,7 +6,8 @@ Runs entirely in the browser (plain HTML, CSS and JavaScript). A tiny proxy fetc
 
 ## Features
 
-- **Live market data** — real OHLC candles for any NSE symbol (Yahoo Finance, via the app's own proxy). If live data can't be loaded the app switches to clearly-marked simulated data and hides all trade plans.
+- **Live market data** — real OHLC candles for any NSE symbol. Uses your **ICICI Direct (Breeze API)** login when connected, otherwise Yahoo Finance. If neither can be reached the app switches to clearly-marked simulated data and hides all trade plans.
+- **Price Outlook** — the probable range (nearest demand zone below to nearest supply zone above), what happens if either side breaks, which way price leans and why, and — with ICICI connected — a live buyer vs seller meter from the order book that refreshes every 5 seconds during market hours.
 - **KS-001 Demand & Supply engine**
   - Zone detection: RBR / DBR (demand) and RBD / DBD (supply), with proximal and distal lines
   - Freshness tracking — counts how many times price has returned to a zone; zones are removed once a candle closes beyond the distal line
@@ -58,6 +59,27 @@ Upload everything inside `dist/` to a folder on your host (for example `public_h
 
 If the site is hosted somewhere without PHP, the app still works but shows simulated data.
 
+## Connecting ICICI Direct (Breeze API)
+
+Breeze is free for ICICI Direct customers. It needs PHP hosting (your cPanel), so it works on the hosted site, not with `npm run dev`.
+
+**One-time setup**
+1. Log in at [api.icicidirect.com](https://api.icicidirect.com) and register a new app.
+2. Set the app's **Redirect URL** to the connector on your site, e.g. `https://your-domain.com/marketmind/api/breeze.php`
+3. Copy `api/breeze-config.sample.php` to `breeze-config.php` and paste in your **API Key** and **Secret Key**. Best place: the folder *above* `public_html`, so it can never be downloaded. The `api/` folder also works.
+4. Make sure the `api/` folder is writable by PHP (it stores today's session and a small cache there).
+
+**Every trading day**
+- Click **Log in to ICICI** in the sidebar, log in on ICICI's page, and you'll be sent back to the app connected. Sessions end daily.
+- If the redirect doesn't bring you back, copy the number after `apisession=` from the address bar and use **Paste code** in the sidebar.
+
+**What the connector does and doesn't do**
+- Read-only: it fetches historical candles and quotes. It never places orders.
+- Your secret key stays on the server; the browser only talks to `api/breeze.php`.
+- NSE symbols (e.g. `INFY`) are converted to ICICI codes (e.g. `INFTEC`) using ICICI's daily security master file. The host needs PHP's zip extension.
+- ICICI allows about 100 requests a minute; responses are cached briefly so the screener stays under that.
+- The order-book meter uses the **best bid and offer** only, which is what the quotes API provides.
+
 ## Project structure
 
 ```
@@ -67,7 +89,9 @@ If the site is hosted somewhere without PHP, the app still works but shows simul
 │   │   ├── marketdata.js # Data fetching, indicators, simulated fallback
 │   │   └── ks001.js      # KS-001 zone detection, scoring, trade plan, sizing
 │   └── api/
-│       └── chart.php     # Market-data proxy for hosting
+│       ├── chart.php     # Yahoo Finance proxy for hosting
+│       ├── breeze.php    # ICICI Direct Breeze connector (login, candles, quotes)
+│       └── breeze-config.sample.php
 ├── vite.config.js        # Dev server + dev-time data proxy
 └── package.json
 ```

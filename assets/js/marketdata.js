@@ -184,39 +184,138 @@
     return candles;
   }
 
-  // ---------- Public API ----------
+  // ---------- ICICI Breeze (via api/breeze.php) ----------
+  const BREEZE_URL = 'api/breeze.php';
+  // Breeze offers 1minute / 5minute / 30minute / 1day; other timeframes are built from these.
+  const BREEZE_TF = {
+    '5m':  { interval: '5minute',  days: 14 },
+    '15m': { interval: '5minute',  days: 28,   aggregate: 3 },
+    '30m': { interval: '30minute', days: 100 },
+    '1h':  { interval: '30minute', days: 150,  aggregate: 2 },
+    '4h':  { interval: '30minute', days: 200,  aggregate: 8 },
+    '1d':  { interval: '1day',     days: 1400 },
+    '1w':  { interval: '1day',     days: 2800, period: 'week' },
+    '1mo': { interval: '1day',     days: 4500, period: 'month' },
+  };
+  let breezeState = null; // { configured, loggedIn, checkedAt }
+
+  async function getJSON(url) {
+    const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+    const text = await resp.text();
+    let json;
+    try { json = JSON.parse(text); } catch { throw Object.assign(new Error(resp.ok ? 'Data proxy returned non-JSON (is PHP enabled on the host?)' : `Data proxy error ${resp.status}`), { status: resp.status }); }
+    if (!resp.ok || (json && json.error && !json.chart)) {
+      if (json && json.needsLogin && breezeState) breezeState.loggedIn = false;
+      throw Object.assign(new Error((json && json.error) || `HTTP ${resp.status}`), { status: resp.status, needsLogin: !!(json && json.needsLogin) });
+    }
+    return json;
+  }
+
+  async function breezeStatus(force) {
+    if (!force && breezeState && Date.now() - breezeState.checkedAt < 60 * 1000) return breezeState;
+    try {
+      const s = await getJSON(`${BREEZE_URL}?action=status`);
+      breezeState = { configured: !!s.configured, loggedIn: !!s.loggedIn, checkedAt: Date.now() };
+    } catch {
+      breezeState = { configured: false, loggedIn: false, unavailable: true, checkedAt: Date.now() };
+    }
+    return breezeState;
+  }
+
+  // Group daily candles into weeks (Mon-start) or calendar months.
+  function aggregateByPeriod(candles, period) {
+    const keyOf = (t) => {
+      const d = new Date(t + 5.5 * 3600 * 1000); // IST calendar
+      if (period === 'month') return d.toISOString().slice(0, 7);
+      const day = (d.getUTCDay() + 6) % 7; // 0 = Monday
+      return new Date(d.getTime() - day * 86400000).toISOString().slice(0, 10);
+    };
+    const out = [];
+    let cur = null, curKey = null;
+    for (const c of candles) {
+      const k = keyOf(c.time);
+      if (k !== curKey) { if (cur) out.push(cur); cur = { ...c }; curKey = k; continue; }
+      cur.high = Math.max(cur.high, c.high); cur.low = Math.min(cur.low, c.low);
+      cur.close = c.close; cur.volume += c.volume;
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  async function fetchBreezeCandles(symbol, timeframe) {
+    const req = BREEZE_TF[timeframe] || BREEZE_TF['1d'];
+    const sym = String(symbol || '').trim().toUpperCase();
+    const key = `breeze|${sym}|${timeframe}`;
+    const hit = cache.get(key);
+    if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
+    const json = await getJSON(`${BREEZE_URL}?action=candles&symbol=${encodeURIComponent(sym)}&interval=${req.interval}&days=${req.days}`);
+    let candles = (json.candles || []).map(r => ({ time: r[0] * 1000, date: new Date(r[0] * 1000).toISOString(), open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5] }));
+    if (!candles.length) throw new Error('ICICI returned no candles');
+    if (req.aggregate) candles = aggregateCandles(candles, req.aggregate);
+    if (req.period) candles = aggregateByPeriod(candles, req.period);
+    const data = { meta: { longName: json.name ? titleCase(json.name) : sym, currency: 'INR', isec: json.isec }, candles };
+    cache.set(key, { at: Date.now(), data });
+    return data;
+  }
+
+  function titleCase(s) {
+    return String(s).toLowerCase().replace(/\b([a-z])/g, m => m.toUpperCase());
+  }
+
+  // Live quote (ICICI only): LTP, best bid/offer with quantities, day range.
+  async function getQuote(symbol) {
+    const sym = String(symbol || '').trim().toUpperCase();
+    return getJSON(`${BREEZE_URL}?action=quote&symbol=${encodeURIComponent(sym)}`);
+  }
+
+  // ---------- Yahoo Finance (via api/chart.php) ----------
   async function fetchCandles(symbol, timeframe) {
     const req = TF_REQUEST[timeframe] || TF_REQUEST['1d'];
     const ySym = toYahooSymbol(symbol);
     const key = `${ySym}|${req.interval}|${req.range}`;
     const hit = cache.get(key);
     if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
-    const url = `${API_URL}?symbol=${encodeURIComponent(ySym)}&interval=${req.interval}&range=${req.range}`;
-    const resp = await fetch(url, { headers: { Accept: 'application/json' } });
-    const text = await resp.text();
-    let json;
-    try { json = JSON.parse(text); } catch { throw new Error(resp.ok ? 'Data proxy returned non-JSON (is PHP enabled on the host?)' : `Data proxy error ${resp.status}`); }
-    if (json && json.error && !json.chart) throw new Error(json.error);
+    const json = await getJSON(`${API_URL}?symbol=${encodeURIComponent(ySym)}&interval=${req.interval}&range=${req.range}`);
     const parsed = parseYahooChart(json);
     if (req.aggregate) parsed.candles = aggregateCandles(parsed.candles, req.aggregate);
     cache.set(key, { at: Date.now(), data: parsed });
     return parsed;
   }
 
-  // Returns market data for one symbol/timeframe. Never throws:
-  // on failure it returns simulated data with source 'Simulated' and the error.
+  // ---------- Public API ----------
+  // Returns market data for one symbol/timeframe. Never throws.
+  // Source order: ICICI Breeze (when logged in) -> Yahoo Finance -> simulated.
+  // md.live is true for real data; md.sourceNotes explains any fallback.
   async function getMarketData(symbol, timeframe, opts = {}) {
+    const notes = [];
+    const status = await breezeStatus();
+    if (status.loggedIn) {
+      try {
+        const { meta, candles } = await fetchBreezeCandles(symbol, timeframe);
+        const md = buildMarketData({ symbol, timeframe, candles, meta, source: 'ICICI Breeze' });
+        md.live = true; md.sourceNotes = notes;
+        return md;
+      } catch (err) {
+        notes.push('ICICI: ' + (err.message || err));
+      }
+    } else if (status.configured) {
+      notes.push('ICICI: not logged in today');
+    }
     try {
       const { meta, candles } = await fetchCandles(symbol, timeframe);
-      return buildMarketData({ symbol, timeframe, candles, meta, source: 'Live' });
+      const md = buildMarketData({ symbol, timeframe, candles, meta, source: 'Yahoo Finance' });
+      md.live = true; md.sourceNotes = notes;
+      return md;
     } catch (err) {
+      notes.push('Yahoo: ' + (err.message || err));
       if (opts.noFallback) throw err;
       const md = buildMarketData({ symbol, timeframe, candles: simulatedCandles(symbol, timeframe), meta: null, source: 'Simulated' });
-      md.liveError = err && err.message ? err.message : String(err);
+      md.live = false; md.sourceNotes = notes;
+      md.liveError = notes.join(' · ');
       return md;
     }
   }
 
-  const MarketData = { TF_REQUEST, toYahooSymbol, parseYahooChart, aggregateCandles, emaSeries, sma, rsi, macd, buildMarketData, simulatedCandles, fetchCandles, getMarketData };
+  const MarketData = { TF_REQUEST, BREEZE_TF, toYahooSymbol, parseYahooChart, aggregateCandles, aggregateByPeriod, emaSeries, sma, rsi, macd, buildMarketData, simulatedCandles, fetchCandles, fetchBreezeCandles, breezeStatus, getQuote, getMarketData };
   root.MarketData = MarketData;
 })(typeof window !== 'undefined' ? window : globalThis);
