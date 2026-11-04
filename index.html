@@ -6,6 +6,8 @@
 <title>MarketMind AI — Personal Trading Knowledge Engine</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+  <script src="js/marketdata.js"></script>
+  <script src="js/ks001.js"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -298,6 +300,16 @@ textarea { font-family: inherit; }
   .knowledge-layout, .analyze-container { flex-direction: column; }
   .knowledge-sidebar, .analyze-sidebar, .strategies-list { width: 100%; min-width: 0; }
 }
+/* ===== KS-001 / live data ===== */
+.data-warning { background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.5); color: var(--yellow); padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 14px; line-height: 1.5; }
+.ks-verdict { font-size: 0.95rem; font-weight: 600; padding: 10px 14px; border-radius: 8px; border-left: 4px solid var(--text-muted); background: var(--bg-secondary); margin-bottom: 6px; line-height: 1.5; }
+.ks-verdict.long { border-left-color: var(--green); }
+.ks-verdict.short { border-left-color: var(--red); }
+.zone-chart { width: 100%; height: auto; display: block; background: var(--bg-secondary); border-radius: 8px; }
+.zone-table td { vertical-align: top; }
+.zone-garbage { opacity: 0.6; }
+.sizing-inputs { border-top: 1px solid var(--border); margin-top: 14px; }
+.btn-primary:disabled { opacity: 0.6; cursor: wait; }
   </style>
 </head>
 <body>
@@ -317,7 +329,7 @@ textarea { font-family: inherit; }
         <li><a href="#" data-page="theory"><span class="nav-icon">&#x1F4D6;</span> Market Theory</a></li>
         <li><a href="#" data-page="methodology"><span class="nav-icon">&#x2699;&#xFE0F;</span> Methodology</a></li>
       </ul>
-      <div class="sidebar-footer"><p>MarketMind AI v1.0</p></div>
+      <div class="sidebar-footer"><p>MarketMind AI v1.1</p></div>
     </nav>
     <main id="main-content">
       <div id="page-dashboard" class="page active">
@@ -357,7 +369,8 @@ textarea { font-family: inherit; }
                 <option value="SBIN">SBIN — State Bank of India</option>
                 <option value="BHARTIARTL">BHARTIARTL — Bharti Airtel</option>
                 <option value="ITC">ITC — ITC Limited</option>
-                <option value="TATAMOTORS">TATAMOTORS — Tata Motors</option>
+                <option value="TMPV">TMPV — Tata Motors Passenger Vehicles</option>
+                <option value="TMCV">TMCV — Tata Motors Commercial Vehicles</option>
                 <option value="WIPRO">WIPRO — Wipro</option>
                 <option value="AXISBANK">AXISBANK — Axis Bank</option>
                 <option value="KOTAKBANK">KOTAKBANK — Kotak Mahindra Bank</option>
@@ -395,6 +408,9 @@ textarea { font-family: inherit; }
                 <option value="DIVISLAB">DIVISLAB — Divi's Laboratories</option>
               </select>
             </label>
+            <label>Or type any NSE symbol
+              <input type="text" id="analyze-custom-symbol" placeholder="e.g. ZOMATO, IRFC" autocomplete="off" />
+            </label>
             <label>Strategy<select id="analyze-strategy"><option value="">No strategy</option></select></label>
             <label>Timeframe
               <select id="analyze-timeframe">
@@ -404,6 +420,10 @@ textarea { font-family: inherit; }
                 <option value="1w">Weekly</option><option value="1mo">Monthly</option>
               </select>
             </label>
+            <div class="sizing-inputs">
+              <label>Account size (₹)<input type="number" id="analyze-account" min="0" step="1000" placeholder="e.g. 500000" /></label>
+              <label>Risk per trade (%)<input type="number" id="analyze-risk" min="0.1" max="10" step="0.1" value="1" /></label>
+            </div>
             <button class="btn-primary" id="btn-analyze">Run Analysis</button>
             <div class="chart-upload">
               <p>Upload Chart Screenshot</p>
@@ -973,133 +993,79 @@ class KnowledgeEngine {
     };
   }
 
-  // --- Market Data (Simulated — external proxies are unreliable in local file context) ---
-  async _fetchMoneyControl() {
-    // Returns null so generateMockMarketData always uses fast simulated data.
+  // --- Market Data (live via api/chart.php; see js/marketdata.js) ---
+  async getMarketData(symbol, timeframe) {
+    return MarketData.getMarketData(symbol, timeframe);
+  }
+
+  // Real per-timeframe trend from the 20 EMA (was random before)
+  async generateMultiTimeframeData(symbol) {
+    const tfs = ['5m', '15m', '30m', '1h', '4h', '1d', '1w', '1mo'];
+    const out = [];
+    for (const tf of tfs) { // sequential: kind to the data source and its cache
+      const data = await this.getMarketData(symbol, tf);
+      const t = KS001.trend(data.priceHistory);
+      const signal = t.trend === 'Bullish' ? 'Above rising 20 EMA' : t.trend === 'Bearish' ? 'Below falling 20 EMA' : 'No clear trend';
+      out.push({ timeframe: tf, data, trend: t.trend, signal, ema20: t.ema20 });
+    }
+    return out;
+  }
+
+  // --- Strategy condition checks (shared by Analyze and Screener) ---
+  // Returns true/false, or null when the condition can't be checked automatically.
+  checkCondition(cond, data) {
+    const lower = cond.toLowerCase();
+    if (lower.includes('price') && lower.includes('200')) return data.ma200 != null ? data.price > data.ma200 : null;
+    if (lower.includes('price') && lower.includes('50')) return data.ma50 != null ? data.price > data.ma50 : null;
+    if (lower.includes('price') && lower.includes('20') && lower.includes('ema')) return data.ema20 != null ? data.price > data.ema20 : null;
+    if (lower.includes('rsi') && (lower.includes('<') || lower.includes('below'))) {
+      const m = lower.match(/rsi\s*(?:<|below)\s*(\d+)/);
+      return data.rsi != null ? data.rsi < (m ? parseFloat(m[1]) : 50) : null;
+    }
+    if (lower.includes('rsi') && (lower.includes('>') || lower.includes('above'))) {
+      const m = lower.match(/rsi\s*(?:>|above)\s*(\d+)/);
+      return data.rsi != null ? data.rsi > (m ? parseFloat(m[1]) : 50) : null;
+    }
+    if (lower.includes('macd') && lower.includes('bullish')) return data.macd != null ? data.macd > data.macdSignal : null;
+    if (lower.includes('macd') && lower.includes('bearish')) return data.macd != null ? data.macd < data.macdSignal : null;
+    if (lower.includes('volume')) {
+      const hist = data.priceHistory || [];
+      if (hist.length < 21) return null;
+      const avg = hist.slice(-21, -1).reduce((s, c) => s + c.volume, 0) / 20;
+      return data.volume > avg; // above 20-bar average volume
+    }
+    if (lower.includes('breakout') || lower.includes('resistance')) return data.resistance && data.resistance.length ? data.price > data.resistance[0] : null;
     return null;
   }
 
-  _generateMockData(symbol, timeframe) {
-    // Build 252 daily candles (~1 year) so MA200 and 52w high/low are always valid
-    const seed = symbol
-      ? symbol.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
-      : Math.floor(Math.random() * 10000);
-    const basePrice = symbol ? 100 + (seed % 1900) : 2500;
-    const historyDays = 252;
-    const candles = [];
-    let price = basePrice * (0.7 + Math.random() * 0.3);
-    const drift = 0.0002 + (seed % 100) / 500000;
-    const vol = 0.018 + (seed % 30) / 1000;
-    for (let i = 0; i < historyDays; i++) {
-      const open = price;
-      const close = open * (1 + drift + (Math.random() - 0.5) * 2 * vol);
-      const high = Math.max(open, close) * (1 + Math.random() * vol * 0.6);
-      const low = Math.min(open, close) * (1 - Math.random() * vol * 0.6);
-      const volume = Math.floor(50000 + Math.random() * 5000000);
-      candles.push({ open, high, low, close, volume, date: new Date(Date.now() - (historyDays - i) * 86400000).toISOString() });
-      price = close;
-    }
-    const last = candles[candles.length - 1];
-    const prev = candles[candles.length - 2];
-    const sma50 = candles.slice(-50).reduce((s, c) => s + c.close, 0) / 50;
-    const sma200 = candles.reduce((s, c) => s + c.close, 0) / historyDays;
-    const k = 2 / (20 + 1);
-    let ema = candles.slice(0, 20).reduce((s, c) => s + c.close, 0) / 20;
-    for (let i = 20; i < candles.length; i++) ema = candles[i].close * k + ema * (1 - k);
-    const ema12k = 2 / 13, ema26k = 2 / 27, ema9k = 2 / 10;
-    let e12 = candles[0].close, e26 = candles[0].close;
-    const macdLine = [], signalLine = [];
-    for (let i = 0; i < candles.length; i++) {
-      e12 = i === 0 ? candles[0].close : candles[i].close * ema12k + e12 * (1 - ema12k);
-      e26 = i === 0 ? candles[0].close : candles[i].close * ema26k + e26 * (1 - ema26k);
-      macdLine.push(e12 - e26);
-    }
-    let sig = macdLine.slice(0, 9).reduce((a, b) => a + b, 0) / 9;
-    for (let i = 0; i < macdLine.length; i++) {
-      sig = i === 0 ? macdLine[0] : macdLine[i] * ema9k + sig * (1 - ema9k);
-      signalLine.push(sig);
-    }
-    const macdVal = macdLine[macdLine.length - 1];
-    const macdSigVal = signalLine[signalLine.length - 1];
-    const rsiPeriod = 14;
-    let avgGain = 0, avgLoss = 0;
-    for (let i = 1; i <= rsiPeriod; i++) {
-      const diff = candles[i].close - candles[i - 1].close;
-      if (diff > 0) avgGain += diff; else avgLoss += Math.abs(diff);
-    }
-    avgGain /= rsiPeriod; avgLoss /= rsiPeriod;
-    for (let i = rsiPeriod + 1; i < candles.length; i++) {
-      const diff = candles[i].close - candles[i - 1].close;
-      const gain = diff > 0 ? diff : 0;
-      const loss = diff < 0 ? Math.abs(diff) : 0;
-      avgGain = (avgGain * (rsiPeriod - 1) + gain) / rsiPeriod;
-      avgLoss = (avgLoss * (rsiPeriod - 1) + loss) / rsiPeriod;
-    }
-    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-    const rsiVal = 100 - 100 / (1 + rs);
-    const close = last ? last.close : basePrice;
-    const prevClose = prev ? prev.close : basePrice * 0.98;
-    const change = close - prevClose;
-    const h52 = candles.length >= 252 ? candles.slice(-252) : candles;
-    const l52 = candles.length >= 252 ? candles.slice(-252) : candles;
-    return {
-      source: 'Simulated', symbol: symbol || 'NSE Stock',
-      price: +close.toFixed(2), open: last ? last.open : close,
-      high: last ? last.high : close, low: last ? last.low : close,
-      change: +change.toFixed(2),
-      changePercent: prevClose ? +(change / prevClose * 100).toFixed(2) : 0,
-      volume: last ? last.volume : 0,
-      rsi: +rsiVal.toFixed(2),
-      macd: +macdVal.toFixed(2), macdSignal: +macdSigVal.toFixed(2),
-      macdHist: +(macdVal - macdSigVal).toFixed(2),
-      ma50: +sma50.toFixed(2), ma200: +sma200.toFixed(2),
-      ema20: +ema.toFixed(2),
-      timeframe, timestamp: new Date().toISOString(),
-      support: [+(sma50 * 0.97).toFixed(2), +(sma200 * 0.95).toFixed(2)],
-      resistance: [+(sma50 * 1.03).toFixed(2), +(sma200 * 1.05).toFixed(2)],
-      high52w: +(Math.max(...h52.map(c => c.high))).toFixed(2),
-      low52w: +(Math.min(...l52.map(c => c.low))).toFixed(2),
-      priceHistory: candles,
-    };
-  }
-
-  async generateMockMarketData(symbol, timeframe) {
-    const real = await this._fetchMoneyControl(symbol);
-    if (real) return { ...real, timeframe, timestamp: new Date().toISOString() };
-    return this._generateMockData(symbol, timeframe);
-  }
-
-  async generateMultiTimeframeData(symbol) {
-    const tfs = ['5m', '15m', '30m', '1h', '4h', '1d', '1w', '1mo'];
-    const dataPromises = tfs.map(async tf => ({
-      timeframe: tf, data: await this.generateMockMarketData(symbol, tf),
-      trend: ['Bullish', 'Bearish', 'Neutral'][Math.floor(Math.random() * 3)],
-      signal: ['Buy', 'Sell', 'Hold', 'Neutral'][Math.floor(Math.random() * 4)],
-    }));
-    return Promise.all(dataPromises);
-  }
-
   // --- Screening ---
-  async screenStocks(strategyId, stockList) {
+  async screenStocks(strategyId, stockList, onProgress) {
     const strategy = this.strategies.find(s => s.id === strategyId);
     if (!strategy) return [];
-    return stockList.map(async stock => {
-      const data = await this.generateMockMarketData(stock.symbol, '1d');
-      const conditions = strategy.conditions.map(cond => {
-        let met = false;
-        const lower = cond.toLowerCase();
-        if (lower.includes('price') && lower.includes('200')) met = data.price > data.ma200;
-        else if (lower.includes('price') && lower.includes('50')) met = data.price > data.ma50;
-        else if (lower.includes('rsi') && (lower.includes('>') || lower.includes('above'))) met = data.rsi > 50;
-        else if (lower.includes('macd') && lower.includes('bullish')) met = data.macd > data.macdSignal;
-        else if (lower.includes('volume')) met = data.volume > 1000000;
-        else if (lower.includes('breakout') || lower.includes('resistance')) met = data.price > data.resistance[0];
-        else met = Math.random() > 0.3;
-        return { condition: cond, met, detail: met ? 'Satisfied' : 'Not satisfied' };
-      });
-      const metCount = conditions.filter(c => c.met).length;
-      return { symbol: stock.symbol, name: stock.name || stock.symbol, match: metCount, total: conditions.length, percentage: Math.round(metCount / conditions.length * 100), conditions, data };
-    });
+    const results = [];
+    let done = 0;
+    const worker = async (queue) => {
+      while (queue.length) {
+        const stock = queue.shift();
+        const data = await this.getMarketData(stock.symbol, '1d');
+        const conditions = strategy.conditions.map(cond => {
+          const met = this.checkCondition(cond, data);
+          return { condition: cond, met: met === true, unknown: met === null, detail: met === null ? 'Not checkable automatically' : met ? 'Satisfied' : 'Not satisfied' };
+        });
+        const checkable = conditions.filter(c => !c.unknown);
+        const metCount = checkable.filter(c => c.met).length;
+        results.push({
+          symbol: stock.symbol, name: stock.name || stock.symbol, source: data.source,
+          match: metCount, total: checkable.length, unchecked: conditions.length - checkable.length,
+          percentage: checkable.length ? Math.round(metCount / checkable.length * 100) : 0, conditions, data,
+        });
+        done++;
+        if (onProgress) onProgress(done, stockList.length);
+      }
+    };
+    const queue = [...stockList];
+    await Promise.all([1, 2, 3, 4].map(() => worker(queue)));
+    return results;
   }
 }
 
@@ -1107,13 +1073,24 @@ class KnowledgeEngine {
 class AnalysisEngine {
   constructor(knowledge) { this.knowledge = knowledge; }
 
-  async analyzeStock(symbol, strategyId, timeframe, chartImage) {
+  async analyzeStock(symbol, strategyId, timeframe, chartImage, sizing = {}) {
     try {
       const concepts = Array.isArray(this.knowledge.concepts) ? this.knowledge.concepts : [];
       const strategies = Array.isArray(this.knowledge.strategies) ? this.knowledge.strategies : [];
-      console.log('[analyzeStock] step 1: fetching market data for', symbol);
-      const marketData = this.knowledge.generateMockMarketData(symbol, timeframe);
-      console.log('[analyzeStock] step 2: got marketData price=', marketData?.price);
+      // LTF = chosen timeframe; ITF/HTF come from the KS-001 timeframe ladder
+      const [itfTf, htfTf] = KS001.TF_LADDER[timeframe] || ['1d', '1w'];
+      const [marketData, itfData, htfData] = await Promise.all([
+        this.knowledge.getMarketData(symbol, timeframe),
+        this.knowledge.getMarketData(symbol, itfTf),
+        this.knowledge.getMarketData(symbol, htfTf),
+      ]);
+      const ks001 = KS001.analyze({
+        price: marketData.price,
+        ltf: { tf: timeframe, candles: marketData.priceHistory },
+        itf: { tf: itfTf, candles: itfData.priceHistory },
+        htf: { tf: htfTf, candles: htfData.priceHistory },
+        account: sizing.account, riskPercent: sizing.riskPercent,
+      });
       const strategy = strategyId ? strategies.find(s => s.id === strategyId) : null;
       const relevantConcepts = this._findRelevantConcepts(marketData, strategy, concepts);
       const conflicts = this._findConflicts(relevantConcepts);
@@ -1122,7 +1099,7 @@ class AnalysisEngine {
       const techData = this._buildTechnicalData(marketData);
       const risks = this._identifyRisks(marketData, strategy, relevantConcepts);
       const conclusion = this._buildConclusion(marketData, strategy, strategyMatch, relevantConcepts, risks);
-      return { symbol, timestamp: new Date().toISOString(), marketData, technicalData: techData, strategy, strategyMatch, relevantConcepts, chartAnalysis, conflicts, risks, conclusion };
+      return { symbol, timestamp: new Date().toISOString(), marketData, technicalData: techData, strategy, strategyMatch, relevantConcepts, chartAnalysis, conflicts, risks, conclusion, ks001 };
     } catch (stepErr) {
       console.error('[analyzeStock] FAILED at step:', stepErr);
       throw stepErr;
@@ -1165,26 +1142,19 @@ class AnalysisEngine {
   }
 
   _evaluateStrategy(strategy, marketData) {
+    // Conditions the app can't check from price data are shown as "?" — never guessed
     const conditionResults = strategy.conditions.map(cond => {
-      let met = false;
-      const lower = cond.toLowerCase();
-      if (lower.includes('price') && lower.includes('200')) met = marketData.price > marketData.ma200;
-      else if (lower.includes('price') && lower.includes('50')) met = marketData.price > marketData.ma50;
-      else if ((lower.includes('rsi') && lower.includes('>')) || (lower.includes('rsi') && lower.includes('above'))) {
-        const match = lower.match(/rsi\s*(?:>|above)\s*(\d+)/);
-        met = match ? marketData.rsi > parseFloat(match[1]) : marketData.rsi > 50;
-      }
-      else if (lower.includes('macd') && lower.includes('bullish')) met = marketData.macd > marketData.macdSignal;
-      else if (lower.includes('volume')) met = marketData.volume > 1000000;
-      else if (lower.includes('breakout') || lower.includes('resistance')) met = marketData.price > marketData.resistance[0];
-      else met = Math.random() > 0.3;
-      return { condition: cond, met, status: met ? 'Satisfied' : 'Not satisfied', symbol: met ? '✓' : '✗', cls: met ? 'condition-check' : 'condition-cross' };
+      const r = this.knowledge.checkCondition(cond, marketData);
+      if (r === null) return { condition: cond, met: false, unknown: true, status: 'Check manually', symbol: '?', cls: 'condition-warn' };
+      return { condition: cond, met: r, unknown: false, status: r ? 'Satisfied' : 'Not satisfied', symbol: r ? '✓' : '✗', cls: r ? 'condition-check' : 'condition-cross' };
     });
-    const metCount = conditionResults.filter(c => c.met).length;
+    const checkable = conditionResults.filter(c => !c.unknown);
+    const metCount = checkable.filter(c => c.met).length;
+    const total = checkable.length;
     return {
-      conditions: conditionResults, met: metCount, total: conditionResults.length,
-      percentage: Math.round(metCount / conditionResults.length * 100),
-      status: metCount === conditionResults.length ? 'Fully Matched' : metCount >= conditionResults.length * 0.7 ? 'Partial Match' : 'Weak Match',
+      conditions: conditionResults, met: metCount, total, unchecked: conditionResults.length - total,
+      percentage: total ? Math.round(metCount / total * 100) : 0,
+      status: !total ? 'Not checkable' : metCount === total ? 'Fully Matched' : metCount >= total * 0.7 ? 'Partial Match' : 'Weak Match',
     };
   }
 
@@ -1213,6 +1183,7 @@ class AnalysisEngine {
 
   _identifyRisks(marketData, strategy, concepts) {
     const risks = [];
+    if (marketData.source !== 'Live') risks.push({ level: 'High', text: `Live data unavailable (${marketData.liveError || 'unknown error'}) — every number in this report is SIMULATED. Do not trade on it.` });
     if (marketData.rsi > 70) risks.push({ level: 'High', text: 'RSI indicates overbought conditions — potential reversal risk.' });
     if (marketData.rsi < 30) risks.push({ level: 'Medium', text: 'RSI indicates oversold — trend may continue lower.' });
     if (marketData.macdHist < 0) risks.push({ level: 'Medium', text: 'MACD histogram negative — bearish momentum.' });
@@ -1239,7 +1210,7 @@ class AnalysisEngine {
   }
 
   async analyzeMultiTimeframe(symbol) {
-    const timeframes = this.knowledge.generateMultiTimeframeData(symbol);
+    const timeframes = await this.knowledge.generateMultiTimeframeData(symbol);
     const bullish = timeframes.filter(t => t.trend === 'Bullish').length;
     const bearish = timeframes.filter(t => t.trend === 'Bearish').length;
     const alignment = bullish > bearish ? 'Bullish bias' : bearish > bullish ? 'Bearish bias' : 'Mixed signals';
@@ -1252,7 +1223,7 @@ class AnalysisEngine {
     };
   }
 
-  async runScreener(strategyId, stockList) { return this.knowledge.screenStocks(strategyId, stockList); }
+  async runScreener(strategyId, stockList, onProgress) { return this.knowledge.screenStocks(strategyId, stockList, onProgress); }
 }
 
 // ========== UI RENDERER ==========
@@ -1575,29 +1546,55 @@ class UIRenderer {
   async renderAnalysis() {
     const select = document.getElementById('analyze-strategy');
     if (select) select.innerHTML = '<option value="">No strategy</option>' + this.engine.strategies.map(s => `<option value="${s.id}">${this._esc(s.name)}</option>`).join('');
-    document.getElementById('btn-analyze')?.addEventListener('click', async () => {
-      const symbol = document.getElementById('analyze-symbol').value || 'TCS';
+    // Listeners are attached once; this method runs on every visit to the page
+    if (this._analyzeBound) return;
+    this._analyzeBound = true;
+    const acct = document.getElementById('analyze-account');
+    const risk = document.getElementById('analyze-risk');
+    try {
+      const saved = JSON.parse(localStorage.getItem('marketmind_sizing') || '{}');
+      if (saved.account) acct.value = saved.account;
+      if (saved.riskPercent) risk.value = saved.riskPercent;
+    } catch { /* storage unavailable */ }
+    const pickSymbol = () => {
+      const custom = (document.getElementById('analyze-custom-symbol').value || '').trim().toUpperCase();
+      return custom || document.getElementById('analyze-symbol').value || 'TCS';
+    };
+    document.getElementById('btn-analyze')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const symbol = pickSymbol();
       const strategyId = document.getElementById('analyze-strategy').value;
       const timeframe = document.getElementById('analyze-timeframe').value;
+      const sizing = { account: parseFloat(acct.value) || 0, riskPercent: parseFloat(risk.value) || 0 };
+      try { localStorage.setItem('marketmind_sizing', JSON.stringify(sizing)); } catch { /* ignore */ }
       const chartInput = document.getElementById('chart-upload-input');
       let chartImage = null;
       if (chartInput?.files?.length) chartImage = chartInput.files[0];
       const results = document.getElementById('analyze-results');
+      results.innerHTML = `<p style="color:var(--text-muted);padding:20px;">Fetching ${this._esc(symbol)} data and scanning for zones…</p>`;
+      btn.disabled = true;
       try {
-        const result = await this.analysis.analyzeStock(symbol, strategyId, timeframe, chartImage);
+        const result = await this.analysis.analyzeStock(symbol, strategyId, timeframe, chartImage, sizing);
         this._renderAnalysisResults(result, results);
       } catch (err) {
         console.error('Analysis failed:', err);
         results.innerHTML = `<p style="color:var(--red);padding:20px;">Error: ${err.message || err}</p>
           <p style="color:var(--text-muted);padding:0 20px;font-size:0.8rem;">Press F12 → Console tab to see details.</p>`;
+      } finally {
+        btn.disabled = false;
       }
     });
     document.getElementById('btn-multitf')?.addEventListener('click', async () => {
-      const symbol = document.getElementById('analyze-symbol').value || 'RELIANCE';
+      const symbol = pickSymbol();
       const results = document.getElementById('analyze-results');
       results.innerHTML = '<p style="color:var(--text-muted);padding:20px;">Running multi-timeframe analysis...</p>';
-      const result = await this.analysis.analyzeMultiTimeframe(symbol);
-      this._renderMultiTfResults(result, results);
+      try {
+        const result = await this.analysis.analyzeMultiTimeframe(symbol);
+        this._renderMultiTfResults(result, results);
+      } catch (err) {
+        console.error('Multi-timeframe analysis failed:', err);
+        results.innerHTML = `<p style="color:var(--red);padding:20px;">Error: ${this._esc(err.message || String(err))}</p>`;
+      }
     });
   }
 
@@ -1609,9 +1606,14 @@ class UIRenderer {
     html += '<div class="analysis-section"><h3>Timeframe Breakdown</h3>';
     for (const tf of result.timeframes) {
       const trendColor = tf.trend === 'Bullish' ? 'text-green' : tf.trend === 'Bearish' ? 'text-red' : 'text-yellow';
-      html += `<div class="condition-row"><strong style="width:60px;">${tf.timeframe}</strong> <span class="${trendColor}">${tf.trend}</span> | Signal: ${tf.signal} | Price: ₹${tf.data.price.toFixed(2)}</div>`;
+      const emaTxt = tf.ema20 != null ? ` | 20 EMA: ₹${tf.ema20.toFixed(2)}` : '';
+      const sim = tf.data.source !== 'Live' ? ' <span class="tag tag-yellow">Simulated</span>' : '';
+      html += `<div class="condition-row"><strong style="width:60px;">${tf.timeframe}</strong> <span class="${trendColor}">${tf.trend}</span> | ${tf.signal} | Price: ₹${tf.data.price.toFixed(2)}${emaTxt}${sim}</div>`;
     }
     html += '</div>';
+    if (result.timeframes.some(t => t.data.source !== 'Live')) {
+      html = `<div class="data-warning">&#x26A0;&#xFE0F; Live data couldn't be loaded for some timeframes, so those rows use simulated prices.</div>` + html;
+    }
     html += `<div class="analysis-section"><h3>Summary</h3><p style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7;">${this._esc(result.summary)}</p></div>`;
     container.innerHTML = html;
   }
@@ -1622,47 +1624,50 @@ class UIRenderer {
       container.innerHTML = `<p style="color:var(--red);padding:20px;">No analysis data. Check console (F12) and try again.</p>`;
       return;
     }
-    html += `<h3 style="font-size:1.3rem;margin-bottom:16px;">${this._esc(result.symbol)} Analysis</h3>`;
     const md = result.marketData;
-    const _dsrc = md.source || 'Unknown';
-    const _srcBadge = _dsrc === 'MoneyControl'
-      ? '<span class="tag tag-green">Live — MoneyControl</span>'
-      : '<span class="tag tag-yellow">Simulated</span>';
-    const _p = (v, fb = 0) => (v != null ? v : fb);
+    const live = md.source === 'Live';
+    const title = md.name && md.name !== result.symbol ? `${this._esc(result.symbol)} — ${this._esc(md.name)}` : this._esc(result.symbol);
+    html += `<h3 style="font-size:1.3rem;margin-bottom:16px;">${title}</h3>`;
+    if (!live) {
+      html += `<div class="data-warning">&#x26A0;&#xFE0F; <strong>Simulated data.</strong> Live prices couldn't be loaded (${this._esc(md.liveError || 'unknown error')}). Everything below is generated for demo purposes — do not trade on it.</div>`;
+    }
+    const _srcBadge = live ? '<span class="tag tag-green">Live</span>' : '<span class="tag tag-yellow">Simulated</span>';
+    const money = v => (v != null && isFinite(v) ? '₹' + Number(v).toFixed(2) : 'N/A');
+    const num = v => (v != null && isFinite(v) ? Number(v).toFixed(2) : 'N/A');
     html += this._renderSection('Current Market Data', `
       <div style="margin-bottom:8px;"><span style="font-size:0.78rem;color:var(--text-muted);">Data Source:</span> ${_srcBadge}</div>
       <div class="tech-grid">
-        ${this._techItem('Price', '₹' + _p(md.price).toFixed(2))}
-        ${this._techItem('Change', (_p(md.changePercent) > 0 ? '+' : '') + _p(md.changePercent).toFixed(2) + '%', _p(md.changePercent) > 0 ? 'text-green' : 'text-red')}
-        ${this._techItem('Volume', this._formatVolume(_p(md.volume, 0)))}
+        ${this._techItem('Price', money(md.price))}
+        ${this._techItem('Change', (md.changePercent > 0 ? '+' : '') + num(md.changePercent) + '%', md.changePercent > 0 ? 'text-green' : md.changePercent < 0 ? 'text-red' : '')}
+        ${this._techItem('Volume', this._formatVolume(md.volume || 0))}
         ${this._techItem('Timeframe', md.timeframe || 'N/A')}
-        ${_dsrc === 'MoneyControl' ? this._techItem('Sector', this._esc(md.sector) || 'N/A') : ''}
-        ${_dsrc === 'MoneyControl' ? this._techItem('P/E', md.pe ? md.pe.toFixed(2) : 'N/A') : ''}
-        ${this._techItem('Mkt Cap', _dsrc === 'MoneyControl' && md.mktCap ? '₹' + (md.mktCap / 1e7).toFixed(2) + ' Cr' : 'N/A')}
+        ${this._techItem('52W High', money(md.high52w))}
+        ${this._techItem('52W Low', money(md.low52w))}
       </div>
-      <div class="citation">Data: ${_dsrc === 'MoneyControl' ? 'Live from MoneyControl (priceapi.moneycontrol.com)' : 'Simulated — real data connection unavailable'}</div>
+      <div class="citation">Data: ${live ? `Yahoo Finance (NSE) via the app's data proxy · last candle ${new Date(md.lastCandleTime).toLocaleString('en-IN')}` : 'Simulated — live data connection unavailable'}</div>
     `);
     html += this._renderSection('Technical Indicators', `
       <div class="tech-grid">
-        ${this._techItem('RSI', _p(md.rsi), _p(md.rsi) > 70 ? 'text-red' : _p(md.rsi) < 30 ? 'text-green' : '')}
-        ${this._techItem('MACD', _p(md.macd).toFixed(2))}
-        ${this._techItem('MACD Signal', _p(md.macdSignal).toFixed(2))}
-        ${this._techItem('50 DMA', '₹' + _p(md.ma50).toFixed(2), _p(md.price) > _p(md.ma50) ? 'text-green' : 'text-red')}
-        ${this._techItem('200 DMA', '₹' + _p(md.ma200).toFixed(2), _p(md.price) > _p(md.ma200) ? 'text-green' : 'text-red')}
-        ${this._techItem('High', '₹' + _p(md.high).toFixed(2))}
-        ${this._techItem('Low', '₹' + _p(md.low).toFixed(2))}
-        ${this._techItem('Support', '₹' + Number(_p(md.support && md.support[0], 0)).toFixed(2))}
-        ${this._techItem('Resistance', '₹' + Number(_p(md.resistance && md.resistance[0], 0)).toFixed(2))}
+        ${this._techItem('RSI (14)', num(md.rsi), md.rsi > 70 ? 'text-red' : md.rsi < 30 ? 'text-green' : '')}
+        ${this._techItem('MACD', num(md.macd))}
+        ${this._techItem('MACD Signal', num(md.macdSignal))}
+        ${this._techItem('20 EMA', money(md.ema20), md.price > md.ema20 ? 'text-green' : 'text-red')}
+        ${this._techItem('50 MA', money(md.ma50), md.price > md.ma50 ? 'text-green' : 'text-red')}
+        ${this._techItem('200 MA', money(md.ma200), md.price > md.ma200 ? 'text-green' : 'text-red')}
+        ${this._techItem('Support', money(md.support && md.support[0]))}
+        ${this._techItem('Resistance', money(md.resistance && md.resistance[0]))}
       </div>
+      <div class="citation">Moving averages and S/R are on the ${this._esc(md.timeframe)} candles. Support/resistance = nearest swing lows/highs.</div>
     `);
+    if (result.ks001) html += this._renderKS001(result.ks001, md);
     if (result.strategyMatch) {
       const sm = result.strategyMatch;
       html += this._renderSection('Strategy Match', `
         <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">Strategy: <strong>${this._esc(result.strategy?.name)}</strong></p>
         <div style="margin-bottom:8px;font-size:0.9rem;">${sm.conditions.map(c =>
-          `<div class="condition-row"><span class="${c.met ? 'condition-check' : 'condition-cross'}">${c.symbol}</span> ${this._esc(c.condition)}</div>`
+          `<div class="condition-row"><span class="${c.cls}">${c.symbol}</span> ${this._esc(c.condition)}${c.unknown ? ' <span style="color:var(--text-muted);font-size:0.78rem;">(check manually)</span>' : ''}</div>`
         ).join('')}</div>
-        <p style="margin-top:12px;font-size:0.88rem;"><strong>Match:</strong> ${sm.met}/${sm.total} conditions (${sm.percentage}%) — <span class="${sm.percentage >= 80 ? 'text-green' : sm.percentage >= 50 ? 'text-yellow' : 'text-red'}">${sm.status}</span></p>
+        <p style="margin-top:12px;font-size:0.88rem;"><strong>Match:</strong> ${sm.met}/${sm.total} checkable conditions (${sm.percentage}%)${sm.unchecked ? `, ${sm.unchecked} to check manually` : ''} — <span class="${sm.percentage >= 80 ? 'text-green' : sm.percentage >= 50 ? 'text-yellow' : 'text-red'}">${sm.status}</span></p>
         <div class="progress-bar mt-1"><div class="progress-fill" style="width:${sm.percentage}%;background:${sm.percentage >= 80 ? 'var(--green)' : sm.percentage >= 50 ? 'var(--yellow)' : 'var(--red)'};"></div></div>
       `);
     }
@@ -1703,6 +1708,131 @@ class UIRenderer {
     return `<div class="tech-item"><div class="label">${label}</div><div class="value ${cls || ''}">${value}</div></div>`;
   }
 
+  // --- KS-001 Demand & Supply report ---
+  _renderKS001(ks, md) {
+    const f = v => (v != null && isFinite(v) ? Number(v).toFixed(2) : 'N/A');
+    const tCls = t => (t === 'Bullish' ? 'text-green' : t === 'Bearish' ? 'text-red' : 'text-yellow');
+    let html = '';
+
+    // 1. Verdict + multi-timeframe trend map
+    const trendRows = ['htf', 'itf', 'ltf'].map(k => {
+      const t = ks.trends[k];
+      return `<div class="condition-row"><strong style="width:44px;">${k.toUpperCase()}</strong><span style="width:44px;color:var(--text-muted);">${this._esc(t.tf)}</span><span class="${tCls(t.trend)}" style="width:80px;">${t.trend}</span><span style="color:var(--text-muted);font-size:0.8rem;">${this._esc(t.note || '')}</span></div>`;
+    }).join('');
+    html += this._renderSection('KS-001 Verdict', `
+      <p class="ks-verdict ${ks.plan ? (ks.plan.direction === 'Long' ? 'long' : 'short') : 'none'}">${this._esc(ks.verdict)}</p>
+      <h4>Timeframe map (20 EMA)</h4>${trendRows}
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-top:8px;">Bias: <strong>${ks.bias}</strong>${ks.aligned ? ' · HTF and ITF aligned' : ' · HTF and ITF not aligned'}</p>
+    `);
+
+    // 2. Trade plan — only on live data; never show entries/quantities for simulated prices
+    if (ks.plan && md.source !== 'Live') {
+      html += this._renderSection('Trade Plan', '<p style="font-size:0.85rem;color:var(--yellow);">Hidden: entry, stop-loss and position size are only shown when live data is loaded.</p>');
+    } else if (ks.plan) {
+      const p = ks.plan, z = p.zone, s = p.sizing;
+      const sizingHtml = s
+        ? `<div class="tech-grid" style="margin-top:10px;">
+            ${this._techItem('Quantity', s.qty.toLocaleString('en-IN'))}
+            ${this._techItem('Capital needed', '₹' + Math.round(s.capital).toLocaleString('en-IN'))}
+            ${this._techItem('Risk per share', '₹' + f(s.riskPerShare))}
+            ${this._techItem('Max loss', '₹' + Math.round(s.actualRisk).toLocaleString('en-IN'), 'text-red')}
+          </div>${s.capped ? '<p class="citation">Quantity capped: full risk-based size would need more capital than the account.</p>' : ''}`
+        : '<p class="citation">Enter your account size and risk % on the left to get position sizing.</p>';
+      html += this._renderSection('Trade Plan', `
+        <div class="tech-grid">
+          ${this._techItem('Direction', p.direction, p.direction === 'Long' ? 'text-green' : 'text-red')}
+          ${this._techItem('Entry (proximal)', '₹' + f(p.entry))}
+          ${this._techItem('Stop-loss', '₹' + f(p.stop), 'text-red')}
+          ${this._techItem('Target 1', '₹' + f(p.target1), 'text-green')}
+          ${p.target2 != null ? this._techItem('Target 2', '₹' + f(p.target2), 'text-green') : ''}
+          ${this._techItem('R : R (to T1)', '1 : ' + f(p.rr))}
+        </div>
+        <p style="font-size:0.85rem;margin-top:10px;"><strong>Status:</strong> ${this._esc(p.status)} (${f(p.distancePct)}% from current price)</p>
+        <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:4px;">Target 1 = ${this._esc(p.target1Source)}${p.target2Source ? `; Target 2 = ${this._esc(p.target2Source)}` : ''}. Stop = distal line ± 10% of zone height.</p>
+        <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:4px;"><strong>Invalidation:</strong> ${this._esc(p.invalidation)}</p>
+        <h4>Position sizing</h4>${sizingHtml}
+      `);
+    }
+
+    // 3. Chart with zones
+    html += this._renderSection(`Zones on ${this._esc(md.timeframe)} chart`, this._zoneChart(md.priceHistory, md.source === 'Live' ? ks : { ...ks, plan: null }) +
+      '<p class="citation">Green = demand, red = supply. Solid edge = proximal, dashed = distal. Faded zones don\'t qualify (score below ' + ks.minScore + '/10 or R:R below 1:' + ks.minRR + ').</p>');
+
+    // 4. Zone table (nearest first)
+    const list = [...ks.nearestDemand, ...ks.nearestSupply].sort((a, b) => Math.abs(a.proximal - md.price) - Math.abs(b.proximal - md.price));
+    if (list.length) {
+      const rows = list.map(z => `
+        <tr class="${z.qualifies ? '' : 'zone-garbage'}">
+          <td><span class="tag ${z.side === 'demand' ? 'tag-green' : 'tag-red'}">${z.pattern}</span></td>
+          <td>₹${f(z.proximal)}<br><span style="color:var(--text-muted);font-size:0.75rem;">₹${f(z.distal)}</span></td>
+          <td>${z.fresh ? '<span class="text-green">Fresh</span>' : `Tested ${z.tests}×`}</td>
+          <td title="R:R ${z.rr.toFixed(1)} · Leg-out ${z.score.legOut}/3 · Base ${z.score.base}/2 · Freshness ${z.score.freshness}/3 · R:R ${z.score.rr}/2"><strong class="${z.qualifies ? 'text-green' : 'text-red'}">${z.score.total}/10</strong> <span style="font-size:0.72rem;color:var(--text-muted);">1:${z.rr.toFixed(1)}</span>
+            <div style="font-size:0.7rem;color:var(--text-muted);">L${z.score.legOut} B${z.score.base} F${z.score.freshness} RR${z.score.rr}</div></td>
+          <td style="font-size:0.78rem;">${z.counterTrend ? '<span class="tag tag-orange">Counter-trend</span> ' : ''}${z.garbage ? `<span class="text-red">Avoid:</span> ${this._esc(z.garbageReasons.join('; ') || 'score below ' + ks.minScore)}` : '<span class="text-green">Qualifies</span>'}</td>
+        </tr>`).join('');
+      html += this._renderSection('Nearest Zones', `
+        <div style="overflow-x:auto;"><table class="screener-table zone-table">
+          <thead><tr><th>Type</th><th>Proximal / Distal</th><th>Freshness</th><th>Score</th><th>Notes</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+        <p class="citation">Score = leg-out strength (3) + base (2) + freshness (3) + risk/reward (2). To qualify a zone needs ${ks.minScore}/10 or more and at least 1:${ks.minRR} risk/reward.</p>`);
+    } else {
+      html += this._renderSection('Nearest Zones', '<p style="font-size:0.85rem;color:var(--text-muted);">No active demand or supply zones found on this timeframe.</p>');
+    }
+    return html;
+  }
+
+  // Lightweight SVG candlestick chart with zones and plan levels
+  _zoneChart(candles, ks) {
+    const data = (candles || []).slice(-120);
+    if (data.length < 2) return '<p style="color:var(--text-muted);">Not enough candles to chart.</p>';
+    const W = 760, H = 320, padL = 8, padR = 64, padT = 10, padB = 18;
+    const offset = candles.length - data.length;
+    const zones = [...ks.nearestDemand, ...ks.nearestSupply];
+    const levels = [];
+    if (ks.plan) levels.push([ks.plan.entry, 'Entry', 'var(--accent)'], [ks.plan.stop, 'SL', 'var(--red)'], [ks.plan.target1, 'T1', 'var(--green)']);
+    if (ks.plan && ks.plan.target2 != null) levels.push([ks.plan.target2, 'T2', 'var(--green)']);
+    let hi = Math.max(...data.map(c => c.high)), lo = Math.min(...data.map(c => c.low));
+    for (const z of zones) { hi = Math.max(hi, z.proximal, z.distal); lo = Math.min(lo, z.proximal, z.distal); }
+    for (const [v] of levels) { hi = Math.max(hi, v); lo = Math.min(lo, v); }
+    const padP = (hi - lo) * 0.04; hi += padP; lo -= padP;
+    const y = v => padT + (hi - v) / (hi - lo) * (H - padT - padB);
+    const step = (W - padL - padR) / data.length;
+    const x = i => padL + i * step + step / 2;
+    const cw = Math.max(1, step * 0.6);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" class="zone-chart" role="img" aria-label="Candlestick chart with demand and supply zones">`;
+    // grid + price labels
+    for (let g = 0; g <= 4; g++) {
+      const v = lo + (hi - lo) * g / 4, yy = y(v);
+      svg += `<line x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}" stroke="var(--border)" stroke-width="0.5"/><text x="${W - padR + 4}" y="${yy + 3}" font-size="10" fill="var(--text-muted)">${v.toFixed(1)}</text>`;
+    }
+    // zones: from formation to the right edge
+    for (const z of zones) {
+      const start = Math.max(0, z.baseStart - offset);
+      const x0 = padL + start * step, x1 = W - padR;
+      const top = y(Math.max(z.proximal, z.distal)), bot = y(Math.min(z.proximal, z.distal));
+      const col = z.side === 'demand' ? '34,197,94' : '239,68,68';
+      const op = z.qualifies ? 0.22 : 0.08;
+      svg += `<rect x="${x0}" y="${top}" width="${x1 - x0}" height="${Math.max(1, bot - top)}" fill="rgba(${col},${op})"/>`;
+      svg += `<line x1="${x0}" x2="${x1}" y1="${y(z.proximal)}" y2="${y(z.proximal)}" stroke="rgb(${col})" stroke-width="1" opacity="${z.qualifies ? 0.9 : 0.4}"/>`;
+      svg += `<line x1="${x0}" x2="${x1}" y1="${y(z.distal)}" y2="${y(z.distal)}" stroke="rgb(${col})" stroke-width="1" stroke-dasharray="4 3" opacity="${z.qualifies ? 0.9 : 0.4}"/>`;
+      svg += `<text x="${x0 + 3}" y="${(z.side === 'demand' ? bot : top + 10) - (z.side === 'demand' ? 3 : 0)}" font-size="9" fill="rgb(${col})" opacity="${z.qualifies ? 1 : 0.6}">${z.pattern} ${z.score.total}/10</text>`;
+    }
+    // candles
+    data.forEach((c, i) => {
+      const up = c.close >= c.open, col = up ? 'var(--green)' : 'var(--red)';
+      const bt = y(Math.max(c.open, c.close)), bb = y(Math.min(c.open, c.close));
+      svg += `<line x1="${x(i)}" x2="${x(i)}" y1="${y(c.high)}" y2="${y(c.low)}" stroke="${col}" stroke-width="1"/>`;
+      svg += `<rect x="${x(i) - cw / 2}" y="${bt}" width="${cw}" height="${Math.max(0.8, bb - bt)}" fill="${col}"/>`;
+    });
+    // plan levels
+    for (const [v, label, col] of levels) {
+      svg += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-width="1" stroke-dasharray="2 2"/><text x="${W - padR + 4}" y="${y(v) - 2}" font-size="9" font-weight="600" fill="${col}">${label}</text>`;
+    }
+    svg += '</svg>';
+    return svg;
+  }
+
   // --- Screener ---
   renderScreener() {
     const container = document.getElementById('screener-container');
@@ -1711,7 +1841,7 @@ class UIRenderer {
       { symbol: 'HDFCBANK', name: 'HDFC Bank' }, { symbol: 'INFY', name: 'Infosys' },
       { symbol: 'ICICIBANK', name: 'ICICI Bank' }, { symbol: 'SBIN', name: 'State Bank of India' },
       { symbol: 'BHARTIARTL', name: 'Bharti Airtel' }, { symbol: 'ITC', name: 'ITC Limited' },
-      { symbol: 'TATAMOTORS', name: 'Tata Motors' }, { symbol: 'WIPRO', name: 'Wipro' },
+      { symbol: 'TMPV', name: 'Tata Motors Passenger Vehicles' }, { symbol: 'TMCV', name: 'Tata Motors Commercial Vehicles' }, { symbol: 'WIPRO', name: 'Wipro' },
       { symbol: 'AXISBANK', name: 'Axis Bank' }, { symbol: 'KOTAKBANK', name: 'Kotak Mahindra Bank' },
       { symbol: 'LT', name: 'Larsen & Toubro' }, { symbol: 'MARUTI', name: 'Maruti Suzuki' },
       { symbol: 'BAJFINANCE', name: 'Bajaj Finance' }, { symbol: 'HINDUNILVR', name: 'Hindustan Unilever' },
@@ -1746,15 +1876,22 @@ class UIRenderer {
       const strategyId = document.getElementById('screener-strategy').value;
       const resultsDiv = document.getElementById('screener-results');
       if (!strategyId) { this._toast('Select a strategy first', 'warning'); return; }
-      resultsDiv.innerHTML = '<p style="color:var(--text-muted);">Screening...</p>';
+      resultsDiv.innerHTML = '<p style="color:var(--text-muted);" id="screener-progress">Screening 0/' + stocks.length + '…</p>';
       try {
-        const results = await this.analysis.runScreener(strategyId, stocks);
+        const results = await this.analysis.runScreener(strategyId, stocks, (done, total) => {
+          const el = document.getElementById('screener-progress');
+          if (el) el.textContent = `Screening ${done}/${total}…`;
+        });
+        const simCount = results.filter(r => r.source !== 'Live').length;
+        const unchecked = results[0] ? results[0].unchecked : 0;
         resultsDiv.innerHTML = `
+          ${simCount ? `<div class="data-warning">&#x26A0;&#xFE0F; ${simCount} of ${results.length} stocks couldn't load live data and use simulated prices (marked below).</div>` : ''}
+          ${unchecked ? `<p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px;">${unchecked} of this strategy's conditions can't be checked from price data, so the score covers the other conditions only.</p>` : ''}
           <table class="screener-table">
             <thead><tr><th>Symbol</th><th>Company</th><th>Match</th><th>Score</th><th>Progress</th></tr></thead>
             <tbody>${results.sort((a, b) => b.percentage - a.percentage).map(r => `
               <tr>
-                <td><strong>${this._esc(r.symbol)}</strong></td>
+                <td><strong>${this._esc(r.symbol)}</strong>${r.source !== 'Live' ? ' <span class="tag tag-yellow">Sim</span>' : ''}</td>
                 <td>${this._esc(r.name)}</td>
                 <td><span class="badge ${r.percentage >= 80 ? 'badge-green' : r.percentage >= 50 ? 'badge-yellow' : 'badge-red'}">${r.match}/${r.total}</span></td>
                 <td>${r.percentage}%</td>
