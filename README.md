@@ -7,6 +7,7 @@ Runs entirely in the browser (plain HTML, CSS and JavaScript). A tiny proxy fetc
 ## Features
 
 - **Live market data** — real OHLC candles for any NSE symbol. Uses your **ICICI Direct (Breeze API)** login when connected, otherwise Yahoo Finance. If neither can be reached the app switches to clearly-marked simulated data and hides all trade plans.
+- **All-Strategy Verdict** — pick a stock and the app runs every strategy on the daily chart. Each strategy shows Buy signal / Setting up / No signal with its own buy, stop-loss and selling levels, and the verdict combines them into one answer: **Buy**, **Buy on dip**, **Wait** (with levels to watch) or **Sell / avoid buying**, with the buying price, selling price, stop-loss, risk/reward and position size.
 - **Price Outlook** — the probable range (nearest demand zone below to nearest supply zone above), what happens if either side breaks, which way price leans and why, and — with ICICI connected — a live buyer vs seller meter from the order book that refreshes every 5 seconds during market hours.
 - **KS-001 Demand & Supply engine**
   - Zone detection: RBR / DBR (demand) and RBD / DBD (supply), with proximal and distal lines
@@ -90,7 +91,8 @@ Breeze is free for ICICI Direct customers. It needs PHP hosting (your cPanel), s
 │   │   ├── marketdata.js # Data fetching (ICICI, Yahoo), indicators, simulated fallback
 │   │   ├── ks001.js      # KS-001 zones, scoring, trade plan, sizing, price outlook
 │   │   ├── conditions.js # Plain-English strategy condition checker
-│   │   └── library.js    # Built-in concepts and strategies with source links
+│   │   ├── library.js    # Built-in concepts and strategies with source links
+│   │   └── consensus.js  # All-strategy verdict: per-strategy levels + combined conclusion
 │   └── api/
 │       ├── chart.php     # Yahoo Finance proxy for hosting
 │       ├── breeze.php    # ICICI Direct Breeze connector (login, candles, quotes)

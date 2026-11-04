@@ -10,6 +10,7 @@
   <script src="js/ks001.js"></script>
   <script src="js/conditions.js"></script>
   <script src="js/library.js"></script>
+  <script src="js/consensus.js"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -328,6 +329,35 @@ textarea { font-family: inherit; }
 .sizing-inputs { border-top: 1px solid var(--border); margin-top: 14px; }
 .btn-primary:disabled { opacity: 0.6; cursor: wait; }
 .cond-detail { color: var(--text-muted); font-size: 0.76rem; margin-left: 4px; }
+.verdict { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.v-badge { font-size: 1.25rem; font-weight: 800; padding: 6px 16px; border-radius: 8px; letter-spacing: 0.01em; }
+.v-long .v-badge { background: rgba(34,197,94,0.18); color: var(--green); }
+.v-short .v-badge { background: rgba(239,68,68,0.18); color: var(--red); }
+.v-wait .v-badge { background: rgba(245,158,11,0.16); color: var(--yellow); }
+.v-agree { font-size: 0.85rem; color: var(--text-secondary); }
+.v-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.v-tile { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 12px; min-width: 0; }
+.v-tile .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.v-tile .value { font-size: 1.15rem; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.v-tile .sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.v-tile.buy .value { color: var(--green); } .v-tile.sell .value { color: var(--accent); } .v-tile.stop .value { color: var(--red); }
+.v-summary { font-size: 0.88rem; line-height: 1.6; margin-top: 12px; color: var(--text-primary); }
+.v-note { font-size: 0.8rem; color: var(--text-secondary); margin-top: 6px; }
+.s-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.s-row { background: var(--bg-secondary); border-radius: 8px; padding: 0 12px; }
+.s-row summary { display: flex; align-items: center; gap: 10px; padding: 10px 0; cursor: pointer; list-style: none; }
+.s-row summary::-webkit-details-marker { display: none; }
+.s-row summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.s-name { flex: 1; min-width: 0; font-size: 0.86rem; font-weight: 600; }
+.s-count { font-size: 0.75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; width: 44px; text-align: right; }
+.chip { font-size: 0.7rem; font-weight: 700; padding: 3px 9px; border-radius: 12px; white-space: nowrap; }
+.chip-long { background: rgba(34,197,94,0.2); color: var(--green); } .chip-short { background: rgba(239,68,68,0.2); color: var(--red); }
+.chip-setup { background: rgba(245,158,11,0.18); color: var(--yellow); } .chip-none { background: var(--bg-hover); color: var(--text-muted); }
+.s-levels { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.8rem; font-variant-numeric: tabular-nums; color: var(--text-secondary); padding-bottom: 6px; }
+.s-how { font-size: 0.76rem; color: var(--text-muted); padding-bottom: 6px; }
+.s-conds { list-style: none; font-size: 0.8rem; padding-bottom: 10px; line-height: 1.8; }
+.muted { color: var(--text-muted); font-weight: 400; font-size: 0.78rem; } .muted-lock { color: var(--yellow); font-size: 0.8rem; font-weight: 500; }
+@media (max-width: 560px) { .v-tiles { grid-template-columns: 1fr; } }
 .broker-status { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.7; }
 .broker-status a { font-size: 0.72rem; margin-left: 4px; }
 .broker-status .btn-broker { display: inline-block; margin: 4px 0 0; padding: 4px 10px; border-radius: 6px; background: var(--accent); color: #fff; }
@@ -456,7 +486,7 @@ textarea { font-family: inherit; }
             <label>Or type any NSE symbol
               <input type="text" id="analyze-custom-symbol" placeholder="e.g. ZOMATO, IRFC" autocomplete="off" />
             </label>
-            <label>Strategy<select id="analyze-strategy"><option value="">No strategy</option></select></label>
+            <label>Strategy<select id="analyze-strategy"><option value="__all">All strategies — verdict</option><option value="">No strategy</option></select></label>
             <label>Timeframe
               <select id="analyze-timeframe">
                 <option value="5m">5 Minute</option><option value="15m">15 Minute</option>
@@ -1143,7 +1173,11 @@ class AnalysisEngine {
         htf: { tf: htfTf, candles: htfData.priceHistory },
         account: sizing.account, riskPercent: sizing.riskPercent,
       });
-      const strategy = strategyId ? strategies.find(s => s.id === strategyId) : null;
+      const allMode = strategyId === '__all';
+      const strategy = strategyId && !allMode ? strategies.find(s => s.id === strategyId) : null;
+      const consensus = allMode && window.Consensus
+        ? Consensus.run({ md: marketData, ks: ks001, strategies, check: (c, d) => this.knowledge.checkConditionDetail(c, d), account: sizing.account, riskPercent: sizing.riskPercent })
+        : null;
       const relevantConcepts = this._findRelevantConcepts(marketData, strategy, concepts);
       const conflicts = this._findConflicts(relevantConcepts);
       const strategyMatch = strategy ? this._evaluateStrategy(strategy, marketData) : null;
@@ -1151,7 +1185,7 @@ class AnalysisEngine {
       const techData = this._buildTechnicalData(marketData);
       const risks = this._identifyRisks(marketData, strategy, relevantConcepts);
       const conclusion = this._buildConclusion(marketData, strategy, strategyMatch, relevantConcepts, risks);
-      return { symbol, timestamp: new Date().toISOString(), marketData, technicalData: techData, strategy, strategyMatch, relevantConcepts, chartAnalysis, conflicts, risks, conclusion, ks001 };
+      return { symbol, timestamp: new Date().toISOString(), marketData, technicalData: techData, strategy, strategyMatch, relevantConcepts, chartAnalysis, conflicts, risks, conclusion, ks001, consensus };
     } catch (stepErr) {
       console.error('[analyzeStock] FAILED at step:', stepErr);
       throw stepErr;
@@ -1611,7 +1645,12 @@ class UIRenderer {
   // --- Analysis ---
   async renderAnalysis() {
     const select = document.getElementById('analyze-strategy');
-    if (select) select.innerHTML = '<option value="">No strategy</option>' + this.engine.strategies.map(s => `<option value="${s.id}">${this._esc(s.name)}</option>`).join('');
+    if (select) {
+      const keep = select.dataset.ready ? select.value : '__all'; // remember the user's choice, incl. "No strategy"
+      select.dataset.ready = '1';
+      select.innerHTML = '<option value="__all">All strategies — verdict</option><option value="">No strategy</option>' + this.engine.strategies.map(s => `<option value="${s.id}">${this._esc(s.name)}</option>`).join('');
+      select.value = [...select.options].some(o => o.value === keep) ? keep : '__all';
+    }
     // Listeners are attached once; this method runs on every visit to the page
     if (this._analyzeBound) return;
     this._analyzeBound = true;
@@ -1630,6 +1669,10 @@ class UIRenderer {
       const btn = e.currentTarget;
       const symbol = pickSymbol();
       const strategyId = document.getElementById('analyze-strategy').value;
+      if (strategyId === '__all' && document.getElementById('analyze-timeframe').value !== '1d') {
+        document.getElementById('analyze-timeframe').value = '1d';
+        this._toast('All-strategy analysis uses the daily chart', 'info');
+      }
       const timeframe = document.getElementById('analyze-timeframe').value;
       const sizing = { account: parseFloat(acct.value) || 0, riskPercent: parseFloat(risk.value) || 0 };
       try { localStorage.setItem('marketmind_sizing', JSON.stringify(sizing)); } catch { /* ignore */ }
@@ -1697,6 +1740,7 @@ class UIRenderer {
     if (!live) {
       html += `<div class="data-warning">&#x26A0;&#xFE0F; <strong>Simulated data.</strong> Live prices couldn't be loaded (${this._esc(md.liveError || 'unknown error')}). Everything below is generated for demo purposes — do not trade on it.</div>`;
     }
+    if (result.consensus) html += this._renderConsensus(result.consensus, md);
     html += this._renderOutlook(result);
     const _srcBadge = live ? `<span class="tag tag-green">Live — ${this._esc(md.source)}</span>` : '<span class="tag tag-yellow">Simulated</span>';
     const money = v => (v != null && isFinite(v) ? '₹' + Number(v).toFixed(2) : 'N/A');
@@ -1774,6 +1818,54 @@ class UIRenderer {
 
   _techItem(label, value, cls) {
     return `<div class="tech-item"><div class="label">${label}</div><div class="value ${cls || ''}">${value}</div></div>`;
+  }
+
+  // --- All-strategy verdict: buy / sell / stop levels from every strategy ---
+  _renderConsensus(cs, md) {
+    const c = cs.conclusion, live = !!md.live;
+    const f = v => (v != null && isFinite(v) ? '₹' + Number(v).toFixed(2) : '—');
+    const hide = v => (live ? f(v) : '<span class="muted-lock">hidden</span>');
+    const toneCls = c.tone === 'long' ? 'v-long' : c.tone === 'short' ? 'v-short' : 'v-wait';
+    let tiles;
+    if (c.tone === 'short') {
+      tiles = `
+        <div class="v-tile sell"><div class="label">Selling level</div><div class="value">${hide(c.sellAt)}</div><div class="sub">supply zone</div></div>
+        <div class="v-tile"><div class="label">Invalid above</div><div class="value">${hide(c.stop)}</div><div class="sub">stop for a short</div></div>
+        <div class="v-tile"><div class="label">Downside target</div><div class="value">${hide(c.coverAt)}</div><div class="sub">R:R 1 : ${c.rr ? c.rr.toFixed(1) : '—'}</div></div>`;
+    } else {
+      const buy = c.buyLow == null ? '—' : c.buyLow === c.buyHigh ? hide(c.buyLow) : (live ? `${f(c.buyLow)} – ${f(c.buyHigh)}` : hide(c.buyLow));
+      tiles = `
+        <div class="v-tile buy"><div class="label">${c.tone === 'long' ? 'Buying price' : 'Buy near'}</div><div class="value">${buy}</div><div class="sub">${this._esc(c.buySource || (c.tone === 'long' ? 'from active strategies' : ''))}</div></div>
+        <div class="v-tile sell"><div class="label">${c.tone === 'long' ? 'Selling price' : 'Sell near'}</div><div class="value">${hide(c.sell1)}</div><div class="sub">${c.sell2 && live ? 'then ' + f(c.sell2) : this._esc(c.sellSource || 'first target')}</div></div>
+        <div class="v-tile stop"><div class="label">Stop-loss</div><div class="value">${hide(c.stop)}</div><div class="sub">R:R 1 : ${c.rr ? c.rr.toFixed(1) : '—'}</div></div>`;
+    }
+    const sizing = live && c.sizing
+      ? `<p class="v-note">Position size at your risk setting: <strong>${c.sizing.qty.toLocaleString('en-IN')} shares</strong> (≈ ₹${Math.round(c.sizing.capital).toLocaleString('en-IN')}, max loss ≈ ₹${Math.round(c.sizing.actualRisk).toLocaleString('en-IN')})${c.sizing.capped ? ' — capped by account size' : ''}.</p>`
+      : live ? '<p class="v-note">Enter account size and risk % to get the quantity.</p>' : '';
+
+    const order = { Active: 0, 'Setting up': 1, 'No signal': 2 };
+    const rows = [...cs.results].sort((a, b) => order[a.status] - order[b.status] || (b.total ? b.met / b.total : 0) - (a.total ? a.met / a.total : 0)).map(r => {
+      const chip = r.status === 'Active' ? (r.side === 'short' ? 'chip-short' : 'chip-long') : r.status === 'Setting up' ? 'chip-setup' : 'chip-none';
+      const label = r.status === 'Active' ? (r.side === 'short' ? 'Sell signal' : 'Buy signal') : r.status;
+      const p = r.plan;
+      const lv = p && live
+        ? `<span>${p.side === 'short' ? 'Sell' : 'Buy'} ${f(p.entry)}</span><span>Stop ${f(p.stop)}</span><span>${p.side === 'short' ? 'Cover' : 'Sell'} ${f(p.target)}</span>`
+        : p ? '<span class="muted-lock">levels hidden on simulated data</span>' : '<span class="muted">no price levels for this strategy</span>';
+      return `<details class="s-row">
+        <summary><span class="s-name">${this._esc(r.name)}</span><span class="chip ${chip}">${label}</span><span class="s-count">${r.met}/${r.total}${r.unchecked ? ` +${r.unchecked}?` : ''}</span></summary>
+        <div class="s-levels">${lv}</div>
+        ${p && p.how ? `<p class="s-how">${this._esc(p.how)}${p.targetWhy ? ` · sell target = ${this._esc(p.targetWhy)}` : ''}</p>` : ''}
+        <ul class="s-conds">${r.conditions.map(x => `<li><span class="${x.unknown ? 'condition-warn' : x.met ? 'condition-check' : 'condition-cross'}">${x.unknown ? '?' : x.met ? '✓' : '✗'}</span> ${this._esc(x.condition)} <span class="cond-detail">${this._esc(x.detail)}</span></li>`).join('')}</ul>
+      </details>`;
+    }).join('');
+    return this._renderSection('All-Strategy Verdict', `
+      <div class="verdict ${toneCls}"><span class="v-badge">${this._esc(c.verdict)}</span><span class="v-agree">${c.agree} of ${c.of} strategies agree</span></div>
+      <div class="v-tiles">${tiles}</div>
+      <p class="v-summary">${live ? this._esc(c.summary) : 'Price levels are hidden because live data could not be loaded. The strategy statuses below are from simulated prices.'}</p>
+      ${sizing}
+      <h4>Each strategy <span class="muted">(tap a row for its conditions)</span></h4>
+      <div class="s-list">${rows}</div>
+      <p class="citation">Daily chart. Levels come from each strategy's own rules; the verdict combines the strategies that are active now. Not a recommendation — check the chart and your own plan before trading.</p>`);
   }
 
   // --- Price Outlook: probable range + lean + live pressure ---
