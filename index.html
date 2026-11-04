@@ -8,6 +8,8 @@
   <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
   <script src="js/marketdata.js"></script>
   <script src="js/ks001.js"></script>
+  <script src="js/conditions.js"></script>
+  <script src="js/library.js"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -325,6 +327,7 @@ textarea { font-family: inherit; }
 .zone-garbage { opacity: 0.6; }
 .sizing-inputs { border-top: 1px solid var(--border); margin-top: 14px; }
 .btn-primary:disabled { opacity: 0.6; cursor: wait; }
+.cond-detail { color: var(--text-muted); font-size: 0.76rem; margin-left: 4px; }
 .broker-status { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.7; }
 .broker-status a { font-size: 0.72rem; margin-left: 4px; }
 .broker-status .btn-broker { display: inline-block; margin: 4px 0 0; padding: 4px 10px; border-radius: 6px; background: var(--accent); color: #fff; }
@@ -606,7 +609,17 @@ class KnowledgeEngine {
     this.strategies = await Storage.getAll('strategies');
     this.feedbackRules = await Storage.getAll('feedback');
     this.documents = await Storage.getAll('documents');
+    this._mergeLibrary();
     this._buildKnowledgeGraph();
+  }
+
+  // Built-in MarketMind library (js/library.js): shown alongside your own material
+  _mergeLibrary() {
+    const lib = window.MarketMindLibrary;
+    if (!lib) return;
+    const haveC = new Set(this.concepts.map(c => c.id)), haveS = new Set(this.strategies.map(s => s.id));
+    this.concepts = [...lib.CONCEPTS.filter(c => !haveC.has(c.id)), ...this.concepts];
+    this.strategies = [...lib.STRATEGIES.filter(s => !haveS.has(s.id)), ...this.strategies];
   }
 
   // --- Document Processing ---
@@ -1025,7 +1038,7 @@ class KnowledgeEngine {
 
   // --- Stats ---
   getStats() {
-    const uniqueDocs = [...new Set(this.concepts.map(c => c.sourceDoc))];
+    const uniqueDocs = [...new Set(this.concepts.filter(c => !c.isBuiltIn).map(c => c.sourceDoc))];
     return {
       books: uniqueDocs.length, notes: 0,
       concepts: this.concepts.length, strategies: this.strategies.length,
@@ -1056,28 +1069,13 @@ class KnowledgeEngine {
   // --- Strategy condition checks (shared by Analyze and Screener) ---
   // Returns true/false, or null when the condition can't be checked automatically.
   checkCondition(cond, data) {
-    const lower = cond.toLowerCase();
-    if (lower.includes('price') && lower.includes('200')) return data.ma200 != null ? data.price > data.ma200 : null;
-    if (lower.includes('price') && lower.includes('50')) return data.ma50 != null ? data.price > data.ma50 : null;
-    if (lower.includes('price') && lower.includes('20') && lower.includes('ema')) return data.ema20 != null ? data.price > data.ema20 : null;
-    if (lower.includes('rsi') && (lower.includes('<') || lower.includes('below'))) {
-      const m = lower.match(/rsi\s*(?:<|below)\s*(\d+)/);
-      return data.rsi != null ? data.rsi < (m ? parseFloat(m[1]) : 50) : null;
-    }
-    if (lower.includes('rsi') && (lower.includes('>') || lower.includes('above'))) {
-      const m = lower.match(/rsi\s*(?:>|above)\s*(\d+)/);
-      return data.rsi != null ? data.rsi > (m ? parseFloat(m[1]) : 50) : null;
-    }
-    if (lower.includes('macd') && lower.includes('bullish')) return data.macd != null ? data.macd > data.macdSignal : null;
-    if (lower.includes('macd') && lower.includes('bearish')) return data.macd != null ? data.macd < data.macdSignal : null;
-    if (lower.includes('volume')) {
-      const hist = data.priceHistory || [];
-      if (hist.length < 21) return null;
-      const avg = hist.slice(-21, -1).reduce((s, c) => s + c.volume, 0) / 20;
-      return data.volume > avg; // above 20-bar average volume
-    }
-    if (lower.includes('breakout') || lower.includes('resistance')) return data.resistance && data.resistance.length ? data.price > data.resistance[0] : null;
-    return null;
+    const r = this.checkConditionDetail(cond, data);
+    return r ? r.met : null;
+  }
+
+  // { met, detail } or null when the condition can't be checked from price data
+  checkConditionDetail(cond, data) {
+    return window.Conditions ? Conditions.check(cond, data) : null;
   }
 
   // --- Screening ---
@@ -1091,8 +1089,8 @@ class KnowledgeEngine {
         const stock = queue.shift();
         const data = await this.getMarketData(stock.symbol, '1d');
         const conditions = strategy.conditions.map(cond => {
-          const met = this.checkCondition(cond, data);
-          return { condition: cond, met: met === true, unknown: met === null, detail: met === null ? 'Not checkable automatically' : met ? 'Satisfied' : 'Not satisfied' };
+          const r = this.checkConditionDetail(cond, data);
+          return { condition: cond, met: !!(r && r.met), unknown: !r, detail: r ? r.detail : 'Not checkable automatically' };
         });
         const checkable = conditions.filter(c => !c.unknown);
         const metCount = checkable.filter(c => c.met).length;
@@ -1198,9 +1196,9 @@ class AnalysisEngine {
   _evaluateStrategy(strategy, marketData) {
     // Conditions the app can't check from price data are shown as "?" — never guessed
     const conditionResults = strategy.conditions.map(cond => {
-      const r = this.knowledge.checkCondition(cond, marketData);
-      if (r === null) return { condition: cond, met: false, unknown: true, status: 'Check manually', symbol: '?', cls: 'condition-warn' };
-      return { condition: cond, met: r, unknown: false, status: r ? 'Satisfied' : 'Not satisfied', symbol: r ? '✓' : '✗', cls: r ? 'condition-check' : 'condition-cross' };
+      const r = this.knowledge.checkConditionDetail(cond, marketData);
+      if (!r) return { condition: cond, met: false, unknown: true, status: 'Check manually', symbol: '?', cls: 'condition-warn', detail: '' };
+      return { condition: cond, met: r.met, unknown: false, status: r.met ? 'Satisfied' : 'Not satisfied', symbol: r.met ? '✓' : '✗', cls: r.met ? 'condition-check' : 'condition-cross', detail: r.detail };
     });
     const checkable = conditionResults.filter(c => !c.unknown);
     const metCount = checkable.filter(c => c.met).length;
@@ -1289,6 +1287,17 @@ class UIRenderer {
 
   _esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+  _originTag(x) {
+    if (x.isBuiltIn) return '<span class="tag tag-green">Library</span>';
+    return x.isUserCreated ? '<span class="tag tag-yellow">Custom</span>' : '<span class="tag tag-blue">Extracted</span>';
+  }
+
+  // Source name, linked when the item has a public source page
+  _sourceLink(x) {
+    const name = this._esc(x.sourceName || 'Unknown');
+    return x.sourceUrl ? `<a href="${this._esc(x.sourceUrl)}" target="_blank" rel="noopener">${name} ↗</a>` : name;
+  }
+
   _formatVolume(v) {
     if (v >= 1e7) return (v / 1e7).toFixed(2) + ' Cr';
     if (v >= 1e5) return (v / 1e5).toFixed(2) + ' L';
@@ -1329,8 +1338,8 @@ class UIRenderer {
     (this.engine.documents || []).forEach(d => {
       docs.push({ name: d.name, category: d.category || 'Uncategorized', type: d.fileType || 'document', date: d.uploadDate });
     });
-    this.engine.concepts.forEach(c => { if (c.sourceName && !docs.some(d => d.name === c.sourceName)) docs.push({ name: c.sourceName, category: c.category, type: 'document' }); });
-    this.engine.strategies.forEach(s => { if (!s.isUserCreated && s.sourceName && !docs.some(d => d.name === s.sourceName)) docs.push({ name: s.sourceName, category: s.category, type: 'document' }); });
+    this.engine.concepts.forEach(c => { if (!c.isBuiltIn && c.sourceName && !docs.some(d => d.name === c.sourceName)) docs.push({ name: c.sourceName, category: c.category, type: 'document' }); });
+    this.engine.strategies.forEach(s => { if (!s.isUserCreated && !s.isBuiltIn && s.sourceName && !docs.some(d => d.name === s.sourceName)) docs.push({ name: s.sourceName, category: s.category, type: 'document' }); });
     const uniqueDocs = [...new Map(docs.map(d => [d.name, d])).values()];
 
     const folders = {};
@@ -1471,7 +1480,7 @@ class UIRenderer {
           <div class="flex-between"><h4 style="font-size:0.95rem;color:var(--accent);">${this._esc(c.name)}</h4>
           <span class="tag ${c.type === 'chart_pattern' ? 'tag-green' : c.type === 'indicator' ? 'tag-cyan' : 'tag-purple'}">${this._esc(c.category)}</span></div>
           <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:8px;line-height:1.5;">${this._esc(c.description.slice(0, 150))}${c.description.length > 150 ? '...' : ''}</p>
-          <p style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">Source: ${this._esc(c.sourceName)}</p>
+          <p style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">Source: ${this._sourceLink(c)}</p>
           ${c.rules?.length ? `<div style="margin-top:8px;"><strong style="font-size:0.72rem;color:var(--text-muted);">Rules (${c.rules.length}):</strong><ul style="padding-left:14px;font-size:0.75rem;color:var(--text-secondary);margin-top:4px;">${c.rules.slice(0,2).map(r => `<li>${this._esc(r.slice(0,80))}</li>`).join('')}</ul></div>` : ''}
         </div>`).join('');
     };
@@ -1495,7 +1504,7 @@ class UIRenderer {
     list.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><h3 style="font-size:0.95rem;">Strategies (${strategies.length})</h3></div>` +
       strategies.map(s => `
         <div class="strategy-card ${this.currentStrategy?.id === s.id ? 'active' : ''}" data-id="${s.id}">
-          <div class="flex-between"><h4>${this._esc(s.name)} ${s.isUserCreated ? '<span class="tag tag-yellow">Custom</span>' : '<span class="tag tag-blue">Extracted</span>'}</h4></div>
+          <div class="flex-between"><h4>${this._esc(s.name)} ${this._originTag(s)}</h4></div>
           <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">${this._esc(s.category)}</p>
           <p style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;">${s.conditions.length} conditions</p>
           ${s.isUserCreated ? `<button class="btn-danger btn-small" style="margin-top:6px;" onclick="app.deleteStrat('${s.id}')">Delete</button>` : ''}
@@ -1514,7 +1523,7 @@ class UIRenderer {
     const detail = document.getElementById('strategy-detail');
     if (!strategy) { detail.innerHTML = ''; return; }
     detail.innerHTML = `
-      <h3 style="font-size:1.1rem;margin-bottom:12px;">${this._esc(strategy.name)} ${strategy.isUserCreated ? '<span class="tag tag-yellow">Custom</span>' : '<span class="tag tag-blue">Extracted</span>'}</h3>
+      <h3 style="font-size:1.1rem;margin-bottom:12px;">${this._esc(strategy.name)} ${this._originTag(strategy)}</h3>
       <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Category: ${this._esc(strategy.category)} | Source: ${this._esc(strategy.sourceName)}</p>
       <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Description</h4>
       <p style="font-size:0.85rem;color:var(--text-secondary);line-height:1.6;">${this._esc(strategy.description?.slice(0,300) || 'No description.')}</p>
@@ -1526,6 +1535,8 @@ class UIRenderer {
       <p style="font-size:0.85rem;color:var(--text-secondary);">${this._esc(strategy.stopLoss)}</p>
       <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Target</h4>
       <p style="font-size:0.85rem;color:var(--text-secondary);">${this._esc(strategy.target)}</p>
+      ${strategy.timeframe ? `<h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Timeframe</h4>
+      <p style="font-size:0.85rem;color:var(--text-secondary);">${this._esc(strategy.timeframe)}</p>` : ''}
       <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Invalidation</h4>
       <p style="font-size:0.85rem;color:var(--text-secondary);">${this._esc(strategy.invalidation)}</p>
       <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Preferred Conditions</h4>
@@ -1533,7 +1544,8 @@ class UIRenderer {
       <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Avoid When</h4>
       <p style="font-size:0.85rem;color:var(--text-secondary);">${this._esc(strategy.avoidWhen)}</p>
       <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Citations</h4>
-      <div class="citation">&#x1F4D6; ${this._esc(strategy.sourceName)}</div>
+      <div class="citation">&#x1F4D6; ${this._sourceLink(strategy)}</div>
+      <button class="btn-primary btn-small" style="margin-top:12px;" onclick="app.useStrategy('${strategy.id}')">Screen stocks with this strategy</button>
     `;
   }
 
@@ -1720,7 +1732,7 @@ class UIRenderer {
       html += this._renderSection('Strategy Match', `
         <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">Strategy: <strong>${this._esc(result.strategy?.name)}</strong></p>
         <div style="margin-bottom:8px;font-size:0.9rem;">${sm.conditions.map(c =>
-          `<div class="condition-row"><span class="${c.cls}">${c.symbol}</span> ${this._esc(c.condition)}${c.unknown ? ' <span style="color:var(--text-muted);font-size:0.78rem;">(check manually)</span>' : ''}</div>`
+          `<div class="condition-row"><span class="${c.cls}">${c.symbol}</span> ${this._esc(c.condition)}${c.unknown ? ' <span style="color:var(--text-muted);font-size:0.78rem;">(check manually)</span>' : ` <span class="cond-detail">${this._esc(c.detail)}</span>`}</div>`
         ).join('')}</div>
         <p style="margin-top:12px;font-size:0.88rem;"><strong>Match:</strong> ${sm.met}/${sm.total} checkable conditions (${sm.percentage}%)${sm.unchecked ? `, ${sm.unchecked} to check manually` : ''} — <span class="${sm.percentage >= 80 ? 'text-green' : sm.percentage >= 50 ? 'text-yellow' : 'text-red'}">${sm.status}</span></p>
         <div class="progress-bar mt-1"><div class="progress-fill" style="width:${sm.percentage}%;background:${sm.percentage >= 80 ? 'var(--green)' : sm.percentage >= 50 ? 'var(--yellow)' : 'var(--red)'};"></div></div>
@@ -2109,7 +2121,7 @@ class UIRenderer {
       </div>
       <p style="color:var(--text-secondary);font-size:0.85rem;line-height:1.6;">${this._esc(concept.description?.slice(0, 400) || 'No detailed description available.')}</p>
       <p style="font-size:0.78rem;color:var(--text-muted);margin-top:8px;">Category: ${this._esc(concept.category)}</p>
-      <div class="citation">&#x1F4D6; Source: ${this._esc(concept.sourceName)}</div>`;
+      <div class="citation">&#x1F4D6; Source: ${this._sourceLink(concept)}</div>`;
     if (graph?.related?.length) {
       html += '<div class="theory-relations"><p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:6px;">Related Concepts:</p>';
       for (const rel of graph.related) html += `<span class="theory-concept" style="margin:2px;">${this._esc(rel)}</span>`;
@@ -2259,6 +2271,13 @@ class App {
     this.ui._renderUploadZone();
     this.ui._renderFolderTree();
     this.ui._toast('Document deleted', 'success');
+  }
+
+  // Jump to the screener with a strategy preselected
+  async useStrategy(id) {
+    await this._navigateTo('screener');
+    const sel = document.getElementById('screener-strategy');
+    if (sel) sel.value = id;
   }
 
   deleteStrat(id) {

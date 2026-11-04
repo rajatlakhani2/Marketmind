@@ -18,8 +18,9 @@ Runs entirely in the browser (plain HTML, CSS and JavaScript). A tiny proxy fetc
   - Position sizing from account size and risk % per trade
   - Candlestick chart with zones and plan levels drawn on it
 - **Technical indicators** — RSI (14), MACD, 20 EMA, 50 / 200 MA, swing support and resistance
-- **Knowledge library** — upload PDFs, text or images; concepts, chart patterns, indicators and strategy rules are extracted and tagged
-- **Strategies and screener** — strategies extracted from your documents or built in the strategy builder, checked against live data across 45 large-cap NSE stocks. Conditions the app can't check from price data are marked "check manually" instead of being guessed.
+- **Built-in library** — 29 concepts and 10 ready-to-use strategies (KS-001 zones, RSI(2), Moving Momentum, Golden Cross, 50-DMA pullback, Bollinger squeeze, NR7, engulfing at support, RSI bull-range), written in MarketMind's own words from Zerodha Varsity, StockCharts ChartSchool and other public sources. Each item links to its source.
+- **Your own knowledge** — upload PDFs, text or images; concepts, chart patterns, indicators and strategy rules are extracted and tagged
+- **Strategies and screener** — library, extracted or custom strategies checked against live data across 45 large-cap NSE stocks, showing the reading behind each ✓/✗. The condition engine understands plain English such as "Price above rising 20 EMA", "RSI(2) below 10", "20-day SMA above 150-day SMA", "Stochastic below 20 in the last 10 days", "MACD histogram turned positive", "Bollinger squeeze", "NR7 on the previous candle", "Bullish engulfing on the last candle", "Volume above 10-day average" and "Qualifying demand zone within 3% below price". Anything it can't check from price data is marked "check manually" instead of being guessed.
 
 ## KS-001 rules used
 
@@ -86,8 +87,10 @@ Breeze is free for ICICI Direct customers. It needs PHP hosting (your cPanel), s
 ├── index.html            # App shell, styles, knowledge engine, UI
 ├── assets/               # Copied as-is into the build
 │   ├── js/
-│   │   ├── marketdata.js # Data fetching, indicators, simulated fallback
-│   │   └── ks001.js      # KS-001 zone detection, scoring, trade plan, sizing
+│   │   ├── marketdata.js # Data fetching (ICICI, Yahoo), indicators, simulated fallback
+│   │   ├── ks001.js      # KS-001 zones, scoring, trade plan, sizing, price outlook
+│   │   ├── conditions.js # Plain-English strategy condition checker
+│   │   └── library.js    # Built-in concepts and strategies with source links
 │   └── api/
 │       ├── chart.php     # Yahoo Finance proxy for hosting
 │       ├── breeze.php    # ICICI Direct Breeze connector (login, candles, quotes)
