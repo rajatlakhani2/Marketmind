@@ -293,12 +293,27 @@ textarea { font-family: inherit; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+/* Phone / small tablet: sidebar becomes a top bar with scrollable tabs; panels stack */
 @media (max-width: 768px) {
-  #sidebar { width: 60px; min-width: 60px; }
-  .logo, .logo-subtitle, .nav-links li a span:not(.nav-icon) { display: none; }
-  .nav-links li a { justify-content: center; padding: 12px; }
-  .knowledge-layout, .analyze-container { flex-direction: column; }
-  .knowledge-sidebar, .analyze-sidebar, .strategies-list { width: 100%; min-width: 0; }
+  #app { flex-direction: column; height: auto; min-height: 100%; }
+  #sidebar { width: 100%; min-width: 0; height: auto; border-right: none; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; overflow: visible; }
+  .sidebar-header { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px 6px; border-bottom: none; }
+  .logo-subtitle { display: none; }
+  .nav-links { display: flex; overflow-x: auto; padding: 0 8px 8px; gap: 4px; scrollbar-width: none; }
+  .nav-links::-webkit-scrollbar { display: none; }
+  .nav-links li a { white-space: nowrap; padding: 7px 12px; border-radius: 16px; font-size: 0.82rem; border-left: none !important; }
+  .nav-links li a.active { background: var(--accent); color: #fff; }
+  .sidebar-footer { padding: 6px 16px 8px; border-top: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .sidebar-footer > p { display: none; }
+  .broker-status { margin: 0; }
+  .broker-status br { display: none; }
+  #main-content { overflow: visible; padding: 16px; min-width: 0; }
+  .knowledge-layout, .analyze-container, .strategies-container { flex-direction: column; height: auto; }
+  .knowledge-sidebar, .analyze-sidebar, .strategies-list { width: 100%; min-width: 0; max-height: none; }
+  .analyze-results, .knowledge-main, .strategy-detail { min-width: 0; overflow: visible; }
+  .tech-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page-header h2 { font-size: 1.2rem; }
+  .screener-table { display: block; overflow-x: auto; }
 }
 /* ===== KS-001 / live data ===== */
 .data-warning { background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.5); color: var(--yellow); padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 14px; line-height: 1.5; }
@@ -1792,7 +1807,11 @@ class UIRenderer {
   _renderLean(o) {
     const cls = o.lean === 'Up' ? 'text-green' : o.lean === 'Down' ? 'text-red' : 'text-yellow';
     const f = v => (v != null && isFinite(v) ? '₹' + Number(v).toFixed(2) : '');
-    const where = o.firstTarget ? ` — more likely to test ${f(o.firstTarget.price)} first` : ' — no clear edge; expect movement within the range';
+    const where = o.firstTarget
+      ? ` — more likely to test ${f(o.firstTarget.price)} first`
+      : o.lean === 'Up' ? ' — no supply zone mapped above yet, so no first target'
+      : o.lean === 'Down' ? ' — no demand zone mapped below yet, so no first target'
+      : ' — no clear edge; expect movement within the range';
     return `<p class="outlook-lean">Lean: <strong class="${cls}">${o.lean}</strong>${where}</p>
       <div class="outlook-factors">${o.factors.map(x => `<div><span class="${x.score > 0 ? 'text-green' : x.score < 0 ? 'text-red' : ''}">${x.score > 0 ? '+' + x.score : x.score}</span> ${this._esc(x.label)}</div>`).join('')}</div>`;
   }
