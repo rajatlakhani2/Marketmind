@@ -206,6 +206,7 @@
     try { json = JSON.parse(text); } catch { throw Object.assign(new Error(resp.ok ? 'Data proxy returned non-JSON (is PHP enabled on the host?)' : `Data proxy error ${resp.status}`), { status: resp.status }); }
     if (!resp.ok || (json && json.error && !json.chart)) {
       if (json && json.needsLogin && breezeState) breezeState.loggedIn = false;
+      if (json && json.authRequired) window.dispatchEvent(new CustomEvent('mm:auth-required'));
       throw Object.assign(new Error((json && json.error) || `HTTP ${resp.status}`), { status: resp.status, needsLogin: !!(json && json.needsLogin) });
     }
     return json;

@@ -204,6 +204,24 @@ foreach (array_merge($_GET, $_POST) as $k => $v) {
 }
 if ($incoming !== null) $action = 'callback';
 
+// Only signed-in MarketMind users may use the connector.
+require __DIR__ . '/lib/bootstrap.php';
+if ($action === 'callback' && !mm_current_user()) {
+    header('Content-Type: text/html; charset=utf-8');
+    $code = preg_match('/^[A-Za-z0-9]{4,64}$/', (string) $incoming) ? (string) $incoming : '';
+    if ($code !== '' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+        // ICICI posted back from its own site, so the browser held back our sign-in cookie.
+        // Reload this page from our own site, which sends the cookie.
+        $next = 'breeze.php?apisession=' . rawurlencode($code);
+        echo '<!doctype html><meta charset="utf-8"><title>Connecting…</title><p>Connecting to ICICI…</p><script>location.replace(' . json_encode($next) . ');</script>';
+        exit;
+    }
+    echo '<!doctype html><meta charset="utf-8"><title>Sign in first</title><p>Sign in to MarketMind first, then click <b>Paste code</b> in the sidebar'
+        . ($code !== '' ? ' and paste: <code>' . htmlspecialchars($code) . '</code>' : '') . '.</p><p><a href="../index.html">Open MarketMind</a></p>';
+    exit;
+}
+mm_require_user();
+
 if ($action === 'status') {
     $s = $cfg ? current_session() : null;
     json_out(200, ['configured' => (bool) $cfg, 'loggedIn' => (bool) $s, 'loginDate' => $s['date'] ?? null]);

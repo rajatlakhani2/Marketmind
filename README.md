@@ -59,7 +59,23 @@ npm run build
 
 Upload everything inside `dist/` to a folder on your host (for example `public_html/marketmind/`). The build includes `api/chart.php`, which fetches market data on the server. The host needs PHP 7.4+ with cURL (or `allow_url_fopen`), which standard cPanel hosting has.
 
-If the site is hosted somewhere without PHP, the app still works but shows simulated data.
+## Database and sign-in (MySQL)
+
+On the hosted site everyone signs in. The first account is the **admin**, who can add, switch off, reset or delete other users. Each user's account size, risk % and methodology follow them to any device.
+
+**One-time setup**
+1. cPanel → **MySQL Databases**: create a database (e.g. `myacct_marketmind`) and a user, then add the user to the database with **All privileges**.
+2. Copy `api/marketmind-config.sample.php` to `marketmind-config.php` in the folder **above** `public_html` (next to `breeze-config.php`). Fill in the database name, user and password, and choose a long `setup_key`.
+3. Open the app. It creates its tables automatically and shows **Create the admin account**. Enter the `setup_key`, your username and password.
+4. Add other people from **Users** in the sidebar. They sign in with the temporary password you give them and must choose their own right away.
+
+**Security notes**
+- Passwords are stored as one-way hashes. Sign-in cookies are HTTP-only and expire after 30 days (or when the browser closes if "Keep me signed in" is off).
+- 8 wrong passwords for one username (or 20 from one network) lock sign-in for 15 minutes.
+- The market-data proxies (`chart.php`, `breeze.php`) only answer signed-in users, so nobody else can use your ICICI session.
+- Everyone shares the admin's daily ICICI session.
+
+With `npm run dev` there is no PHP, so the app runs in **local dev mode** without sign-in.
 
 ## Connecting ICICI Direct (Breeze API)
 
@@ -92,8 +108,13 @@ Breeze is free for ICICI Direct customers. It needs PHP hosting (your cPanel), s
 │   │   ├── ks001.js      # KS-001 zones, scoring, trade plan, sizing, price outlook
 │   │   ├── conditions.js # Plain-English strategy condition checker
 │   │   ├── library.js    # Built-in concepts and strategies with source links
-│   │   └── consensus.js  # All-strategy verdict: per-strategy levels + combined conclusion
+│   │   ├── consensus.js  # All-strategy verdict: per-strategy levels + combined conclusion
+│   │   └── account.js    # Sign-in screens, admin Users panel, per-user settings sync
 │   └── api/
+│       ├── lib/bootstrap.php  # Config, MySQL connection, automatic table setup, sign-in sessions
+│       ├── auth.php      # Sign-in, first-time admin setup, password change, user settings
+│       ├── users.php     # Admin-only user management
+│       ├── marketmind-config.sample.php
 │       ├── chart.php     # Yahoo Finance proxy for hosting
 │       ├── breeze.php    # ICICI Direct Breeze connector (login, candles, quotes)
 │       └── breeze-config.sample.php
@@ -101,7 +122,7 @@ Breeze is free for ICICI Direct customers. It needs PHP hosting (your cPanel), s
 └── package.json
 ```
 
-Data you add (documents, concepts, strategies) is stored in your browser (IndexedDB), not on a server.
+Uploaded documents and extracted concepts/strategies are still stored in the browser (IndexedDB); they move to MySQL in a later update.
 
 ## Disclaimer
 

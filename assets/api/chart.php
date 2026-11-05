@@ -7,6 +7,9 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
+require __DIR__ . '/lib/bootstrap.php';
+mm_require_user(); // signed-in MarketMind users only
+
 function fail($code, $msg) {
     http_response_code($code);
     echo json_encode(['error' => $msg]);

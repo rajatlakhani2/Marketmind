@@ -34,3 +34,7 @@ npm-debug.log*
 breeze-config.php
 .breeze-session.php
 .breeze-cache/
+
+# MarketMind server settings and local test data
+marketmind-config.php
+*.sqlite
