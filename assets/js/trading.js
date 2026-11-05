@@ -74,6 +74,9 @@
     const md = res.marketData, c = res.consensus && res.consensus.conclusion;
     if (!md.live || !c || c.tone !== 'long') return null;
     if (product === 'mis' && c.verdict !== 'Buy') return null;              // intraday: only when price is in the zone now
+    // Only strong setups: 2+ strategies agree and the gain is at least 1.5× the risk
+    if (c.agree < 2 || !(c.rr >= 1.5)) return null;
+    if (product === 'cnc' && res.ks001 && res.ks001.trends.htf.trend === 'Bearish') return null;  // no delivery buys against a falling monthly trend
     const entry = c.verdict === 'Buy' ? Math.min(md.price, c.buyHigh || md.price) : c.buyHigh;
     if (!(entry > 0) || c.stop == null || c.sell1 == null) return null;
     const qty = stockQty(st.settings, entry, c.stop);
@@ -95,6 +98,7 @@
     const res = await root.app.analysis.analyzeStock(w.symbol, '__all', '1d', null, {});
     const c = res.consensus && res.consensus.conclusion;
     if (!res.marketData.live || !c || (c.tone !== 'long' && c.tone !== 'short') || (c.tone === 'long' && c.verdict !== 'Buy')) return null;
+    if (c.agree < 2) return null;  // only when 2+ strategies agree
     const right = c.tone === 'long' ? 'call' : 'put';
     const expiry = u.options.find(d => (Date.parse(d + 'T10:00:00Z') - Date.now()) / 864e5 >= 5);
     if (!expiry) return null;

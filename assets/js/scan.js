@@ -48,16 +48,21 @@
     return { md, ks, cs };
   }
 
+  // A buy counts as strong only with 2+ strategies agreeing, gain at least 1.5× the risk,
+  // and the monthly trend not falling. Applied when showing, so older scans regroup too.
+  function categorize(r) {
+    if (r.verdict === 'Buy') return r.agree >= 2 && r.rr >= 1.5 && r.trend[0] !== 'Bearish' ? 'buy' : 'weak';
+    if (r.tone === 'short') return 'avoid';
+    if (r.verdict === 'Buy on dip') return r.dist != null && r.dist <= 3 ? 'near' : 'dip';
+    return 'wait';
+  }
+
   function rowFrom(symbol, name, v) {
     const { md, ks, cs } = v, c = cs.conclusion;
     const buy = c.buyHigh != null ? c.buyHigh : null;
     const dist = buy && md.price ? (md.price - buy) / md.price * 100 : null;   // how far price must fall to reach the buy zone
-    const cat = c.verdict === 'Buy' ? 'buy'
-      : c.tone === 'short' ? 'avoid'
-      : c.verdict === 'Buy on dip' ? (dist != null && dist <= 3 ? 'near' : 'dip')
-      : 'wait';
     return {
-      symbol, name: name || md.name, price: md.price, change: md.changePercent, verdict: c.verdict, tone: c.tone, cat,
+      symbol, name: name || md.name, price: md.price, change: md.changePercent, verdict: c.verdict, tone: c.tone,
       agree: c.agree, of: c.of, buyLow: c.buyLow, buyHigh: c.buyHigh, stop: c.stop, target: c.sell1 ?? c.coverAt ?? null, sellAt: c.sellAt ?? null,
       rr: c.rr != null && isFinite(c.rr) ? +c.rr.toFixed(2) : null, dist: dist != null ? +dist.toFixed(2) : null,
       setting: (c.settingUp || []).length,
@@ -65,6 +70,7 @@
       demandBelow: (ks.nearestDemand || []).filter(z => z.proximal < md.price).map(z => z.distal)[0] ?? null,
     };
   }
+  const withCat = r => ({ ...r, cat: categorize(r) });
 
   // ---------- results calendar (for "results soon" flags) ----------
   let calendar = null;
@@ -103,7 +109,7 @@
     const worker = async () => {
       while (queue.length && !scan.cancel) {
         const s = queue.shift();
-        try { rows.push(rowFrom(s.symbol, s.name, await verdict(s.symbol))); }
+        try { rows.push(withCat(rowFrom(s.symbol, s.name, await verdict(s.symbol)))); }
         catch (e) { failed.push(s.symbol); }
         scan.done++;
         onProgress && onProgress();
@@ -114,7 +120,7 @@
       if (!scan.cancel && rows.length) {
         await getJSON('api/scan.php?action=save', { date: istDate(), rows });
         scan.rows = rows; scan.date = istDate(); scan.at = new Date().toISOString();
-        toast(`Scan finished: ${rows.filter(r => r.cat === 'buy').length} buy now, ${rows.filter(r => r.cat === 'near').length} near a buy${failed.length ? ` (${failed.length} stocks had no data)` : ''}.`, 'success');
+        toast(`Scan finished: ${rows.filter(r => r.cat === 'buy').length} strong buys, ${rows.filter(r => r.cat === 'near').length} near a buy${failed.length ? ` (${failed.length} stocks had no data)` : ''}.`, 'success');
       }
     } finally {
       scan.running = false;
@@ -124,7 +130,7 @@
 
   async function loadLatest() {
     const j = await getJSON('api/scan.php?action=latest');
-    scan.rows = j.rows; scan.date = j.date; scan.at = j.at;
+    scan.rows = j.rows.map(withCat); scan.date = j.date; scan.at = j.at;
   }
 
   // After 3:40 pm on a trading day, the admin's open MarketMind runs today's scan once
@@ -150,7 +156,8 @@
   // ---------- Opportunities page ----------
   const oppState = { tab: 'buy', filter: '' };
   const CAT = {
-    buy: ['Buy now', 'Price is inside a buy zone and strategies agree.'],
+    buy: ['Strong buy', 'In a buy zone now, 2+ strategies agree, gain at least 1.5× the risk, monthly trend not falling.'],
+    weak: ['Weak buy', 'In a buy zone, but only one strategy agrees, the gain is small for the risk, or the monthly trend is falling.'],
     near: ['Near a buy', 'A buy zone is within 3% below the price: set a limit order or watch it.'],
     dip: ['Buy on dip', 'Bullish, but the buy zone is more than 3% below.'],
     avoid: ['Avoid / sell', 'Strategies point down: avoid buying; holders may consider selling.'],
@@ -173,7 +180,7 @@
     const cal = calendar || {};
     const f = oppState.filter.toLowerCase();
     const list = rows.filter(r => r.cat === oppState.tab && (!f || (r.symbol + ' ' + r.name).toLowerCase().includes(f)));
-    const sorters = { buy: (a, b) => (b.rr || 0) - (a.rr || 0), near: (a, b) => a.dist - b.dist, dip: (a, b) => a.dist - b.dist, avoid: (a, b) => b.agree - a.agree, wait: (a, b) => b.setting - a.setting };
+    const sorters = { buy: (a, b) => b.agree - a.agree || (b.rr || 0) - (a.rr || 0), weak: (a, b) => b.agree - a.agree || (b.rr || 0) - (a.rr || 0), near: (a, b) => a.dist - b.dist, dip: (a, b) => a.dist - b.dist, avoid: (a, b) => b.agree - a.agree, wait: (a, b) => b.setting - a.setting };
     list.sort(sorters[oppState.tab]);
     const counts = Object.fromEntries(Object.keys(CAT).map(k => [k, rows.filter(r => r.cat === k).length]));
     const head = scan.running
