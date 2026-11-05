@@ -3,7 +3,7 @@
 // api/*: never cached — market data, sign-in and MindGuru always come live from the server.
 // Fonts and the PDF library from CDNs: cached after first use.
 
-const VERSION = 'mm-v3';
+const VERSION = 'mm-v4';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './js/marketdata.js', './js/ks001.js', './js/conditions.js', './js/library.js', './js/consensus.js',

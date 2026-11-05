@@ -318,6 +318,12 @@
     }
   }
 
-  const MarketData = { TF_REQUEST, BREEZE_TF, toYahooSymbol, parseYahooChart, aggregateCandles, aggregateByPeriod, emaSeries, sma, rsi, macd, buildMarketData, simulatedCandles, fetchCandles, fetchBreezeCandles, breezeStatus, getQuote, getMarketData };
+  // Recompute support/resistance for a new price (e.g. the live ICICI LTP).
+  function levelsAround(candles, price) {
+    const sr = supportResistance((candles || []).slice(-150), price);
+    return { support: sr.support.map(r2), resistance: sr.resistance.map(r2) };
+  }
+
+  const MarketData = { TF_REQUEST, BREEZE_TF, toYahooSymbol, parseYahooChart, aggregateCandles, aggregateByPeriod, emaSeries, sma, rsi, macd, buildMarketData, levelsAround, simulatedCandles, fetchCandles, fetchBreezeCandles, breezeStatus, getQuote, getMarketData };
   root.MarketData = MarketData;
 })(typeof window !== 'undefined' ? window : globalThis);

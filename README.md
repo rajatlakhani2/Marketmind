@@ -89,6 +89,16 @@ php /home/YOURACCOUNT/public_html/marketmind/api/cron.php
 
 It judges every projection whose day has passed, updates MindGuru, and refreshes the stock list weekly.
 
+**Weekly backup (optional but recommended)**
+
+Add a second cron job, once a week (e.g. Sunday night):
+
+```
+php /home/YOURACCOUNT/public_html/marketmind/api/backup.php
+```
+
+It saves a gzipped SQL dump of the database to `marketmind-backups/` in your home folder (above `public_html`, never reachable from the web) and keeps the newest 8. It reads the database login from `marketmind-config.php`, so no password goes in the cron command. To restore, import the `.sql.gz` file in phpMyAdmin.
+
 **Installing on your phone**
 Open the site in Chrome (Android) and tap **Install app** in the menu, or in Safari (iPhone) tap Share → **Add to Home Screen**. The site must be on `https://`.
 
@@ -143,6 +153,7 @@ Breeze is free for ICICI Direct customers. It needs PHP hosting (your cPanel), s
 │       ├── stocks.php    # NSE + BSE stock search and list refresh
 │       ├── mindguru.php  # Record projections, learn from outcomes, MindGuru report
 │       ├── cron.php      # Daily job (command line only)
+│       ├── backup.php    # Weekly database backup (command line only)
 │       ├── lib/stocks.php     # Stock list download and search
 │       ├── lib/mindguru.php   # Outcome judging rules and learned weights
 │       ├── marketmind-config.sample.php

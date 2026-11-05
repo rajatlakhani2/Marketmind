@@ -375,6 +375,30 @@ textarea { font-family: inherit; }
 .s-conds { list-style: none; font-size: 0.8rem; padding-bottom: 10px; line-height: 1.8; }
 .muted { color: var(--text-muted); font-weight: 400; font-size: 0.78rem; } .muted-lock { color: var(--yellow); font-size: 0.8rem; font-weight: 500; }
 @media (max-width: 560px) { .v-tiles { grid-template-columns: 1fr; } }
+/* "In plain words" summary at the top of an analysis */
+.plain-summary { background: var(--bg-card); border: 1px solid var(--border); border-left: 5px solid var(--yellow); border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+.plain-summary.ps-long { border-left-color: var(--green); }
+.plain-summary.ps-short { border-left-color: var(--red); }
+.ps-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.ps-headline { font-size: 1.12rem; font-weight: 700; line-height: 1.45; margin: 4px 0 10px; color: var(--text-primary); }
+.plain-summary ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; line-height: 1.55; color: var(--text-primary); }
+.plain-summary b { font-variant-numeric: tabular-nums; }
+.ps-foot { font-size: 0.76rem; color: var(--text-muted); margin-top: 10px; }
+/* Collapsed supporting detail */
+.analysis-more { margin-top: 4px; }
+.analysis-more > summary, .s-all > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.analysis-more > summary::-webkit-details-marker, .s-all > summary::-webkit-details-marker { display: none; }
+.analysis-more > summary { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; font-weight: 600; color: var(--accent); }
+.analysis-more > summary::before, .s-all > summary::before { content: '▸'; color: var(--accent); transition: transform 0.15s; }
+.analysis-more[open] > summary::before, .s-all[open] > summary::before { transform: rotate(90deg); }
+.analysis-more > summary:focus-visible, .s-all > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.s-all { margin-top: 14px; }
+.s-all > summary { font-size: 0.9rem; font-weight: 600; padding: 8px 0; }
+/* ICICI reminder banner */
+.icici-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; background: #fdf4e3; border: 1px solid #e8c98c; color: #6e4604; border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.86rem; line-height: 1.5; }
+.icici-banner-text { flex: 1; min-width: 220px; }
+.icici-banner .btn-broker { display: inline-block; padding: 6px 12px; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; text-decoration: none; }
+.icici-banner-close { background: none; border: none; color: #6e4604; text-decoration: underline; cursor: pointer; font: inherit; padding: 4px; }
 .broker-status { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.7; }
 .broker-status a { font-size: 0.72rem; margin-left: 4px; }
 .broker-status .btn-broker { display: inline-block; margin: 4px 0 0; padding: 4px 10px; border-radius: 6px; background: var(--accent); color: #fff; }
@@ -583,6 +607,7 @@ body.auth-open #app { visibility: hidden; }
       <div class="sidebar-footer"><div id="account-menu" class="account-menu"></div><div id="broker-status" class="broker-status"></div><button id="install-app" class="btn-secondary install-btn hidden">Install app</button><p>MarketMind AI v2.0</p></div>
     </nav>
     <main id="main-content">
+      <div id="icici-banner" class="icici-banner hidden" role="status"></div>
       <div id="page-dashboard" class="page active">
         <header class="page-header"><h2>Dashboard</h2></header>
         <div class="dashboard-grid" id="dashboard-grid"></div>
@@ -1339,6 +1364,8 @@ class AnalysisEngine {
           const q = await MarketData.getQuote(symbol);
           if (q && q.ltp) {
             marketData.price = q.ltp;
+            // Support must sit below and resistance above the live price, so recompute them
+            Object.assign(marketData, MarketData.levelsAround(marketData.priceHistory, q.ltp));
             if (q.changePct != null) marketData.changePercent = q.changePct;
             if (q.volume != null && timeframe === '1d') marketData.volume = q.volume;
             marketData.quote = q;
@@ -1931,8 +1958,11 @@ class UIRenderer {
     if (!live) {
       html += `<div class="data-warning">&#x26A0;&#xFE0F; <strong>Simulated data.</strong> Live prices couldn't be loaded (${this._esc(md.liveError || 'unknown error')}). Everything below is generated for demo purposes — do not trade on it.</div>`;
     }
+    if (result.consensus && live) html += this._renderPlainSummary(result);
     if (result.consensus) html += this._renderConsensus(result.consensus, md);
     html += this._renderOutlook(result);
+    // Everything below is supporting detail: collapsed so the answer stays on top
+    html += `<details class="analysis-more"${result.consensus ? '' : ' open'}><summary><span>Full details</span><span class="muted">indicators, KS-001 plan, zones, library notes</span></summary>`;
     const _srcBadge = live ? `<span class="tag tag-green">Live — ${this._esc(md.source)}</span>` : '<span class="tag tag-yellow">Simulated</span>';
     const money = v => (v != null && isFinite(v) ? '₹' + Number(v).toFixed(2) : 'N/A');
     const num = v => (v != null && isFinite(v) ? Number(v).toFixed(2) : 'N/A');
@@ -1999,6 +2029,7 @@ class UIRenderer {
     html += this._renderSection('Risks & Invalidations', result.risks.map(r =>
       `<div class="condition-row"><span class="condition-warn">&#x25CF;</span> <strong>${r.level}:</strong> ${this._esc(r.text)}</div>`).join(''));
     html += this._renderSection('Conclusion', `<p style="font-size:0.88rem;color:var(--text-primary);line-height:1.7;">${this._esc(result.conclusion)}</p>`);
+    html += '</details>';
     container.innerHTML = html;
     this._startPressure(result);
   }
@@ -2009,6 +2040,56 @@ class UIRenderer {
 
   _techItem(label, value, cls) {
     return `<div class="tech-item"><div class="label">${label}</div><div class="value ${cls || ''}">${value}</div></div>`;
+  }
+
+  // --- "In plain words": the whole result in four or five sentences ---
+  _renderPlainSummary(result) {
+    const md = result.marketData, ks = result.ks001, c = result.consensus.conclusion;
+    const f = v => (v != null && isFinite(v) ? '₹' + Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null);
+    const price = md.price;
+    const o = ks ? KS001.outlook({ ks, price, support: md.support, resistance: md.resistance }) : null;
+    const buy = c.buyLow == null ? null : c.buyLow === c.buyHigh ? f(c.buyLow) : `${f(c.buyLow)} – ${f(c.buyHigh)}`;
+
+    let headline, tone = c.tone;
+    if (c.verdict === 'Buy') headline = `Buy: ${f(price)} is inside the buying zone right now.`;
+    else if (c.verdict === 'Buy on dip') headline = `Don't buy at today's price. Buy only if it dips to ${buy}.`;
+    else if (c.tone === 'short') headline = `Avoid buying. If you already hold it, consider selling near ${f(c.sellAt)}.`;
+    else headline = `Wait: there is no good buy at ${f(price)} today.`;
+
+    const lines = [];
+    if (o && o.floor && o.ceiling) {
+      lines.push(`It is likely to move between <b>${f(o.floor.price)}</b> and <b>${f(o.ceiling.price)}</b> for now (${o.upsidePct.toFixed(1)}% room up, ${o.downsidePct.toFixed(1)}% room down).`);
+    }
+    if (c.tone === 'short') {
+      if (c.stop != null) lines.push(`This view is wrong if it closes above <b>${f(c.stop)}</b>. Downside target: <b>${f(c.coverAt)}</b>.`);
+    } else {
+      const parts = [];
+      if (buy) parts.push(`${c.tone === 'long' ? 'Buy' : 'Watch for a buy'} near <b>${buy}</b>`);
+      if (c.stop != null) parts.push(`stop-loss <b>${f(c.stop)}</b>`);
+      if (c.sell1 != null) parts.push(`take profit near <b>${f(c.sell1)}</b>`);
+      if (parts.length) lines.push(parts.join(', ') + '.');
+      if (c.rr != null && isFinite(c.rr) && c.rr < 2) {
+        lines.push(`At those levels the possible gain is only ${c.rr.toFixed(1)}× the possible loss, below the 2× MarketMind looks for.`);
+      }
+    }
+    if (ks && ks.trends) {
+      const word = t => (t === 'Bullish' ? '<span class="text-green">up</span>' : t === 'Bearish' ? '<span class="text-red">down</span>' : '<span class="text-yellow">sideways</span>');
+      const name = tf => ({ '5m': '5-minute', '15m': '15-minute', '30m': '30-minute', '1h': 'hourly', '4h': '4-hour', '1d': 'daily', '1w': 'weekly', '1mo': 'monthly' }[tf] || tf);
+      const t = ks.trends;
+      lines.push(`Trend: big picture (${name(t.htf.tf)}) ${word(t.htf.trend)} · medium (${name(t.itf.tf)}) ${word(t.itf.trend)} · short term (${name(t.ltf.tf)}) ${word(t.ltf.trend)}.`);
+    }
+    if (c.tone === 'neutral' && c.agree === 0) {
+      const setting = (c.settingUp || []).length;
+      lines.push(`None of the ${c.of} strategies gives a clean signal${setting ? `; ${setting} ${setting === 1 ? 'is' : 'are'} getting close, so check again in a few days` : ''}.`);
+    } else if (c.agree) {
+      lines.push(`${c.agree} of ${c.of} strategies agree with this.`);
+    }
+    return `<div class="plain-summary ps-${tone}">
+      <div class="ps-label">In plain words</div>
+      <p class="ps-headline">${headline}</p>
+      <ul>${lines.map(l => `<li>${l}</li>`).join('')}</ul>
+      <p class="ps-foot">The boxes below show how MarketMind got here. Not a recommendation: check the chart and your own plan.</p>
+    </div>`;
   }
 
   // --- All-strategy verdict: buy / sell / stop levels from every strategy ---
@@ -2034,6 +2115,7 @@ class UIRenderer {
       ? `<p class="v-note">Position size at your risk setting: <strong>${c.sizing.qty.toLocaleString('en-IN')} shares</strong> (≈ ₹${Math.round(c.sizing.capital).toLocaleString('en-IN')}, max loss ≈ ₹${Math.round(c.sizing.actualRisk).toLocaleString('en-IN')})${c.sizing.capped ? ' — capped by account size' : ''}.</p>`
       : live ? '<p class="v-note">Enter account size and risk % to get the quantity.</p>' : '';
 
+    const statusCount = s => cs.results.filter(r => r.status === s).length;
     const order = { Active: 0, 'Setting up': 1, 'No signal': 2 };
     const rows = [...cs.results].sort((a, b) => order[a.status] - order[b.status] || (b.total ? b.met / b.total : 0) - (a.total ? a.met / a.total : 0)).map(r => {
       const chip = r.status === 'Active' ? (r.side === 'short' ? 'chip-short' : 'chip-long') : r.status === 'Setting up' ? 'chip-setup' : 'chip-none';
@@ -2058,8 +2140,10 @@ class UIRenderer {
       <p class="v-summary">${live ? this._esc(c.summary) : 'Price levels are hidden because live data could not be loaded. The strategy statuses below are from simulated prices.'}</p>
       ${sizing}
       ${this._renderMindGuruNote(c.mindguru, cs.brain, c.tone)}
-      <h4>Each strategy <span class="muted">(tap a row for its conditions)</span></h4>
-      <div class="s-list">${rows}</div>
+      <details class="s-all"><summary>All ${cs.results.length} strategies <span class="muted">· ${statusCount('Active')} signal${statusCount('Active') === 1 ? '' : 's'}, ${statusCount('Setting up')} setting up · tap to open</span></summary>
+        <p class="muted" style="margin:6px 0 2px;">Tap a strategy for its conditions. × is MindGuru's trust in it: above 1 has worked well, below 1 hasn't.</p>
+        <div class="s-list">${rows}</div>
+      </details>
       <p class="citation">Daily chart. Levels come from each strategy's own rules; the verdict combines the strategies that are active now. Not a recommendation — check the chart and your own plan before trading.</p>`);
   }
 
@@ -2153,13 +2237,28 @@ class UIRenderer {
         if (e.needsLogin) { clearInterval(this._pressureTimer); window.app && app.renderBrokerStatus(true); }
         return;
       }
+      const open = this._isMarketOpen();
+      if (!open) {
+        // Outside market hours the book is empty, so a buyer/seller split would mislead
+        box.innerHTML = `
+          <h4>Order book (ICICI) <span class="tag tag-yellow">Market closed</span></h4>
+          <p class="outlook-note">Last traded <strong>₹${f(q.ltp)}</strong>${q.low && q.high ? ` · today's range ₹${f(q.low)} – ₹${f(q.high)}` : ''}. The live buyer vs seller meter runs during market hours (9:15 am – 3:30 pm IST, Mon–Fri).</p>`;
+        if (q.ltp) {
+          const o = KS001.outlook({ ks: result.ks001, price: q.ltp, support: md.support, resistance: md.resistance });
+          const rangeEl = document.getElementById('outlook-range');
+          if (rangeEl) rangeEl.innerHTML = this._renderRange(o, q.ltp);
+          const leanEl = document.getElementById('outlook-lean');
+          if (leanEl) leanEl.innerHTML = this._renderLean(o);
+        }
+        clearInterval(this._pressureTimer);
+        return;
+      }
       samples.push(q);
       if (samples.length > 60) samples.shift();
       const pr = KS001.pressure(samples);
-      const open = this._isMarketOpen();
       const bidPct = q.bidQty + q.askQty > 0 ? q.bidQty / (q.bidQty + q.askQty) * 100 : 50;
       box.innerHTML = `
-        <h4>Live order book (ICICI) ${open ? '<span class="live-dot"></span>' : '<span class="tag tag-yellow">Market closed</span>'}</h4>
+        <h4>Live order book (ICICI) <span class="live-dot"></span></h4>
         <div class="tech-grid">
           ${this._techItem('LTP', '₹' + f(q.ltp))}
           ${this._techItem('Best bid', '₹' + f(q.bid) + ` <small>× ${(q.bidQty || 0).toLocaleString('en-IN')}</small>`, 'text-green')}
@@ -2167,7 +2266,7 @@ class UIRenderer {
           ${this._techItem('Day range', '₹' + f(q.low) + ' – ₹' + f(q.high))}
         </div>
         <div class="pressure-bar" title="Share of top-of-book quantity on each side"><div class="buy" style="width:${bidPct.toFixed(0)}%">Buyers ${bidPct.toFixed(0)}%</div><div class="sell">Sellers ${(100 - bidPct).toFixed(0)}%</div></div>
-        <p class="outlook-note">${pr ? `Last ${pr.samples} readings: <strong>${pr.side}</strong> (avg ${Math.round(pr.bidShare * 100)}% bid) · ${pr.upTicks} up-ticks / ${pr.downTicks} down-ticks` : ''}${open ? ' · refreshes every 5s' : ''}</p>
+        <p class="outlook-note">${pr ? `Last ${pr.samples} readings: <strong>${pr.side}</strong> (avg ${Math.round(pr.bidShare * 100)}% bid) · ${pr.upTicks} up-ticks / ${pr.downTicks} down-ticks · ` : ''}refreshes every 5s</p>
         <p class="citation">Top-of-book only (best bid and offer). Large orders can sit deeper in the book or be hidden, so treat this as one input.</p>`;
       if (q.ltp) {
         const o = KS001.outlook({ ks: result.ks001, price: q.ltp, support: md.support, resistance: md.resistance, pressure: pr });
@@ -2176,7 +2275,6 @@ class UIRenderer {
         const rangeEl = document.getElementById('outlook-range');
         if (rangeEl) rangeEl.innerHTML = this._renderRange(o, q.ltp);
       }
-      if (!open) clearInterval(this._pressureTimer); // one reading is enough outside market hours
     };
     tick();
     this._pressureTimer = setInterval(tick, 5000);
@@ -2188,6 +2286,8 @@ class UIRenderer {
     const tCls = t => (t === 'Bullish' ? 'text-green' : t === 'Bearish' ? 'text-red' : 'text-yellow');
     let html = '';
 
+    const FAR_PCT = 10;
+    const farPlan = !!(ks.plan && ks.plan.distancePct != null && Math.abs(ks.plan.distancePct) > FAR_PCT);
     // 1. Verdict + multi-timeframe trend map
     const trendRows = ['htf', 'itf', 'ltf'].map(k => {
       const t = ks.trends[k];
@@ -2195,13 +2295,18 @@ class UIRenderer {
     }).join('');
     html += this._renderSection('KS-001 Verdict', `
       <p class="ks-verdict ${ks.plan ? (ks.plan.direction === 'Long' ? 'long' : 'short') : 'none'}">${this._esc(ks.verdict)}</p>
+      ${farPlan ? `<p class="muted" style="margin-bottom:8px;">That zone is ${f(Math.abs(ks.plan.distancePct))}% away from today's price, so it is not a trade for now.</p>` : ''}
       <h4>Timeframe map (20 EMA)</h4>${trendRows}
       <p style="font-size:0.8rem;color:var(--text-muted);margin-top:8px;">Bias: <strong>${ks.bias}</strong>${ks.aligned ? ' · HTF and ITF aligned' : ' · HTF and ITF not aligned'}</p>
     `);
 
-    // 2. Trade plan — only on live data; never show entries/quantities for simulated prices
+    // 2. Trade plan — only on live data; never show entries/quantities for simulated prices.
+    // A plan whose entry is far from today's price is not actionable, so it is summarised, not laid out.
     if (ks.plan && !md.live) {
       html += this._renderSection('Trade Plan', '<p style="font-size:0.85rem;color:var(--yellow);">Hidden: entry, stop-loss and position size are only shown when live data is loaded.</p>');
+    } else if (farPlan) {
+      const p = ks.plan;
+      html += this._renderSection('Trade Plan', `<p style="font-size:0.88rem;line-height:1.6;"><strong>No KS-001 trade near today's price.</strong> The closest qualifying zone is a ${this._esc(p.direction.toLowerCase())} setup at ₹${f(p.entry)}, which is ${f(Math.abs(p.distancePct))}% away, too far to matter for now. It will show up here again if price gets within ${FAR_PCT}% of it.</p>`);
     } else if (ks.plan) {
       const p = ks.plan, z = p.zone, s = p.sizing;
       const sizingHtml = s
@@ -2229,7 +2334,7 @@ class UIRenderer {
     }
 
     // 3. Chart with zones
-    html += this._renderSection(`Zones on ${this._esc(md.timeframe)} chart`, this._zoneChart(md.priceHistory, md.live ? ks : { ...ks, plan: null }) +
+    html += this._renderSection(`Zones on ${this._esc(md.timeframe)} chart`, this._zoneChart(md.priceHistory, md.live && !farPlan ? ks : { ...ks, plan: null }) +
       '<p class="citation">Green = demand, red = supply. Solid edge = proximal, dashed = distal. Faded zones don\'t qualify (score below ' + ks.minScore + '/10 or R:R below 1:' + ks.minRR + ').</p>');
 
     // 4. Zone table (nearest first)
@@ -2522,6 +2627,7 @@ class App {
     const el = document.getElementById('broker-status');
     if (!el) return;
     const st = await MarketData.breezeStatus(force);
+    this._renderIciciBanner(st);
     if (!st.configured) {
       el.innerHTML = '<span class="broker-dot off"></span> Data: Yahoo Finance';
       el.title = st.unavailable ? 'ICICI connector not reachable (needs PHP hosting)' : 'Add breeze-config.php to connect ICICI Direct';
@@ -2543,6 +2649,26 @@ class App {
         else if (code) this.ui._toast("That doesn't look like a session code", 'warning');
       };
     }
+  }
+
+  // Reminder at the top of every page when ICICI is set up but today's session has expired.
+  // "Not today" hides it until tomorrow (per device).
+  _renderIciciBanner(st) {
+    const el = document.getElementById('icici-banner');
+    if (!el) return;
+    const today = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10); // IST date
+    let dismissed = null;
+    try { dismissed = localStorage.getItem('mm-icici-banner-dismissed'); } catch { /* storage unavailable */ }
+    if (!st.configured || st.loggedIn || dismissed === today) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    el.innerHTML = `<span class="broker-dot warn"></span>
+      <span class="icici-banner-text"><strong>ICICI isn't connected today.</strong> Prices are coming from Yahoo Finance instead, and the live order book is off. ICICI sessions end every day, so log in once each morning.</span>
+      <a href="api/breeze.php?action=login" class="btn-broker">Log in to ICICI</a>
+      <button type="button" class="icici-banner-close" aria-label="Hide until tomorrow">Not today</button>`;
+    el.classList.remove('hidden');
+    el.querySelector('.icici-banner-close').onclick = () => {
+      try { localStorage.setItem('mm-icici-banner-dismissed', today); } catch { /* storage unavailable */ }
+      el.classList.add('hidden');
+    };
   }
 
   _setupNavigation() {
