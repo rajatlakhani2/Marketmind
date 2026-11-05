@@ -36,6 +36,7 @@ $DEFAULTS = [
     'maxOpen' => 3,              // max open positions
     'optionStopPct' => 40,       // options: stop when the premium falls this much
     'optionTargetPct' => 80,     // options: target when the premium rises this much
+    'manual' => false,           // without a relay: true = you place approved orders in the ICICI app yourself
 ];
 
 // ---------- helpers ----------
@@ -59,6 +60,12 @@ function save_setting(PDO $pdo, string $k, $v): void {
         ? 'INSERT OR REPLACE INTO trade_settings (k, v, updated_at) VALUES (?, ?, ?)'
         : 'INSERT INTO trade_settings (k, v, updated_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v), updated_at = VALUES(updated_at)';
     $pdo->prepare($sql)->execute([$k, json_encode($v), mm_now()]);
+}
+
+// live = sent through the relay; man = you place it in the ICICI Direct app; test = simulated
+function order_mode(array $S): string {
+    if (relay_cfg()) return 'live';
+    return !empty($S['manual']) ? 'man' : 'test';
 }
 
 function relay_cfg(): ?array {
@@ -175,11 +182,21 @@ function state(PDO $pdo, array $defaults): array {
     // Proposals not approved in time expire
     $pdo->prepare("UPDATE trade_orders SET status = 'expired' WHERE status = 'pending' AND expires_at < ?")->execute([mm_now()]);
     $orders = $pdo->query("SELECT * FROM trade_orders WHERE status IN ('pending','open','filled') OR created_at >= '" . gmdate('Y-m-d H:i:s', time() - 7 * 86400) . "' ORDER BY id DESC LIMIT 200")->fetchAll();
+    // ICICI's own stock code (e.g. RELIND for RELIANCE) helps find the stock in the ICICI app
+    $syms = array_values(array_unique(array_column($orders, 'symbol')));
+    $codes = [];
+    if ($syms) {
+        $st = $pdo->prepare("SELECT symbol, isec_code FROM stocks WHERE exchange = 'NSE' AND symbol IN (" . implode(',', array_fill(0, count($syms), '?')) . ')');
+        $st->execute($syms);
+        foreach ($st->fetchAll() as $r) $codes[$r['symbol']] = $r['isec_code'];
+    }
+    foreach ($orders as &$o) $o['icici_code'] = $o['product'] === 'option' ? $o['opt_isec'] : ($codes[$o['symbol']] ?? '');
+    unset($o);
     return [
         'settings' => settings($pdo, $defaults),
         'watchlist' => $pdo->query('SELECT * FROM trade_watchlist ORDER BY symbol')->fetchAll(),
         'orders' => $orders,
-        'mode' => relay_cfg() ? 'live' : 'test',
+        'mode' => order_mode(settings($pdo, $defaults)),
         'icici' => (bool) breeze_token(),
         'marketOpen' => market_open(),
         'serverTime' => time(),
@@ -207,6 +224,7 @@ try {
         save_setting($pdo, 'optionStopPct', $num('optionStopPct', 10, 90));
         save_setting($pdo, 'optionTargetPct', $num('optionTargetPct', 10, 500));
         if (array_key_exists('enabled', $body)) save_setting($pdo, 'enabled', (bool) $body['enabled']);
+        if (array_key_exists('manual', $body)) save_setting($pdo, 'manual', (bool) $body['manual']);
         mm_json(200, state($pdo, $DEFAULTS));
     }
 
@@ -231,7 +249,7 @@ try {
     // Scanner proposals. Entries need trading switched on; exits are always accepted.
     if ($action === 'propose') {
         $added = 0;
-        $mode = relay_cfg() ? 'live' : 'test';
+        $mode = order_mode($S);
         foreach (array_slice((array) ($body['orders'] ?? []), 0, 20) as $p) {
             if (!is_array($p)) continue;
             $purpose = in_array($p['purpose'] ?? '', ['entry', 'target', 'squareoff', 'exit'], true) ? $p['purpose'] : null;
@@ -305,8 +323,12 @@ try {
             if ($open >= (int) $S['maxOpen']) $fail("You already have $open open positions (limit {$S['maxOpen']}).");
         }
 
-        $mode = relay_cfg() ? 'live' : 'test';
+        $mode = order_mode($S);
         $pdo->prepare("UPDATE trade_orders SET mode = ?, decided_at = ?, decided_by = ? WHERE id = ?")->execute([$mode, mm_now(), $admin['id'], $o['id']]);
+        if ($mode === 'man') {
+            $pdo->prepare("UPDATE trade_orders SET status = 'open', broker_status = 'Place in ICICI app' WHERE id = ?")->execute([$o['id']]);
+            mm_json(200, ['message' => 'Approved. Now place it in the ICICI Direct app using the order ticket, then record the fill here.'] + state($pdo, $DEFAULTS));
+        }
         if ($mode === 'test') {
             $pdo->prepare("UPDATE trade_orders SET status = 'open', broker_status = 'Simulated' WHERE id = ?")->execute([$o['id']]);
             mm_json(200, ['message' => 'Test mode: order simulated, nothing was sent to ICICI.'] + state($pdo, $DEFAULTS));
@@ -337,6 +359,29 @@ try {
         }
         mm_json(200, ['message' => "Kill switch on. $cancelled unfilled order(s) cancelled. Open positions and their stop-losses were left in place."] + state($pdo, $DEFAULTS));
     }
+    // Manual mode: you tell MarketMind what happened in the ICICI app
+    if ($action === 'manual_fill') {
+        $o = order_row($pdo, (int) ($body['id'] ?? 0));
+        $price = (float) ($body['price'] ?? 0);
+        if ($o['status'] !== 'open' || $o['mode'] !== 'man') mm_json(400, ['error' => 'This order is not waiting to be placed in the ICICI app']);
+        if ($price <= 0) mm_json(400, ['error' => 'Enter the price it filled at']);
+        // Exits: remind to cancel the other exit order still sitting in the ICICI app
+        $remind = '';
+        if ($o['parent_id']) {
+            $st = $pdo->prepare("SELECT purpose FROM trade_orders WHERE parent_id = ? AND id <> ? AND status = 'open' AND mode = 'man'");
+            $st->execute([$o['parent_id'], $o['id']]);
+            if ($st->fetchColumn()) $remind = ' Also cancel your other open exit order for ' . $o['symbol'] . ' (the stop-loss) in the ICICI app.';
+        }
+        mark_filled($pdo, $o, $price);
+        mm_json(200, ['message' => 'Fill recorded at ₹' . number_format($price, 2) . '.' . $remind] + state($pdo, $DEFAULTS));
+    }
+    if ($action === 'manual_cancel') {
+        $o = order_row($pdo, (int) ($body['id'] ?? 0));
+        if ($o['status'] !== 'open' || $o['mode'] !== 'man') mm_json(400, ['error' => 'This order is not waiting to be placed in the ICICI app']);
+        $pdo->prepare("UPDATE trade_orders SET status = 'cancelled', decided_at = ? WHERE id = ?")->execute([mm_now(), $o['id']]);
+        mm_json(200, state($pdo, $DEFAULTS));
+    }
+
     if ($action === 'resume') {
         save_setting($pdo, 'killed', false);
         mm_json(200, state($pdo, $DEFAULTS));

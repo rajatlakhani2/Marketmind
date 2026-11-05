@@ -211,8 +211,37 @@
       </div>
       <p class="tr-reason">${esc(o.reason || '')}</p>
       <div class="tr-actions">
-        <button type="button" class="btn-primary" data-approve="${o.id}">${st.mode === 'live' ? 'Approve & send to ICICI' : 'Approve (test)'}</button>
+        <button type="button" class="btn-primary" data-approve="${o.id}">${st.mode === 'live' ? 'Approve & send to ICICI' : st.mode === 'man' ? 'Approve' : 'Approve (test)'}</button>
         <button type="button" class="btn-secondary" data-reject="${o.id}">Reject</button>
+      </div>
+    </div>`;
+  }
+
+  // What to enter in the ICICI Direct app's order screen
+  function ticket(o) {
+    const opt = o.product === 'option';
+    const right = o.opt_right === 'put' ? 'Put (PE)' : 'Call (CE)';
+    const expiry = o.opt_expiry ? new Date(o.opt_expiry + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+    const rows = [
+      ['Stock', opt ? `${esc(o.symbol)}${o.icici_code && o.icici_code !== o.symbol ? ` (ICICI code ${esc(o.icici_code)})` : ''}` : `${esc(o.symbol)}${o.icici_code && o.icici_code !== o.symbol ? ` (ICICI code ${esc(o.icici_code)})` : ''}`],
+      ['Segment', opt ? 'Derivatives (F&amp;O) · NSE' : 'Equity · NSE'],
+      ...(opt ? [['Contract', `Options · ${right} · strike ${esc(Number(o.opt_strike))} · expiry ${esc(expiry)}`]] : []),
+      ['Product', opt ? 'Options (NRML)' : o.product === 'mis' ? 'Margin / Intraday' : 'Cash / Delivery (CNC)'],
+      ['Action', o.side === 'buy' ? '<b class="text-green">BUY</b>' : '<b class="text-red">SELL</b>'],
+      ['Order type', o.order_type === 'stoploss' ? '<b>Stop loss (SL)</b>' : 'Limit'],
+      ['Quantity', `<b>${n0(Number(o.qty))}</b>${opt ? ` (${Number(o.qty) / Number(o.lot)} lot of ${n0(Number(o.lot))})` : ''}`],
+      ...(o.order_type === 'stoploss' ? [['Trigger price', `<b>${rs(Number(o.trigger_price))}</b>`]] : []),
+      ['Limit price', `<b>${rs(Number(o.limit_price))}</b>`],
+      ['Validity', 'Day'],
+    ];
+    return `<div class="tr-card ${o.side} tr-ticket">
+      <div class="tr-card-head"><span class="chip ${o.side === 'buy' ? 'chip-long' : 'chip-short'}">${esc(PURPOSE[o.purpose] || o.purpose)}</span><strong>${esc(opt ? o.name : o.symbol)}</strong><span class="muted">approved ${new Date(o.decided_at.replace(' ', 'T') + 'Z').toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span></div>
+      <table class="tr-ticket-table">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>
+      <p class="tr-reason">${o.order_type === 'stoploss' ? 'This order waits at ICICI and only sells if price falls to the trigger. When it executes, record the fill here.' : 'Place this in the ICICI Direct app. When it executes, enter the price shown in the ICICI order book.'}</p>
+      <div class="tr-actions">
+        <input type="number" step="0.05" min="0" class="tr-fill" data-fill-for="${o.id}" placeholder="Filled at ₹" value="" />
+        <button type="button" class="btn-primary" data-fill="${o.id}">It executed: save</button>
+        <button type="button" class="btn-secondary" data-mcancel="${o.id}">I didn't place it / cancelled</button>
       </div>
     </div>`;
   }
@@ -224,9 +253,14 @@
     const positions = st.orders.filter(o => o.purpose === 'entry' && o.status === 'filled');
     const history = st.orders.filter(o => o.status !== 'pending').slice(0, 60);
     const realised = st.orders.filter(o => o.status === 'closed').reduce((a, o) => a + Number(o.pnl || 0), 0);
+    const toPlace = st.orders.filter(o => o.status === 'open' && o.mode === 'man');
     const modeBanner = st.mode === 'live'
       ? '<div class="tr-mode live"><b>LIVE</b> · approved orders go to your ICICI account through the order relay.</div>'
-      : '<div class="tr-mode test"><b>TEST MODE</b> · approved orders are simulated against live prices; nothing is sent to ICICI. Live orders need the VPS order relay (see relay/README.md in the repo).</div>';
+      : `<div class="tr-mode ${st.mode === 'man' ? 'live' : 'test'}">
+          <div class="tr-modes">
+            <label><input type="radio" name="tr-mode" value="test" ${st.mode === 'test' ? 'checked' : ''}/> <b>Test</b>: approved orders are simulated against live prices</label>
+            <label><input type="radio" name="tr-mode" value="man" ${st.mode === 'man' ? 'checked' : ''}/> <b>Manual</b>: you place approved orders in the ICICI Direct app yourself (real money)</label>
+          </div></div>`;
     const status = [
       st.icici ? '<span class="text-green">ICICI logged in</span>' : '<span class="text-red">ICICI not logged in today</span>',
       marketOpen() ? '<span class="text-green">market open</span>' : 'market closed',
@@ -243,6 +277,8 @@
       ${scanNote ? `<div class="data-warning">${esc(scanNote)}</div>` : ''}
       <p class="muted" style="margin:-4px 0 12px;">MarketMind scans while this app is open (any page). The stop-loss order it proposes after each buy rests at ICICI, so it protects you even when the app is closed.</p>
 
+      ${toPlace.length ? `<div class="analysis-section tr-place"><h3>Place these in the ICICI Direct app (${toPlace.length})</h3>${toPlace.map(ticket).join('')}</div>` : ''}
+
       <div class="analysis-section"><h3>Waiting for your approval (${pending.length})</h3>
         ${pending.length ? pending.map(orderCard).join('') : '<p class="muted">Nothing right now. New proposals appear here and as a pop-up.</p>'}
       </div>
@@ -250,7 +286,7 @@
       <div class="analysis-section"><h3>Open positions (${positions.length}) · booked P&amp;L ${rs(realised, 0)}</h3>
         ${positions.length ? `<div class="fno-tablewrap"><table class="screener-table fno-table">
           <thead><tr><th>Position</th><th>Qty</th><th>Bought at</th><th>Stop</th><th>Target</th><th>Mode</th><th></th></tr></thead>
-          <tbody>${positions.map(o => `<tr><td>${esc(o.product === 'option' ? o.name : o.symbol)} <span class="muted">${esc(PRODUCT[o.product])}</span></td><td>${n0(Number(o.qty))}</td><td>${rs(Number(o.fill_price))}</td><td>${rs(Number(o.stop))}</td><td>${rs(Number(o.target))}</td><td>${o.mode === 'live' ? 'Live' : 'Test'}</td>
+          <tbody>${positions.map(o => `<tr><td>${esc(o.product === 'option' ? o.name : o.symbol)} <span class="muted">${esc(PRODUCT[o.product])}</span></td><td>${n0(Number(o.qty))}</td><td>${rs(Number(o.fill_price))}</td><td>${rs(Number(o.stop))}</td><td>${rs(Number(o.target))}</td><td>${o.mode === 'live' ? 'Live' : o.mode === 'man' ? 'Manual' : 'Test'}</td>
             <td><button type="button" class="btn-secondary btn-small" data-exit="${o.id}">Exit now…</button></td></tr>`).join('')}</tbody></table></div>`
           : '<p class="muted">No open positions.</p>'}
       </div>
@@ -285,7 +321,7 @@
       <div class="analysis-section"><h3>Order history (last 7 days)</h3>
         ${history.length ? `<div class="fno-tablewrap"><table class="screener-table fno-table"><thead><tr><th>Time</th><th>Order</th><th>Qty</th><th>Price</th><th>Status</th><th>P&amp;L</th></tr></thead><tbody>
           ${history.map(o => `<tr><td>${new Date(o.created_at.replace(' ', 'T') + 'Z').toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-            <td>${esc(PURPOSE[o.purpose])} ${esc(o.product === 'option' ? o.name : o.symbol)} <span class="muted">${esc(PRODUCT[o.product])} · ${o.mode === 'live' ? 'live' : 'test'}</span></td>
+            <td>${esc(PURPOSE[o.purpose])} ${esc(o.product === 'option' ? o.name : o.symbol)} <span class="muted">${esc(PRODUCT[o.product])} · ${o.mode === 'live' ? 'live' : o.mode === 'man' ? 'manual' : 'test'}</span></td>
             <td>${n0(Number(o.qty))}</td><td>${rs(Number(o.fill_price || o.limit_price))}</td>
             <td>${esc(STATUS[o.status] || o.status)}${o.error ? `<br><span class="text-red">${esc(o.error)}</span>` : ''}</td>
             <td class="${Number(o.pnl) > 0 ? 'text-green' : Number(o.pnl) < 0 ? 'text-red' : ''}">${o.pnl != null ? rs(Number(o.pnl), 0) : ''}</td></tr>`).join('')}</tbody></table></div>`
@@ -312,6 +348,21 @@
           reason: `You asked to exit at about ${rs(p)}.` }] }), 'Exit order prepared. Approve it above.');
       };
     });
+    container.querySelectorAll('input[name="tr-mode"]').forEach(r => {
+      r.onchange = () => {
+        if (r.value === 'man' && !confirm('Manual mode: approved orders are real trades that you place yourself in the ICICI Direct app. MarketMind tracks them and tells you when to exit. Switch to Manual?')) { render(container); return; }
+        act(() => call('settings', { manual: r.value === 'man' }), r.value === 'man' ? 'Manual mode on' : 'Test mode on');
+      };
+    });
+    container.querySelectorAll('[data-fill]').forEach(b => {
+      b.onclick = () => {
+        const id = Number(b.dataset.fill);
+        const price = parseFloat(container.querySelector(`[data-fill-for="${id}"]`).value);
+        if (!(price > 0)) { toast('Enter the price it executed at', 'warning'); return; }
+        act(() => call('manual_fill', { id, price }));
+      };
+    });
+    container.querySelectorAll('[data-mcancel]').forEach(b => { b.onclick = () => act(() => call('manual_cancel', { id: Number(b.dataset.mcancel) })); });
     const en = container.querySelector('#tr-enabled');
     if (en) en.onchange = () => act(() => call('settings', { enabled: en.checked }));
     const kill = container.querySelector('#tr-kill');

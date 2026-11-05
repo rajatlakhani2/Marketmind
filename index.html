@@ -29,7 +29,7 @@
   <script src="js/knowledgesync.js?v=7"></script>
   <script src="js/fno.js?v=7"></script>
   <script src="js/events.js?v=7"></script>
-  <script src="js/trading.js?v=7"></script>
+  <script src="js/trading.js?v=8"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -450,6 +450,14 @@ textarea { font-family: inherit; }
 .tr-mode { border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.86rem; line-height: 1.5; }
 .tr-mode.test { background: #fdf4e3; border: 1px solid #e8c98c; color: #6e4604; }
 .tr-mode.live { background: rgba(17,128,78,0.1); border: 1px solid rgba(17,128,78,0.4); color: var(--green); }
+.tr-modes { display: flex; flex-direction: column; gap: 6px; }
+.tr-modes label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.tr-modes input { margin-top: 3px; }
+.tr-place h3 { color: var(--green); }
+.tr-ticket-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin: 6px 0; }
+.tr-ticket-table th { text-align: left; font-weight: 500; color: var(--text-muted); width: 34%; padding: 5px 8px 5px 0; vertical-align: top; }
+.tr-ticket-table td { padding: 5px 0; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.tr-fill { width: 130px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; background: var(--bg-card); color: var(--text-primary); }
 .tr-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 12px; }
 .tr-switch { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .tr-switch input { width: 18px; height: 18px; }
