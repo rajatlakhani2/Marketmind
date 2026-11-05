@@ -494,7 +494,7 @@ try {
             'ltp' => $num('ltp'), 'changePct' => $num('ltp_percent_change'), 'open' => $num('open'), 'high' => $num('high'), 'low' => $num('low'),
             'prevClose' => $num('previous_close'), 'volume' => $num('total_quantity_traded'), 'oi' => $num('open_interest'), 'oiChange' => $num('chnge_oi'),
             'bid' => $num('best_bid_price'), 'bidQty' => $num('best_bid_quantity'), 'ask' => $num('best_offer_price'), 'askQty' => $num('best_offer_quantity'),
-            'spot' => fo_spot($cfg, $session, $u), 'ltt' => $q['ltt'] ?? null, 'at' => time(),
+            'spot' => fo_spot($cfg, $session, $u) ?? $num('spot_price'), 'ltt' => $q['ltt'] ?? null, 'at' => time(),
             'raw' => !empty($_GET['debug']) ? $q : null,
         ]);
     }

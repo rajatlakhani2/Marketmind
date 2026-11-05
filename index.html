@@ -27,6 +27,7 @@
   <script src="js/stockpicker.js?v=6"></script>
   <script src="js/mindguru.js?v=6"></script>
   <script src="js/knowledgesync.js?v=6"></script>
+  <script src="js/fno.js?v=6"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -400,6 +401,30 @@ textarea { font-family: inherit; }
 .live-toggle { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; }
 .live-changed { color: var(--accent); }
 .tf-hint { font-size: 0.75rem; color: var(--text-muted); line-height: 1.5; margin: 2px 0 8px; }
+/* Futures & Options page */
+.fno-controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin-bottom: 14px; }
+.fno-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--text-muted); min-width: 0; }
+.fno-controls select { min-width: 220px; max-width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); font: inherit; font-size: 0.9rem; }
+.fno-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; overflow-x: auto; }
+.fno-tab { background: none; border: none; border-bottom: 3px solid transparent; padding: 10px 14px; font: inherit; font-weight: 600; font-size: 0.9rem; color: var(--text-secondary); cursor: pointer; white-space: nowrap; }
+.fno-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.fno-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fno-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 900px) { .fno-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.fno-tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
+.fno-table { width: 100%; font-variant-numeric: tabular-nums; font-size: 0.84rem; }
+.fno-table th, .fno-table td { white-space: nowrap; text-align: right; }
+.fno-table th:first-child, .fno-table td:first-child { text-align: left; }
+.fno-itm td { background: #f4f7fc; }
+.fno-atm td { font-weight: 700; border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent); }
+.fno-strike .tag { font-size: 0.65rem; margin-left: 4px; }
+.fno-oi { position: relative; min-width: 90px; }
+.fno-oi > span:last-child { position: relative; }
+.fno-oibar { position: absolute; right: 0; top: 20%; height: 60%; border-radius: 3px; opacity: 0.22; }
+.fno-oibar.call { background: var(--red); } .fno-oibar.put { background: var(--green); }
+.fno-ba { color: var(--text-muted); }
+.fno-notes { padding-left: 18px; font-size: 0.88rem; line-height: 1.6; display: flex; flex-direction: column; gap: 4px; }
+.link-btn { background: none; border: none; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; padding: 0 0 0 6px; }
 /* ICICI reminder banner */
 .icici-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; background: #fdf4e3; border: 1px solid #e8c98c; color: #6e4604; border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.86rem; line-height: 1.5; }
 .icici-banner-text { flex: 1; min-width: 220px; }
@@ -606,6 +631,7 @@ body.auth-open #app { visibility: hidden; }
         <li><a href="#" data-page="strategies"><span class="nav-icon">&#x2694;&#xFE0F;</span> Strategies</a></li>
         <li><a href="#" data-page="analyze"><span class="nav-icon">&#x1F4CA;&#xFE0F;</span> Analyze Market</a></li>
         <li><a href="#" data-page="mindguru"><span class="nav-icon">&#x1F9E0;</span> MindGuru</a></li>
+        <li><a href="#" data-page="fno"><span class="nav-icon">&#x1F4C8;</span> Futures &amp; Options</a></li>
         <li><a href="#" data-page="screener"><span class="nav-icon">&#x1F50D;</span> Strategy Screener</a></li>
         <li><a href="#" data-page="theory"><span class="nav-icon">&#x1F4D6;</span> Market Theory</a></li>
         <li><a href="#" data-page="methodology"><span class="nav-icon">&#x2699;&#xFE0F;</span> Methodology</a></li>
@@ -724,6 +750,10 @@ body.auth-open #app { visibility: hidden; }
       <div id="page-mindguru" class="page">
         <header class="page-header"><h2>MindGuru</h2><p class="page-sub">Learns from every projection: what each strategy predicted, and what the market actually did.</p></header>
         <div id="mindguru-container"></div>
+      </div>
+      <div id="page-fno" class="page">
+        <header class="page-header"><h2>Futures &amp; Options</h2></header>
+        <div id="fno-container"></div>
       </div>
       <div id="page-screener" class="page">
         <header class="page-header"><h2>Strategy Screener</h2></header>
@@ -2817,6 +2847,7 @@ class App {
       case 'strategies': this.ui.renderStrategies(); break;
       case 'analyze': await this.ui.renderAnalysis(); break;
       case 'screener': this.ui.renderScreener(); break;
+      case 'fno': await FnO.renderPage(document.getElementById('fno-container')); break;
       case 'mindguru': await MindGuru.renderPage(document.getElementById('mindguru-container')); break;
       case 'theory': this.ui.renderTheory(); break;
       case 'methodology': this.ui.renderMethodology(); break;
@@ -2851,6 +2882,7 @@ class App {
 }
 
 const app = new App();
+window.app = app; // used by fno.js
 
 window.addEventListener('error', (e) => {
   document.getElementById('app').innerHTML = `<div style="padding:40px;color:var(--red);"><h2>Runtime Error</h2><pre style="white-space:pre-wrap;font-size:0.85rem;">${e.message}\n${e.filename}:${e.lineno}</pre></div>`;
