@@ -192,6 +192,97 @@ function resolve_symbol(array $cfg, string $symbol): array {
     return ['nse' => $symbol, 'isec' => $map[$symbol][0], 'name' => $map[$symbol][1], 'exch' => 'NSE'];
 }
 
+// ---------- F&O underlyings (from FONSEScripMaster.txt in the same security master) ----------
+// Returns [{ isec, name, symbol, kind: index|stock, lot, futures: [dates], options: [dates] }], cached for the day.
+function fo_meta(array $cfg): array {
+    $file = CACHE_DIR . '/fo_meta.php';
+    $cached = read_guarded($file);
+    if ($cached && ($cached['date'] ?? '') === ist_today()) return $cached['list'];
+
+    if (!class_exists('ZipArchive')) throw new RuntimeException('PHP zip extension is missing on the host');
+    [$status, $zipData, $err] = http_request('GET', $cfg['master_url'], null, [], 90);
+    if ($zipData === null || $status !== 200) {
+        if ($cached) return $cached['list'];
+        throw new RuntimeException('Could not download ICICI security master: ' . ($err ?: "HTTP $status"));
+    }
+    $tmp = tempnam(sys_get_temp_dir(), 'mm');
+    file_put_contents($tmp, $zipData);
+    $zip = new ZipArchive();
+    if ($zip->open($tmp) !== true) { @unlink($tmp); throw new RuntimeException('ICICI security master is not a valid zip'); }
+    $txt = $zip->getFromName('FONSEScripMaster.txt');
+    $zip->close();
+    @unlink($tmp);
+    if ($txt === false) throw new RuntimeException('FONSEScripMaster.txt not found in security master');
+
+    $lines = preg_split('/\r\n|\n|\r/', $txt);
+    $header = array_map(fn($h) => trim($h, " \"\t"), str_getcsv((string) array_shift($lines)));
+    $col = fn($name) => array_search($name, $header, true);
+    [$iInst, $iShort, $iExp, $iLot, $iName, $iExch] = [$col('InstrumentName'), $col('ShortName'), $col('ExpiryDate'), $col('LotSize'), $col('CompanyName'), $col('ExchangeCode')];
+    if (in_array(false, [$iInst, $iShort, $iExp], true)) throw new RuntimeException('Unexpected F&O security master format');
+
+    $today = ist_today();
+    $u = [];
+    foreach ($lines as $line) {
+        if ($line === '') continue;
+        $c = str_getcsv($line);
+        $inst = strtoupper(trim($c[$iInst] ?? ''));
+        if (!in_array($inst, ['FUTIDX', 'FUTSTK', 'OPTIDX', 'OPTSTK'], true)) continue;
+        $isec = strtoupper(trim($c[$iShort] ?? ''));
+        $d = DateTime::createFromFormat('d-M-Y', trim($c[$iExp] ?? ''));
+        if ($isec === '' || !$d) continue;
+        $exp = $d->format('Y-m-d');
+        if ($exp < $today) continue;
+        if (!isset($u[$isec])) {
+            $u[$isec] = [
+                'isec' => $isec, 'name' => trim($c[$iName] ?? '') ?: $isec,
+                'symbol' => strtoupper(trim($c[$iExch] ?? '')) ?: $isec,
+                'kind' => $inst[3] === 'I' ? 'index' : 'stock',
+                'lot' => 0, 'futures' => [], 'options' => [],
+            ];
+        }
+        $lot = (int) ($c[$iLot] ?? 0);
+        $isFut = $inst[0] === 'F';
+        // Lot size of the nearest futures contract is the one that applies now
+        if ($isFut && $lot > 0 && (!$u[$isec]['futures'] || $exp < min($u[$isec]['futures']))) $u[$isec]['lot'] = $lot;
+        if (!$u[$isec]['lot'] && $lot > 0) $u[$isec]['lot'] = $lot;
+        $u[$isec][$isFut ? 'futures' : 'options'][$exp] = true;
+    }
+    $list = [];
+    foreach ($u as $x) {
+        $x['futures'] = array_keys($x['futures']); sort($x['futures']);
+        $x['options'] = array_keys($x['options']); sort($x['options']);
+        $list[] = $x;
+    }
+    // Indices first, then stocks A–Z
+    usort($list, fn($a, $b) => [$a['kind'] === 'index' ? 0 : 1, $a['name']] <=> [$b['kind'] === 'index' ? 0 : 1, $b['name']]);
+    if (!$list) throw new RuntimeException('No F&O contracts found in the security master');
+    write_guarded($file, ['date' => $today, 'list' => $list]);
+    return $list;
+}
+
+function fo_underlying(array $cfg, string $isec): array {
+    $isec = strtoupper(trim($isec));
+    if (!preg_match('/^[A-Z0-9&\-]{1,20}$/', $isec)) json_out(400, ['error' => 'Invalid underlying']);
+    foreach (fo_meta($cfg) as $u) if ($u['isec'] === $isec) return $u;
+    json_out(404, ['error' => "$isec has no F&O contracts"]);
+}
+
+function fo_expiry_param(string $date): string {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) json_out(400, ['error' => 'Invalid expiry date']);
+    return $date . 'T06:00:00.000Z'; // the format Breeze expects
+}
+
+// Spot: index value or the stock's cash price (NSE)
+function fo_spot(array $cfg, array $session, array $u): ?float {
+    try {
+        $data = breeze_v1($cfg, $session, 'quotes', ['stock_code' => $u['isec'], 'exchange_code' => 'NSE', 'product_type' => 'cash']);
+        foreach (($data['Success'] ?? []) as $r) {
+            if (strtoupper($r['exchange_code'] ?? '') === 'NSE' && isset($r['ltp']) && $r['ltp'] !== '') return (float) $r['ltp'];
+        }
+    } catch (Throwable $e) { /* spot is optional */ }
+    return null;
+}
+
 function cache_get(string $key, int $ttl): ?array {
     $f = CACHE_DIR . '/' . md5($key) . '.php';
     if (is_file($f) && time() - filemtime($f) < $ttl) return read_guarded($f);
@@ -349,6 +440,69 @@ try {
             'volume' => $num('total_quantity_traded'),
             'at' => time(),
         ]);
+    }
+
+    // ---------- F&O ----------
+    // Underlyings with their expiries and lot sizes, from ICICI's F&O security master.
+    if ($action === 'fo_meta') {
+        json_out(200, ['underlyings' => fo_meta($cfg)]);
+    }
+
+    // Option chain for one underlying, expiry and side (call or put).
+    if ($action === 'option_chain') {
+        $u = fo_underlying($cfg, (string) ($_GET['isec'] ?? ''));
+        $expiry = fo_expiry_param((string) ($_GET['expiry'] ?? ''));
+        $right = ($_GET['right'] ?? 'call') === 'put' ? 'put' : 'call';
+        $key = "oc|{$u['isec']}|$expiry|$right";
+        if ($hit = cache_get($key, 20)) json_out(200, $hit);
+        $data = breeze_v1($cfg, $session, 'optionchain', [
+            'stock_code' => $u['isec'], 'exchange_code' => 'NFO', 'product_type' => 'options',
+            'expiry_date' => $expiry, 'right' => $right, 'strike_price' => '',
+        ]);
+        $rows = [];
+        foreach (($data['Success'] ?? []) as $r) {
+            $n = fn($k) => isset($r[$k]) && $r[$k] !== '' ? (float) $r[$k] : null;
+            $strike = $n('strike_price');
+            if ($strike === null) continue;
+            $rows[] = [
+                'strike' => $strike, 'ltp' => $n('ltp'), 'changePct' => $n('ltp_percent_change'),
+                'oi' => $n('open_interest'), 'oiChange' => $n('chnge_oi'), 'volume' => $n('total_quantity_traded'),
+                'bid' => $n('best_bid_price'), 'ask' => $n('best_offer_price'), 'prevClose' => $n('previous_close'),
+                'spot' => $n('spot_price'),
+            ];
+        }
+        usort($rows, fn($a, $b) => $a['strike'] <=> $b['strike']);
+        $out = ['isec' => $u['isec'], 'name' => $u['name'], 'expiry' => substr($expiry, 0, 10), 'right' => $right, 'lot' => $u['lot'], 'rows' => $rows, 'at' => time()];
+        if (!empty($_GET['debug']) && ($data['Success'][0] ?? null)) $out['raw'] = $data['Success'][0];
+        cache_put($key, $out);
+        json_out(200, $out);
+    }
+
+    // Futures quote for one underlying and expiry, plus the spot price.
+    if ($action === 'futures') {
+        $u = fo_underlying($cfg, (string) ($_GET['isec'] ?? ''));
+        $expiry = fo_expiry_param((string) ($_GET['expiry'] ?? ''));
+        $data = breeze_v1($cfg, $session, 'quotes', [
+            'stock_code' => $u['isec'], 'exchange_code' => 'NFO', 'product_type' => 'futures',
+            'expiry_date' => $expiry, 'right' => 'others', 'strike_price' => '0',
+        ]);
+        $q = ($data['Success'] ?? [])[0] ?? null;
+        if (!$q) json_out(404, ['error' => 'No futures quote returned']);
+        $num = fn($k) => isset($q[$k]) && $q[$k] !== '' ? (float) $q[$k] : null;
+        json_out(200, [
+            'isec' => $u['isec'], 'name' => $u['name'], 'expiry' => substr($expiry, 0, 10), 'lot' => $u['lot'],
+            'ltp' => $num('ltp'), 'changePct' => $num('ltp_percent_change'), 'open' => $num('open'), 'high' => $num('high'), 'low' => $num('low'),
+            'prevClose' => $num('previous_close'), 'volume' => $num('total_quantity_traded'), 'oi' => $num('open_interest'), 'oiChange' => $num('chnge_oi'),
+            'bid' => $num('best_bid_price'), 'bidQty' => $num('best_bid_quantity'), 'ask' => $num('best_offer_price'), 'askQty' => $num('best_offer_quantity'),
+            'spot' => fo_spot($cfg, $session, $u), 'ltt' => $q['ltt'] ?? null, 'at' => time(),
+            'raw' => !empty($_GET['debug']) ? $q : null,
+        ]);
+    }
+
+    // Spot price of an F&O underlying (index or stock).
+    if ($action === 'fo_spot') {
+        $u = fo_underlying($cfg, (string) ($_GET['isec'] ?? ''));
+        json_out(200, ['isec' => $u['isec'], 'spot' => fo_spot($cfg, $session, $u), 'at' => time()]);
     }
 
     json_out(400, ['error' => 'Unknown action']);
