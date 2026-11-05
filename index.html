@@ -28,6 +28,7 @@
   <script src="js/mindguru.js?v=6"></script>
   <script src="js/knowledgesync.js?v=6"></script>
   <script src="js/fno.js?v=6"></script>
+  <script src="js/events.js?v=6"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -425,6 +426,25 @@ textarea { font-family: inherit; }
 .fno-ba { color: var(--text-muted); }
 .fno-notes { padding-left: 18px; font-size: 0.88rem; line-height: 1.6; display: flex; flex-direction: column; gap: 4px; }
 .link-btn { background: none; border: none; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; padding: 0 0 0 6px; }
+/* Events & News */
+.ev-list { display: flex; flex-direction: column; gap: 8px; }
+.ev-item { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 0.88rem; line-height: 1.5; }
+.ev-item.ev-past { opacity: 0.7; }
+.ev-date { display: flex; flex-direction: column; }
+.ev-detail { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+.ev-sym { font-weight: 700; color: var(--accent); }
+.ev-kind { font-size: 0.68rem; }
+.ev-dividend { background: rgba(17,128,78,0.12); color: var(--green); }
+.ev-split, .ev-bonus { background: var(--accent-soft); color: var(--accent); }
+.ev-filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 10px; }
+.ev-filters input[type=search] { flex: 1; min-width: 200px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 0.9rem; background: var(--bg-card); color: var(--text-primary); }
+.ev-check { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-secondary); }
+.ev-news { display: flex; flex-direction: column; gap: 2px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; text-decoration: none; color: var(--text-primary); font-size: 0.9rem; line-height: 1.45; }
+.ev-news:hover { border-color: var(--accent); }
+.ev-news-title { font-weight: 600; }
+.plain-summary .ev-warn { color: var(--orange); }
+.fno-controls input[type=text] { min-width: 220px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); font: inherit; font-size: 0.9rem; }
+@media (max-width: 560px) { .ev-item { grid-template-columns: 1fr; gap: 4px; } }
 /* ICICI reminder banner */
 .icici-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; background: #fdf4e3; border: 1px solid #e8c98c; color: #6e4604; border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.86rem; line-height: 1.5; }
 .icici-banner-text { flex: 1; min-width: 220px; }
@@ -632,6 +652,7 @@ body.auth-open #app { visibility: hidden; }
         <li><a href="#" data-page="analyze"><span class="nav-icon">&#x1F4CA;&#xFE0F;</span> Analyze Market</a></li>
         <li><a href="#" data-page="mindguru"><span class="nav-icon">&#x1F9E0;</span> MindGuru</a></li>
         <li><a href="#" data-page="fno"><span class="nav-icon">&#x1F4C8;</span> Futures &amp; Options</a></li>
+        <li><a href="#" data-page="events"><span class="nav-icon">&#x1F4C5;</span> Events &amp; News</a></li>
         <li><a href="#" data-page="screener"><span class="nav-icon">&#x1F50D;</span> Strategy Screener</a></li>
         <li><a href="#" data-page="theory"><span class="nav-icon">&#x1F4D6;</span> Market Theory</a></li>
         <li><a href="#" data-page="methodology"><span class="nav-icon">&#x2699;&#xFE0F;</span> Methodology</a></li>
@@ -754,6 +775,10 @@ body.auth-open #app { visibility: hidden; }
       <div id="page-fno" class="page">
         <header class="page-header"><h2>Futures &amp; Options</h2></header>
         <div id="fno-container"></div>
+      </div>
+      <div id="page-events" class="page">
+        <header class="page-header"><h2>Events &amp; News</h2></header>
+        <div id="events-container"></div>
       </div>
       <div id="page-screener" class="page">
         <header class="page-header"><h2>Strategy Screener</h2></header>
@@ -2076,6 +2101,14 @@ class UIRenderer {
     html += this._renderSection('Conclusion', `<p style="font-size:0.88rem;color:var(--text-primary);line-height:1.7;">${this._esc(result.conclusion)}</p>`);
     html += '</details>';
     container.innerHTML = html;
+    // Results or ex-dates coming up change how much the levels can be trusted
+    if (window.EventsPage && result.consensus && md.live) {
+      EventsPage.eventWarning(result.symbol).then(lines => {
+        const ul = container.querySelector('.plain-summary ul');
+        if (!ul || !lines.length || ul.querySelector('.ev-warn')) return;
+        ul.insertAdjacentHTML('afterbegin', lines.map(l => `<li class="ev-warn">&#x1F4C5; ${l}</li>`).join(''));
+      });
+    }
     this._startPressure(result);
   }
 
@@ -2848,6 +2881,7 @@ class App {
       case 'analyze': await this.ui.renderAnalysis(); break;
       case 'screener': this.ui.renderScreener(); break;
       case 'fno': await FnO.renderPage(document.getElementById('fno-container')); break;
+      case 'events': await EventsPage.renderPage(document.getElementById('events-container')); break;
       case 'mindguru': await MindGuru.renderPage(document.getElementById('mindguru-container')); break;
       case 'theory': this.ui.renderTheory(); break;
       case 'methodology': this.ui.renderMethodology(); break;
