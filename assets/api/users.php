@@ -32,8 +32,10 @@ try {
         $st = $pdo->prepare('SELECT COUNT(*) FROM users WHERE username = ?');
         $st->execute([$username]);
         if ((int) $st->fetchColumn() > 0) mm_json(409, ['error' => "Username \"$username\" is already taken"]);
-        $pdo->prepare('INSERT INTO users (username, display_name, password_hash, role, is_active, must_change_password, created_at, created_by) VALUES (?, ?, ?, ?, 1, 1, ?, ?)')
-            ->execute([$username, mm_str($body, 'displayName', 100), password_hash($password, PASSWORD_DEFAULT), $role, mm_now(), $admin['id']]);
+        // The admin chooses whether the new user must pick their own password at first sign-in
+        $must = !empty($body['mustChange']) ? 1 : 0;
+        $pdo->prepare('INSERT INTO users (username, display_name, password_hash, role, is_active, must_change_password, created_at, created_by) VALUES (?, ?, ?, ?, 1, ?, ?, ?)')
+            ->execute([$username, mm_str($body, 'displayName', 100), password_hash($password, PASSWORD_DEFAULT), $role, $must, mm_now(), $admin['id']]);
         mm_json(200, ['ok' => true, 'user' => mm_public_user(mm_find((int) $pdo->lastInsertId()))]);
     }
 
@@ -57,8 +59,9 @@ try {
         if ((int) $u['id'] === (int) $admin['id']) mm_json(400, ['error' => 'Use "Change password" for your own account']);
         $password = (string) ($body['password'] ?? '');
         mm_check_password($password);
-        $pdo->prepare('UPDATE users SET password_hash = ?, must_change_password = 1, password_changed_at = ? WHERE id = ?')
-            ->execute([password_hash($password, PASSWORD_DEFAULT), mm_now(), $u['id']]);
+        $must = !empty($body['mustChange']) ? 1 : 0;
+        $pdo->prepare('UPDATE users SET password_hash = ?, must_change_password = ?, password_changed_at = ? WHERE id = ?')
+            ->execute([password_hash($password, PASSWORD_DEFAULT), $must, mm_now(), $u['id']]);
         $pdo->prepare('DELETE FROM sessions WHERE user_id = ?')->execute([$u['id']]);
         mm_json(200, ['ok' => true]);
     }

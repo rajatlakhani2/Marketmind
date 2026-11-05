@@ -273,17 +273,18 @@
         <div class="users-grid">
           <label>Name<input name="displayName" maxlength="100" placeholder="e.g. Amit" /></label>
           <label>Username<input name="username" required maxlength="50" autocapitalize="none" placeholder="e.g. amit" /></label>
-          <label>Temporary password<input name="password" required minlength="8" value="${tempPassword()}" /></label>
+          <label>Password<input name="password" required minlength="8" value="${tempPassword()}" /></label>
           <label>Role<select name="role"><option value="user">User</option><option value="admin">Admin</option></select></label>
         </div>
-        <p class="auth-text">They sign in with this temporary password and must choose their own straight away. Share it privately.</p>
+        <label class="auth-check"><input type="checkbox" name="mustChange" value="1" /> Make them choose their own password at first sign-in</label>
+        <p class="auth-text">Leave it unticked to keep this password (for example a test account). Share it privately.</p>
         <p class="auth-error"></p>
         <button type="submit" class="btn-primary">Add user</button>
       </form>`;
 
     bindForm(body.querySelector('form'), async (v) => {
-      const r = await request(`${USERS}?action=create`, v);
-      toast(`Added ${r.user.username} — temporary password: ${v.password}`, 'success');
+      const r = await request(`${USERS}?action=create`, { ...v, mustChange: !!v.mustChange });
+      toast(`Added ${r.user.username} with password: ${v.password}${v.mustChange ? ' (must change it at first sign-in)' : ''}`, 'success');
       await renderUsers();
     });
 
@@ -295,10 +296,11 @@
           try {
             const act = btn.dataset.act;
             if (act === 'reset') {
-              const pw = prompt(`New temporary password for ${u.username} (at least 8 characters):`, tempPassword());
+              const pw = prompt(`New password for ${u.username} (at least 8 characters):`, tempPassword());
               if (!pw) return;
-              await request(`${USERS}?action=reset_password`, { id, password: pw });
-              toast(`Password reset. ${u.username} must choose a new one at next sign-in.`, 'success');
+              const mustChange = confirm(`Should ${u.username} have to choose their own password at next sign-in?\n\nOK = yes, make them change it\nCancel = no, keep "${pw}"`);
+              await request(`${USERS}?action=reset_password`, { id, password: pw, mustChange });
+              toast(mustChange ? `Password reset. ${u.username} must choose a new one at next sign-in.` : `Password reset. ${u.username} can keep using it.`, 'success');
             } else if (act === 'toggle') {
               await request(`${USERS}?action=update`, { id, isActive: !u.isActive });
             } else if (act === 'role') {
