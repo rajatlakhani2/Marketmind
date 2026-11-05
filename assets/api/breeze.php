@@ -101,7 +101,7 @@ function http_request(string $method, string $url, ?string $body, array $headers
 
 // Signed request to the v1 API (checksum = sha256(timestamp + body + secret)).
 function breeze_v1(array $cfg, array $session, string $endpoint, array $body): array {
-    $json = json_encode($body, JSON_UNESCAPED_SLASHES);
+    $json = $body ? json_encode($body, JSON_UNESCAPED_SLASHES) : '{}'; // ICICI wants {} for "no parameters"
     $ts = gmdate('Y-m-d\TH:i:s') . '.000Z';
     $headers = [
         'Content-Type: application/json',
@@ -497,6 +497,43 @@ try {
             'spot' => fo_spot($cfg, $session, $u) ?? $num('spot_price'), 'ltt' => $q['ltt'] ?? null, 'at' => time(),
             'raw' => !empty($_GET['debug']) ? $q : null,
         ]);
+    }
+
+    // ---------- your ICICI account (read-only) ----------
+    // Holdings: shares you own (demat). Positions: today's open trades (intraday, F&O).
+    if ($action === 'holdings') {
+        // The ICICI session is the admin's own account, so only an admin may read it
+        if ((mm_current_user()['role'] ?? '') !== 'admin') json_out(403, ['error' => 'Only the admin can see the ICICI holdings']);
+        $tz = new DateTimeZone('Asia/Kolkata');
+        $to = (new DateTime('now', $tz))->format('Y-m-d') . 'T06:00:00.000Z';
+        $from = (new DateTime('-3650 days', $tz))->format('Y-m-d') . 'T06:00:00.000Z';
+        $out = ['holdings' => [], 'positions' => [], 'notes' => []];
+        try {
+            $d = breeze_v1($cfg, $session, 'portfolioholdings', ['exchange_code' => 'NSE', 'from_date' => $from, 'to_date' => $to, 'stock_code' => '', 'portfolio_type' => '']);
+            $out['holdings'] = $d['Success'] ?? [];
+        } catch (Throwable $e) { $out['notes'][] = 'Holdings: ' . $e->getMessage(); }
+        if (!$out['holdings']) {
+            try {
+                $d = breeze_v1($cfg, $session, 'dematholdings', []);
+                $out['demat'] = $d['Success'] ?? [];
+            } catch (Throwable $e) { $out['notes'][] = 'Demat holdings: ' . $e->getMessage(); }
+        }
+        try {
+            $d = breeze_v1($cfg, $session, 'portfoliopositions', []);
+            $out['positions'] = $d['Success'] ?? [];
+        } catch (Throwable $e) { $out['notes'][] = 'Positions: ' . $e->getMessage(); }
+        // ICICI codes -> NSE symbols (e.g. RELIND -> RELIANCE)
+        $codes = [];
+        foreach (array_merge($out['holdings'] ?: [], $out['demat'] ?? [], $out['positions'] ?: []) as $r) if (!empty($r['stock_code'])) $codes[strtoupper((string) $r['stock_code'])] = true;
+        $map = [];
+        if ($codes) {
+            $st = mm_db()->prepare("SELECT isec_code, symbol FROM stocks WHERE exchange = 'NSE' AND isec_code IN (" . implode(',', array_fill(0, count($codes), '?')) . ')');
+            $st->execute(array_keys($codes));
+            foreach ($st->fetchAll() as $r) $map[strtoupper($r['isec_code'])] = $r['symbol'];
+        }
+        $out['symbols'] = $map;
+        $out['at'] = time();
+        json_out(200, $out);
     }
 
     // Spot price of an F&O underlying (index or stock).

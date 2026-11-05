@@ -271,6 +271,16 @@ function mm_migrations(): array {
             "CREATE INDEX ix_trade_orders_status ON trade_orders (status, created_at)",
             "CREATE INDEX ix_trade_orders_symbol ON trade_orders (symbol, created_at)",
         ],
+        // Daily opportunity scan: one row per stock per scan day
+        6 => [
+            "CREATE TABLE scan_results (
+                scan_date DATE NOT NULL,
+                symbol VARCHAR(20) NOT NULL,
+                data TEXT NOT NULL,
+                created_at DATETIME NOT NULL,
+                PRIMARY KEY (scan_date, symbol)
+            )$t",
+        ],
     ];
 }
 
