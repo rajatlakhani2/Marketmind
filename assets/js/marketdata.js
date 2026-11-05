@@ -158,6 +158,7 @@
       support: sr.support.map(r2), resistance: sr.resistance.map(r2),
       high52w: r2(Math.max(...yr.map(c => c.high))), low52w: r2(Math.min(...yr.map(c => c.low))),
       lastCandleTime: last.date,
+      lastCandleLive: !!last.live,
       timestamp: new Date().toISOString(),
       priceHistory: candles,
     };
@@ -253,6 +254,7 @@
     const json = await getJSON(`${BREEZE_URL}?action=candles&symbol=${encodeURIComponent(sym)}&interval=${req.interval}&days=${req.days}`);
     let candles = (json.candles || []).map(r => ({ time: r[0] * 1000, date: new Date(r[0] * 1000).toISOString(), open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5] }));
     if (!candles.length) throw new Error('ICICI returned no candles');
+    if (req.interval === '1day') candles = await withTodayCandle(sym, candles);
     if (req.aggregate) candles = aggregateCandles(candles, req.aggregate);
     if (req.period) candles = aggregateByPeriod(candles, req.period);
     const data = { meta: { longName: json.name ? titleCase(json.name) : sym, currency: 'INR', isec: json.isec }, candles };
@@ -265,9 +267,41 @@
   }
 
   // Live quote (ICICI only): LTP, best bid/offer with quantities, day range.
+  // Cached for 4 s so one analysis (daily + weekly + monthly + quote) asks ICICI once.
+  const quoteCache = new Map();
   async function getQuote(symbol) {
     const sym = String(symbol || '').trim().toUpperCase();
-    return getJSON(`${BREEZE_URL}?action=quote&symbol=${encodeURIComponent(sym)}`);
+    const hit = quoteCache.get(sym);
+    if (hit && Date.now() - hit.at < 4000) return hit.q;
+    const q = await getJSON(`${BREEZE_URL}?action=quote&symbol=${encodeURIComponent(sym)}`);
+    quoteCache.set(sym, { at: Date.now(), q });
+    return q;
+  }
+
+  // ICICI's daily candles only include today after its end-of-day run, so during (and
+  // just after) the session the last daily candle is yesterday's. Build today's candle
+  // from the live quote so every daily indicator and strategy sees today's price.
+  const MONTHS = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
+  const IST_MS = 5.5 * 3600 * 1000;
+  const istDay = ms => new Date(ms + IST_MS).toISOString().slice(0, 10);
+  function parseLtt(ltt) { // "05-Nov-2026 15:56:33" (IST)
+    const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})/.exec(String(ltt || ''));
+    if (!m || MONTHS[m[2].toUpperCase()] == null) return null;
+    return { y: +m[3], mo: MONTHS[m[2].toUpperCase()], d: +m[1] };
+  }
+  async function withTodayCandle(sym, candles) {
+    let q;
+    try { q = await getQuote(sym); } catch { return candles; }
+    const d = parseLtt(q && q.ltt);
+    if (!d || !(q.ltp > 0) || !(q.open > 0) || !(q.high > 0) || !(q.low > 0)) return candles;
+    const dayStart = Date.UTC(d.y, d.mo, d.d) - IST_MS;              // IST midnight, as ICICI stamps daily candles
+    const last = candles[candles.length - 1];
+    if (istDay(dayStart) <= istDay(last.time)) return candles;     // ICICI already has today's candle
+    return [...candles, {
+      time: dayStart, date: new Date(dayStart).toISOString(),
+      open: q.open, high: Math.max(q.high, q.ltp), low: Math.min(q.low, q.ltp), close: q.ltp,
+      volume: q.volume || 0, live: true,
+    }];
   }
 
   // ---------- Yahoo Finance (via api/chart.php) ----------

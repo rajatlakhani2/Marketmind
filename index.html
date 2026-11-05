@@ -18,15 +18,15 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
-  <script src="js/marketdata.js?v=5"></script>
-  <script src="js/ks001.js?v=5"></script>
-  <script src="js/conditions.js?v=5"></script>
-  <script src="js/library.js?v=5"></script>
-  <script src="js/consensus.js?v=5"></script>
-  <script src="js/account.js?v=5"></script>
-  <script src="js/stockpicker.js?v=5"></script>
-  <script src="js/mindguru.js?v=5"></script>
-  <script src="js/knowledgesync.js?v=5"></script>
+  <script src="js/marketdata.js?v=6"></script>
+  <script src="js/ks001.js?v=6"></script>
+  <script src="js/conditions.js?v=6"></script>
+  <script src="js/library.js?v=6"></script>
+  <script src="js/consensus.js?v=6"></script>
+  <script src="js/account.js?v=6"></script>
+  <script src="js/stockpicker.js?v=6"></script>
+  <script src="js/mindguru.js?v=6"></script>
+  <script src="js/knowledgesync.js?v=6"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -394,6 +394,12 @@ textarea { font-family: inherit; }
 .analysis-more > summary:focus-visible, .s-all > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .s-all { margin-top: 14px; }
 .s-all > summary { font-size: 0.9rem; font-weight: 600; padding: 8px 0; }
+/* Live re-check bar */
+.live-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; background: var(--accent-soft); border: 1px solid var(--border); border-radius: 10px; padding: 9px 14px; margin-bottom: 12px; font-size: 0.83rem; line-height: 1.5; color: var(--text-secondary); }
+.live-bar > span:nth-child(2) { flex: 1; min-width: 200px; }
+.live-toggle { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; }
+.live-changed { color: var(--accent); }
+.tf-hint { font-size: 0.75rem; color: var(--text-muted); line-height: 1.5; margin: 2px 0 8px; }
 /* ICICI reminder banner */
 .icici-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; background: #fdf4e3; border: 1px solid #e8c98c; color: #6e4604; border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.86rem; line-height: 1.5; }
 .icici-banner-text { flex: 1; min-width: 220px; }
@@ -688,12 +694,17 @@ body.auth-open #app { visibility: hidden; }
             <label>Strategy<select id="analyze-strategy"><option value="__all">All strategies — verdict</option><option value="">No strategy</option></select></label>
             <label>Timeframe
               <select id="analyze-timeframe">
-                <option value="5m">5 Minute</option><option value="15m">15 Minute</option>
-                <option value="30m">30 Minute</option><option value="1h" selected>1 Hour</option>
-                <option value="4h">4 Hour</option><option value="1d">Daily</option>
-                <option value="1w">Weekly</option><option value="1mo">Monthly</option>
+                <optgroup label="Intraday">
+                  <option value="5m">5 Minute</option><option value="15m">15 Minute</option>
+                  <option value="30m">30 Minute</option><option value="1h">1 Hour</option>
+                </optgroup>
+                <optgroup label="Positional">
+                  <option value="4h">4 Hour</option><option value="1d" selected>Daily</option>
+                  <option value="1w">Weekly</option><option value="1mo">Monthly</option>
+                </optgroup>
               </select>
             </label>
+            <p class="tf-hint">Daily = positional trades (days to weeks). 15 or 5 minute = intraday trades (same day). With ICICI connected, results re-check on the live price every minute during market hours.</p>
             <div class="sizing-inputs">
               <label>Account size (₹)<input type="number" id="analyze-account" min="0" step="1000" placeholder="e.g. 500000" /></label>
               <label>Risk per trade (%)<input type="number" id="analyze-risk" min="0.1" max="10" step="0.1" value="1" /></label>
@@ -1885,11 +1896,13 @@ class UIRenderer {
       const btn = e.currentTarget;
       const symbol = pickSymbol();
       const strategyId = document.getElementById('analyze-strategy').value;
-      if (strategyId === '__all' && document.getElementById('analyze-timeframe').value !== '1d') {
-        document.getElementById('analyze-timeframe').value = '1d';
-        this._toast('All-strategy analysis uses the daily chart', 'info');
+      const tfSel = document.getElementById('analyze-timeframe');
+      // The all-strategy verdict runs positional (daily) or intraday (15-min / 5-min)
+      if (strategyId === '__all' && !['1d', '15m', '5m'].includes(tfSel.value)) {
+        tfSel.value = '1d';
+        this._toast('All-strategy verdict runs on Daily (positional) or 15/5-minute (intraday) candles', 'info');
       }
-      const timeframe = document.getElementById('analyze-timeframe').value;
+      const timeframe = tfSel.value;
       const sizing = { account: parseFloat(acct.value) || 0, riskPercent: parseFloat(risk.value) || 0 };
       try { localStorage.setItem('marketmind_sizing', JSON.stringify(sizing)); } catch { /* ignore */ }
       if (window.Account) Account.saveSetting('marketmind_sizing', sizing);
@@ -1897,12 +1910,14 @@ class UIRenderer {
       let chartImage = null;
       if (chartInput?.files?.length) chartImage = chartInput.files[0];
       const results = document.getElementById('analyze-results');
+      this._stopLiveRefresh();
       results.innerHTML = `<p style="color:var(--text-muted);padding:20px;">Fetching ${this._esc(symbol)} data and scanning for zones…</p>`;
       btn.disabled = true;
       try {
         const result = await this.analysis.analyzeStock(symbol, strategyId, timeframe, chartImage, sizing);
         this._renderAnalysisResults(result, results);
         if (window.MindGuru) MindGuru.recordVerdict(result);
+        this._startLiveRefresh({ symbol, strategyId, timeframe, sizing }, result);
       } catch (err) {
         console.error('Analysis failed:', err);
         results.innerHTML = `<p style="color:var(--red);padding:20px;">Error: ${err.message || err}</p>
@@ -1976,7 +1991,7 @@ class UIRenderer {
         ${this._techItem('52W High', money(md.high52w))}
         ${this._techItem('52W Low', money(md.low52w))}
       </div>
-      <div class="citation">Data: ${live ? `${this._esc(md.source)} (NSE) · last candle ${new Date(md.lastCandleTime).toLocaleString('en-IN')}${md.sourceNotes && md.sourceNotes.length ? ' · ' + this._esc(md.sourceNotes.join('; ')) : ''}` : 'Simulated — live data connection unavailable'}</div>
+      <div class="citation">Data: ${live ? `${this._esc(md.source)} (NSE) · last candle ${new Date(md.lastCandleTime).toLocaleString('en-IN')}${md.lastCandleLive ? " (today's, built from the live quote until ICICI publishes it after close)" : ''}${md.sourceNotes && md.sourceNotes.length ? ' · ' + this._esc(md.sourceNotes.join('; ')) : ''}` : 'Simulated — live data connection unavailable'}</div>
     `);
     html += this._renderSection('Technical Indicators', `
       <div class="tech-grid">
@@ -2038,6 +2053,11 @@ class UIRenderer {
     return `<div class="analysis-section"><h3>${title}</h3>${body}</div>`;
   }
 
+  _tfName(tf, cap) {
+    const n = { '5m': '5-minute', '15m': '15-minute', '30m': '30-minute', '1h': 'hourly', '4h': '4-hour', '1d': 'daily', '1w': 'weekly', '1mo': 'monthly' }[tf] || tf;
+    return cap ? n.charAt(0).toUpperCase() + n.slice(1) : n;
+  }
+
   _techItem(label, value, cls) {
     return `<div class="tech-item"><div class="label">${label}</div><div class="value ${cls || ''}">${value}</div></div>`;
   }
@@ -2074,7 +2094,7 @@ class UIRenderer {
     }
     if (ks && ks.trends) {
       const word = t => (t === 'Bullish' ? '<span class="text-green">up</span>' : t === 'Bearish' ? '<span class="text-red">down</span>' : '<span class="text-yellow">sideways</span>');
-      const name = tf => ({ '5m': '5-minute', '15m': '15-minute', '30m': '30-minute', '1h': 'hourly', '4h': '4-hour', '1d': 'daily', '1w': 'weekly', '1mo': 'monthly' }[tf] || tf);
+      const name = tf => this._tfName(tf);
       const t = ks.trends;
       lines.push(`Trend: big picture (${name(t.htf.tf)}) ${word(t.htf.trend)} · medium (${name(t.itf.tf)}) ${word(t.itf.trend)} · short term (${name(t.ltf.tf)}) ${word(t.ltf.trend)}.`);
     }
@@ -2089,7 +2109,7 @@ class UIRenderer {
       lines.push(`${c.agree} of ${c.of} strategies agree with this.`);
     }
     return `<div class="plain-summary ps-${tone}">
-      <div class="ps-label">In plain words</div>
+      <div class="ps-label">In plain words · ${['5m', '15m', '30m', '1h'].includes(md.timeframe) ? `intraday (${this._tfName(md.timeframe)} candles)` : `positional (${this._tfName(md.timeframe)} chart)`}</div>
       <p class="ps-headline">${headline}</p>
       <ul>${lines.map(l => `<li>${l}</li>`).join('')}</ul>
       <p class="ps-foot">The boxes below show how MarketMind got here. Not a recommendation: check the chart and your own plan.</p>
@@ -2148,7 +2168,7 @@ class UIRenderer {
         <p class="muted" style="margin:6px 0 2px;">Tap a strategy for its conditions. × is MindGuru's trust in it: above 1 has worked well, below 1 hasn't.</p>
         <div class="s-list">${rows}</div>
       </details>
-      <p class="citation">Daily chart. Levels come from each strategy's own rules; the verdict combines the strategies that are active now. Not a recommendation — check the chart and your own plan before trading.</p>`);
+      <p class="citation">${this._tfName(md.timeframe, true)} chart${md.lastCandleLive ? " (today's candle built from the live price)" : ''}. Levels come from each strategy's own rules; the verdict combines the strategies that are active now. Not a recommendation — check the chart and your own plan before trading.</p>`);
   }
 
   // --- MindGuru's view of this verdict ---
@@ -2222,13 +2242,112 @@ class UIRenderer {
     return day >= 1 && day <= 5 && mins >= 555 && mins <= 930; // 9:15–15:30 IST (exchange holidays not checked)
   }
 
+  // --- Live re-check: during market hours, re-run the whole analysis on the live price every minute ---
+  _stopLiveRefresh() {
+    clearInterval(this._liveTimer);
+    this._liveTimer = null;
+  }
+
+  _startLiveRefresh(params, result) {
+    this._stopLiveRefresh();
+    this._live = { params, verdict: result.consensus ? result.consensus.conclusion.verdict : null, paused: false, busy: false, checkedAt: Date.now(), result, error: null };
+    this._renderLiveBar();
+    if (!result.marketData.live || !this._isMarketOpen()) return;
+    this._liveTimer = setInterval(() => this._liveTick(), 60e3);
+  }
+
+  async _liveTick() {
+    const L = this._live;
+    const results = document.getElementById('analyze-results');
+    if (!L || L.paused || L.busy || !results) return;
+    if (document.hidden || !document.getElementById('page-analyze').classList.contains('active')) return;
+    if (!this._isMarketOpen()) { this._stopLiveRefresh(); this._renderLiveBar(); return; }
+    L.busy = true;
+    try {
+      const p = L.params;
+      const result = await this.analysis.analyzeStock(p.symbol, p.strategyId, p.timeframe, null, p.sizing);
+      if (this._live !== L) return; // a new analysis started meanwhile
+      const state = this._captureResultState(results);
+      this._renderAnalysisResults(result, results);
+      this._restoreResultState(results, state);
+      const v = result.consensus ? result.consensus.conclusion.verdict : null;
+      if (L.verdict && v && v !== L.verdict) {
+        this._toast(`${p.symbol}: verdict changed from "${L.verdict}" to "${v}" at ₹${Number(result.marketData.price).toFixed(2)}`, v.startsWith('Buy') ? 'success' : 'warning');
+        L.changedAt = Date.now(); L.changedFrom = L.verdict;
+      }
+      L.verdict = v; L.result = result; L.checkedAt = Date.now(); L.error = null;
+    } catch (e) {
+      L.error = e.message || String(e);
+    } finally {
+      L.busy = false;
+      if (this._live === L) this._renderLiveBar();
+    }
+  }
+
+  // Which collapsible parts were open, and the scroll position, so a re-check doesn't jump the page
+  _captureResultState(root) {
+    const main = document.getElementById('main-content');
+    return {
+      more: !!root.querySelector('.analysis-more')?.open,
+      all: !!root.querySelector('.s-all')?.open,
+      rows: [...root.querySelectorAll('.s-row[open] .s-name')].map(n => n.firstChild ? n.firstChild.textContent : n.textContent),
+      mainTop: main ? main.scrollTop : 0, winTop: window.scrollY,
+    };
+  }
+
+  _restoreResultState(root, s) {
+    const more = root.querySelector('.analysis-more'); if (more) more.open = s.more;
+    const all = root.querySelector('.s-all'); if (all) all.open = s.all;
+    root.querySelectorAll('.s-row').forEach(row => {
+      const n = row.querySelector('.s-name');
+      const name = n && n.firstChild ? n.firstChild.textContent : '';
+      if (s.rows.includes(name)) row.open = true;
+    });
+    const main = document.getElementById('main-content');
+    if (main) main.scrollTop = s.mainTop;
+    window.scrollTo(0, s.winTop);
+  }
+
+  _renderLiveBar() {
+    const L = this._live;
+    const results = document.getElementById('analyze-results');
+    if (!L || !results || !L.result) return;
+    let bar = results.querySelector('.live-bar');
+    if (!bar) { bar = document.createElement('div'); bar.className = 'live-bar'; results.prepend(bar); }
+    const md = L.result.marketData;
+    if (!md.live) { bar.remove(); return; }
+    const time = new Date(L.checkedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const icici = md.source === 'ICICI Breeze';
+    const src = icici ? 'the live ICICI price' : 'Yahoo prices (can lag a few minutes; connect ICICI for true live prices)';
+    let html;
+    if (!this._isMarketOpen()) {
+      html = `<span class="tag tag-yellow">Market closed</span><span>Showing the last traded price${icici && md.lastCandleLive ? ', with today\'s candle built from it' : ''}. Live re-checks run 9:15 am – 3:30 pm IST, Mon–Fri.</span>`;
+    } else if (L.paused) {
+      html = `<span class="tag">Paused</span><span>Live re-checks are paused. Last check ${time}.</span><button type="button" class="live-toggle">Resume</button>`;
+    } else {
+      const changed = L.changedAt && Date.now() - L.changedAt < 10 * 60e3
+        ? ` <strong class="live-changed">Verdict changed from "${this._esc(L.changedFrom)}" at ${new Date(L.changedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}.</strong>` : '';
+      html = `<span class="live-dot"></span><span><strong>Live</strong> · re-checks every minute on ${src} · last check ${time}${L.busy ? ' · checking…' : ''}${L.error ? ` · <span class="text-red">last re-check failed: ${this._esc(L.error)}</span>` : ''}.${changed}</span><button type="button" class="live-toggle">Pause</button>`;
+    }
+    bar.innerHTML = html;
+    const btn = bar.querySelector('.live-toggle');
+    if (btn) btn.onclick = () => {
+      L.paused = !L.paused;
+      this._renderLiveBar();
+      if (!L.paused) this._liveTick();
+    };
+  }
+
   // Poll ICICI quotes every 5s while the outlook is on screen (market hours only)
   _startPressure(result) {
     clearInterval(this._pressureTimer);
     const md = result.marketData;
     if (md.source !== 'ICICI Breeze' || !result.ks001) return;
-    const samples = [];
-    if (md.quote) samples.push(md.quote);
+    // Keep order-book readings across live re-checks of the same stock
+    const keep = this._pressureSamples && this._pressureSamples.symbol === result.symbol;
+    const samples = keep ? this._pressureSamples.list : [];
+    this._pressureSamples = { symbol: result.symbol, list: samples };
+    if (md.quote && !keep) samples.push(md.quote);
     const f = v => (v != null && isFinite(v) ? Number(v).toFixed(2) : '—');
     const tick = async () => {
       const box = document.getElementById('outlook-live');
