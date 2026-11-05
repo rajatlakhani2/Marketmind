@@ -99,6 +99,12 @@ php /home/YOURACCOUNT/public_html/marketmind/api/backup.php
 
 It saves a gzipped SQL dump of the database to `marketmind-backups/` in your home folder (above `public_html`, never reachable from the web) and keeps the newest 8. It reads the database login from `marketmind-config.php`, so no password goes in the cron command. To restore, import the `.sql.gz` file in phpMyAdmin.
 
+**One-tap trading (admin only)**
+
+The **Trading** page watches the stocks on its watchlist while MarketMind is open in market hours and proposes orders: delivery buys from the daily verdict, intraday buys from the 15-minute verdict (squared off from 3:10 pm), and at-the-money call/put buys from the daily verdict. Nothing is sent until you tap **Approve**; the server re-checks your limits (value per trade, trades per day, open positions, market hours) first. After a buy fills, MarketMind proposes a stop-loss order that rests at ICICI. A kill switch stops everything.
+
+SEBI requires API orders to come from a static IP registered with the broker, and shared hosting doesn't qualify, so live orders go through a tiny relay on a VPS: see [`relay/README.md`](relay/README.md). Until the relay is configured, the page runs in **TEST mode** and simulates every approved order against live prices.
+
 **Installing on your phone**
 Open the site in Chrome (Android) and tap **Install app** in the menu, or in Safari (iPhone) tap Share → **Add to Home Screen**. The site must be on `https://`.
 

@@ -29,6 +29,7 @@
   <script src="js/knowledgesync.js?v=7"></script>
   <script src="js/fno.js?v=7"></script>
   <script src="js/events.js?v=7"></script>
+  <script src="js/trading.js?v=7"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -445,6 +446,26 @@ textarea { font-family: inherit; }
 .plain-summary .ev-warn { color: var(--orange); }
 .fno-controls input[type=text] { min-width: 220px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); font: inherit; font-size: 0.9rem; }
 @media (max-width: 560px) { .ev-item { grid-template-columns: 1fr; gap: 4px; } }
+/* One-tap trading */
+.tr-mode { border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.86rem; line-height: 1.5; }
+.tr-mode.test { background: #fdf4e3; border: 1px solid #e8c98c; color: #6e4604; }
+.tr-mode.live { background: rgba(17,128,78,0.1); border: 1px solid rgba(17,128,78,0.4); color: var(--green); }
+.tr-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 12px; }
+.tr-switch { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.tr-switch input { width: 18px; height: 18px; }
+.tr-status { font-size: 0.82rem; }
+.tr-card { border: 1px solid var(--border); border-left: 5px solid var(--green); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: var(--bg-card); }
+.tr-card.sell { border-left-color: var(--red); }
+.tr-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; }
+.tr-card-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; font-variant-numeric: tabular-nums; }
+.tr-card-grid .label { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.tr-reason { font-size: 0.85rem; line-height: 1.55; margin: 8px 0; color: var(--text-secondary); }
+.tr-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.tr-settings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 14px; align-items: end; }
+.tr-settings label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--text-muted); }
+.tr-settings input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 0.9rem; background: var(--bg-card); color: var(--text-primary); }
+.nav-badge { display: inline-block; min-width: 18px; padding: 1px 6px; margin-left: 6px; border-radius: 9px; background: var(--red); color: #fff; font-size: 0.7rem; font-weight: 700; text-align: center; }
+@media (max-width: 700px) { .tr-card-grid, .tr-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* ICICI reminder banner */
 .icici-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; background: #fdf4e3; border: 1px solid #e8c98c; color: #6e4604; border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.86rem; line-height: 1.5; }
 .icici-banner-text { flex: 1; min-width: 220px; }
@@ -653,6 +674,7 @@ body.auth-open #app { visibility: hidden; }
         <li><a href="#" data-page="mindguru"><span class="nav-icon">&#x1F9E0;</span> MindGuru</a></li>
         <li><a href="#" data-page="fno"><span class="nav-icon">&#x1F4C8;</span> Futures &amp; Options</a></li>
         <li><a href="#" data-page="events"><span class="nav-icon">&#x1F4C5;</span> Events &amp; News</a></li>
+        <li class="admin-only hidden"><a href="#" data-page="trading"><span class="nav-icon">&#x26A1;</span> Trading</a></li>
         <li><a href="#" data-page="screener"><span class="nav-icon">&#x1F50D;</span> Strategy Screener</a></li>
         <li><a href="#" data-page="theory"><span class="nav-icon">&#x1F4D6;</span> Market Theory</a></li>
         <li><a href="#" data-page="methodology"><span class="nav-icon">&#x2699;&#xFE0F;</span> Methodology</a></li>
@@ -779,6 +801,10 @@ body.auth-open #app { visibility: hidden; }
       <div id="page-events" class="page">
         <header class="page-header"><h2>Events &amp; News</h2></header>
         <div id="events-container"></div>
+      </div>
+      <div id="page-trading" class="page">
+        <header class="page-header"><h2>One-tap Trading</h2></header>
+        <div id="trading-container"></div>
       </div>
       <div id="page-screener" class="page">
         <header class="page-header"><h2>Strategy Screener</h2></header>
@@ -2882,6 +2908,7 @@ class App {
       case 'screener': this.ui.renderScreener(); break;
       case 'fno': await FnO.renderPage(document.getElementById('fno-container')); break;
       case 'events': await EventsPage.renderPage(document.getElementById('events-container')); break;
+      case 'trading': await Trading.renderPage(document.getElementById('trading-container')); break;
       case 'mindguru': await MindGuru.renderPage(document.getElementById('mindguru-container')); break;
       case 'theory': this.ui.renderTheory(); break;
       case 'methodology': this.ui.renderMethodology(); break;

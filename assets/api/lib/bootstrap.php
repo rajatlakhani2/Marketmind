@@ -214,6 +214,63 @@ function mm_migrations(): array {
             )$t",
             "CREATE INDEX ix_knowledge_updated ON knowledge_items (user_id, updated_at)",
         ],
+        // One-tap trading (admin only): watchlist, limits, and every order MarketMind proposes
+        5 => [
+            "CREATE TABLE trade_watchlist (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                symbol VARCHAR(20) NOT NULL,
+                name VARCHAR(150) NOT NULL DEFAULT '',
+                delivery TINYINT NOT NULL DEFAULT 1,
+                intraday TINYINT NOT NULL DEFAULT 0,
+                options TINYINT NOT NULL DEFAULT 0,
+                added_at DATETIME NOT NULL
+            )$t",
+            "CREATE UNIQUE INDEX ux_trade_watchlist_symbol ON trade_watchlist (symbol)",
+            "CREATE TABLE trade_settings (
+                k VARCHAR(40) NOT NULL PRIMARY KEY,
+                v TEXT NOT NULL,
+                updated_at DATETIME NOT NULL
+            )$t",
+            "CREATE TABLE trade_orders (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                parent_id INT UNSIGNED NULL,
+                symbol VARCHAR(20) NOT NULL,
+                name VARCHAR(150) NOT NULL DEFAULT '',
+                product VARCHAR(10) NOT NULL,
+                purpose VARCHAR(12) NOT NULL,
+                side VARCHAR(4) NOT NULL,
+                order_type VARCHAR(10) NOT NULL DEFAULT 'limit',
+                qty INT UNSIGNED NOT NULL,
+                lot INT UNSIGNED NOT NULL DEFAULT 1,
+                limit_price DECIMAL(14,2) NULL,
+                trigger_price DECIMAL(14,2) NULL,
+                stop DECIMAL(14,2) NULL,
+                target DECIMAL(14,2) NULL,
+                opt_isec VARCHAR(20) NULL,
+                opt_expiry DATE NULL,
+                opt_strike DECIMAL(14,2) NULL,
+                opt_right VARCHAR(4) NULL,
+                timeframe VARCHAR(4) NOT NULL DEFAULT '1d',
+                verdict VARCHAR(40) NOT NULL DEFAULT '',
+                reason TEXT NULL,
+                status VARCHAR(12) NOT NULL DEFAULT 'pending',
+                mode VARCHAR(4) NOT NULL DEFAULT 'test',
+                broker_order_id VARCHAR(40) NULL,
+                broker_status VARCHAR(40) NULL,
+                error TEXT NULL,
+                fill_price DECIMAL(14,2) NULL,
+                filled_at DATETIME NULL,
+                exit_price DECIMAL(14,2) NULL,
+                closed_at DATETIME NULL,
+                pnl DECIMAL(14,2) NULL,
+                created_at DATETIME NOT NULL,
+                expires_at DATETIME NOT NULL,
+                decided_at DATETIME NULL,
+                decided_by INT UNSIGNED NULL
+            )$t",
+            "CREATE INDEX ix_trade_orders_status ON trade_orders (status, created_at)",
+            "CREATE INDEX ix_trade_orders_symbol ON trade_orders (symbol, created_at)",
+        ],
     ];
 }
 
