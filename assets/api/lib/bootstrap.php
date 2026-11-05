@@ -202,6 +202,18 @@ function mm_migrations(): array {
                 notes_json MEDIUMTEXT NOT NULL
             )$t",
         ],
+        // Each user's own knowledge (uploaded books, extracted concepts and strategies)
+        4 => [
+            "CREATE TABLE knowledge_items (
+                user_id INT UNSIGNED NOT NULL,
+                store VARCHAR(20) NOT NULL,
+                item_id VARCHAR(100) NOT NULL,
+                data_json LONGTEXT NOT NULL,
+                updated_at DATETIME NOT NULL,
+                PRIMARY KEY (user_id, store, item_id)
+            )$t",
+            "CREATE INDEX ix_knowledge_updated ON knowledge_items (user_id, updated_at)",
+        ],
     ];
 }
 
@@ -232,11 +244,11 @@ function mm_https(): bool {
 
 // State-changing calls must be POST with the app's custom header. Other sites can't send
 // that header without a CORS preflight, which this server never approves (CSRF protection).
-function mm_require_post(): array {
+function mm_require_post(int $maxBytes = 512 * 1024): array {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') mm_json(405, ['error' => 'Use POST']);
     if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'MarketMind') mm_json(403, ['error' => 'Missing request header']);
     $raw = (string) file_get_contents('php://input');
-    if (strlen($raw) > 256 * 1024) mm_json(413, ['error' => 'Request too large']);
+    if (strlen($raw) > $maxBytes) mm_json(413, ['error' => 'Request too large']);
     $body = $raw === '' ? [] : json_decode($raw, true);
     if (!is_array($body)) mm_json(400, ['error' => 'Invalid JSON']);
     return $body;

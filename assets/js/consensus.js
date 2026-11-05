@@ -120,8 +120,106 @@
       const target = prior > entry ? prior : entry + 2 * (entry - stop);
       return longPlan(entry, stop, target, prior > entry ? 'prior high' : '2× risk', { how: 'Buy as RSI turns up from the 40–50 band' });
     },
+    // ---- added strategies ----
+    lib_s_sd_flip: ({ md, c, a }) => {
+      const b = root.Conditions && root.Conditions.breakoutLevel(c);
+      if (!b) return null;
+      const entry = md.price, stop = b.level - 0.5 * a;
+      const t = longTarget(entry, stop, md);
+      return longPlan(entry, stop, t.target, t.why, { how: `Buy the retest of the old range high ₹${r2(b.level)} (now support)` });
+    },
+    lib_s_zone_candle_long: ({ md, ks, c }) => {
+      const z = (ks.nearestDemand || [])[0];
+      const l = c[c.length - 1];
+      if (!z || !l) return null;
+      const entry = Math.max(l.high, md.price), stop = Math.min(z.stop != null ? z.stop : z.distal, l.low);
+      const sup = (ks.nearestSupply || [])[0];
+      const target = sup && sup.proximal > entry + 2 * (entry - stop) ? sup.proximal : entry + 2 * (entry - stop);
+      return longPlan(entry, stop, target, sup && target === sup.proximal ? 'nearest supply zone' : '2× risk', { how: `Buy above the reversal candle's high inside the ${z.pattern} demand zone`, ksScore: z.score && z.score.total });
+    },
+    lib_s_zone_candle_short: ({ md, ks, c }) => {
+      const z = (ks.nearestSupply || [])[0];
+      const l = c[c.length - 1];
+      if (!z || !l) return null;
+      const entry = Math.min(l.low, md.price), stop = Math.max(z.stop != null ? z.stop : z.distal, l.high);
+      const dem = (ks.nearestDemand || [])[0];
+      const target = dem && dem.proximal < entry - 2 * (stop - entry) ? dem.proximal : entry - 2 * (stop - entry);
+      return shortPlan(entry, stop, target, dem && target === dem.proximal ? 'nearest demand zone' : '2× risk', { how: `Sell below the rejection candle's low inside the ${z.pattern} supply zone`, ksScore: z.score && z.score.total });
+    },
+    lib_s_morning_star_demand: ({ md, c }) => {
+      const t = c.slice(-3);
+      if (t.length < 3) return null;
+      const entry = md.price, stop = Math.min(...t.map(x => x.low));
+      const lt = longTarget(entry, stop, md);
+      return longPlan(entry, stop, lt.target, lt.why, { how: 'Buy at the close of the morning star; stop under the pattern' });
+    },
+    lib_s_donchian20: ({ md, c, a }) => {
+      const entry = md.price, stop = Math.max(lowestLow(c, 10), entry - 2 * a);
+      const t = longTarget(entry, stop, md);
+      return longPlan(entry, stop, t.target, t.why, { how: 'Buy the close above the 20-day high; trail with the 10-day low' });
+    },
+    lib_s_high52: ({ md, c, a }) => {
+      const entry = md.price, stop = Math.max(lowestLow(c, 10), entry - 2 * a);
+      return longPlan(entry, Math.min(stop, entry - a), entry + 2 * (entry - Math.min(stop, entry - a)), '2× risk', { how: 'Buy strength near the 52-week high; trail with the 50-day SMA' });
+    },
+    lib_s_inside_bar: ({ md, c }) => {
+      const ib = c[c.length - 2];
+      if (!ib) return null;
+      const entry = Math.max(ib.high, md.price), stop = ib.low;
+      const t = longTarget(entry, stop, md);
+      return longPlan(entry, stop, t.target, t.why, { how: "Buy above the inside bar's high; stop below its low" });
+    },
+    lib_s_supertrend_flip: ({ md, c, a }) => {
+      const st = root.Conditions && root.Conditions.supertrendSeries(c);
+      const line = st && st.line[st.line.length - 1];
+      if (line == null) return null;
+      const entry = md.price, stop = Math.min(line, entry - 0.5 * a);
+      const t = longTarget(entry, stop, md);
+      return longPlan(entry, stop, t.target, t.why, { how: 'Buy the Supertrend flip; the Supertrend line is the stop' });
+    },
+    lib_s_adx_ema_pullback: ({ md, c, a }) => {
+      const e = md.ema20;
+      if (e == null) return null;
+      const entry = Math.min(md.price, e * 1.005), stop = e - a;
+      const prior = highestHigh(c, 40);
+      const target = prior > entry + 1.5 * (entry - stop) ? prior : entry + 2 * (entry - stop);
+      return longPlan(entry, stop, target, prior === target ? 'prior high' : '2× risk', { how: 'Buy the dip to the 20-day EMA in a strong trend' });
+    },
+    lib_s_macd_cross_below_zero: ({ md, c, a }) => {
+      const entry = md.price, stop = Math.min(lowestLow(c, 10), entry - a);
+      const t = longTarget(entry, stop, md);
+      return longPlan(entry, stop, t.target, t.why, { how: 'Buy the MACD crossover while MACD is still below zero' });
+    },
+    lib_s_rsi_divergence: ({ md, c, a }) => {
+      const C = root.Conditions;
+      const lows = C ? C.swings(c, 'low', c.length - 30) : [];
+      const sw = lows.length ? c[lows[lows.length - 1]].low : lowestLow(c, 10);
+      const entry = md.price, stop = Math.min(sw - 0.25 * a, entry - 0.5 * a);
+      const res = (md.resistance || []).find(v => v > entry);
+      const target = res != null && res - entry >= 1.2 * (entry - stop) ? res : entry + 2 * (entry - stop);
+      return longPlan(entry, stop, target, res === target ? 'nearest resistance' : '2× risk', { how: 'Buy the confirmation close after the bullish divergence' });
+    },
+    lib_s_bb_lower_bounce: ({ md, c, a }) => {
+      const bb = root.Conditions ? root.Conditions.bollinger(c) : null;
+      if (!bb) return null;
+      const entry = md.price, stop = Math.min(lowestLow(c, 5) - 0.5 * a, entry - 0.5 * a);
+      const target = bb.mid > entry + (entry - stop) ? bb.mid : bb.upper;
+      return longPlan(entry, stop, target, target === bb.mid ? 'middle Bollinger Band' : 'upper Bollinger Band', { how: 'Buy the turn up from the lower band; take profit at the middle band' });
+    },
+    lib_s_three_soldiers: ({ md, c, a }) => {
+      const first = c[c.length - 3];
+      if (!first) return null;
+      const entry = md.price, stop = Math.max((first.open + first.close) / 2, entry - 2 * a);
+      const t = longTarget(entry, Math.min(stop, entry - 0.5 * a), md);
+      return longPlan(entry, Math.min(stop, entry - 0.5 * a), t.target, t.why, { how: 'Buy after three strong green candles; stop under the first one' });
+    },
+    lib_s_breakdown20: ({ md, c, a }) => {
+      const entry = md.price, stop = Math.min(highestHigh(c, 10), entry + 2 * a);
+      const st = Math.max(stop, entry + 0.5 * a);
+      return shortPlan(entry, st, entry - 2 * (st - entry), '2× risk', { how: 'Sell the close below the 20-day low; trail with the 10-day high' });
+    },
   };
-  const SIDE = { lib_s_ks_supply: 'short' };
+  const SIDE = { lib_s_ks_supply: 'short', lib_s_zone_candle_short: 'short', lib_s_breakdown20: 'short' };
 
   // ---------- MindGuru: what each strategy's track record says ----------
   // Uses the record for today's higher-timeframe trend when it has 8+ results, else the overall record.

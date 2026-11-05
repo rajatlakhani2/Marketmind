@@ -23,9 +23,15 @@ Runs entirely in the browser (plain HTML, CSS and JavaScript). A tiny proxy fetc
   - Position sizing from account size and risk % per trade
   - Candlestick chart with zones and plan levels drawn on it
 - **Technical indicators** — RSI (14), MACD, 20 EMA, 50 / 200 MA, swing support and resistance
-- **Built-in library** — 29 concepts and 10 ready-to-use strategies (KS-001 zones, RSI(2), Moving Momentum, Golden Cross, 50-DMA pullback, Bollinger squeeze, NR7, engulfing at support, RSI bull-range), written in MarketMind's own words from Zerodha Varsity, StockCharts ChartSchool and other public sources. Each item links to its source.
+- **Built-in library** — 44 concepts and 24 ready-to-use strategies, written in MarketMind's own words from Zerodha Varsity, StockCharts ChartSchool, The Right Trader and other public sources (each item links to its source):
+  - *Supply & demand:* KS-001 demand long and supply short, breakout retest (supply turned demand), demand zone + reversal candle, supply zone + rejection candle (short), morning star at demand
+  - *Trend:* Moving Momentum, golden cross, 50-DMA pullback, Supertrend flip, ADX trend pullback to the 20 EMA
+  - *Breakouts and momentum:* 20-day breakout (Turtle), 52-week high momentum, inside bar breakout, Bollinger squeeze, NR7, three white soldiers, MACD crossover below zero, RSI bull-range
+  - *Mean reversion:* RSI(2), RSI bullish divergence at support, lower Bollinger Band bounce, bullish engulfing at support
+  - *Short side:* 20-day breakdown
+  Every strategy has its own entry, stop-loss and target rules, so MindGuru tracks and weights each one.
 - **Your own knowledge** — upload PDFs, text or images; concepts, chart patterns, indicators and strategy rules are extracted and tagged
-- **Strategies and screener** — library, extracted or custom strategies checked against live data across 45 large-cap NSE stocks, showing the reading behind each ✓/✗. The condition engine understands plain English such as "Price above rising 20 EMA", "RSI(2) below 10", "20-day SMA above 150-day SMA", "Stochastic below 20 in the last 10 days", "MACD histogram turned positive", "Bollinger squeeze", "NR7 on the previous candle", "Bullish engulfing on the last candle", "Volume above 10-day average" and "Qualifying demand zone within 3% below price". Anything it can't check from price data is marked "check manually" instead of being guessed.
+- **Strategies and screener** — library, extracted or custom strategies checked against live data across 45 large-cap NSE stocks, showing the reading behind each ✓/✗. The condition engine understands plain English such as "ADX above 25", "+DI above -DI", "Supertrend turned bullish in the last 3 days", "Close at a 20-day high", "Price within 5% of 52-week high", "Inside bar on the previous candle", "Retest of breakout level within 3%", "RSI bullish divergence in the last 30 days", "Morning star on the last 3 candles", "Price above rising 20 EMA", "RSI(2) below 10", "20-day SMA above 150-day SMA", "Stochastic below 20 in the last 10 days", "MACD histogram turned positive", "Bollinger squeeze", "NR7 on the previous candle", "Bullish engulfing on the last candle", "Volume above 10-day average" and "Qualifying demand zone within 3% below price". Anything it can't check from price data is marked "check manually" instead of being guessed.
 
 ## KS-001 rules used
 
@@ -147,7 +153,7 @@ Breeze is free for ICICI Direct customers. It needs PHP hosting (your cPanel), s
 └── package.json
 ```
 
-Uploaded documents and extracted concepts/strategies are still stored in the browser (IndexedDB); they move to MySQL in a later update.
+Uploaded documents, extracted concepts and your own strategies are saved to your account in MySQL (each user has their own library) and kept in the browser as a fast local copy, so they appear on every device you sign in from. The first time the admin signs in, anything saved in that browser before sign-in existed is moved into the admin's account.
 
 ## Disclaimer
 

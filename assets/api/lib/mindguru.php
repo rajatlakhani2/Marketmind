@@ -322,7 +322,7 @@ function mg_insights(array $brain): array {
             $best = array_key_first($sub); $worst = array_key_last($sub);
             if ($sub[$best]['avgR'] - $sub[$worst]['avgR'] >= 0.4) {
                 $out[] = ['tone' => 'info', 'text' => sprintf('%s does better %s %s (%+.2fR over %d trades) than %s %s (%+.2fR over %d trades).',
-                    $s['name'], $phrase, strtolower($best), $sub[$best]['avgR'], $sub[$best]['trades'], $phrase2, strtolower($worst), $sub[$worst]['avgR'], $sub[$worst]['trades'])];
+                    $s['name'], $phrase, strtolower((string) $best), $sub[$best]['avgR'], $sub[$best]['trades'], $phrase2, strtolower((string) $worst), $sub[$worst]['avgR'], $sub[$worst]['trades'])];
             }
         }
         if ($all['trades'] + $all['noEntry'] >= 10 && $all['noEntry'] > $all['trades']) {

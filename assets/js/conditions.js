@@ -79,6 +79,84 @@
     return { mid, upper: mid + mult * sd, lower: mid - mult * sd, width: (2 * mult * sd) / v[endIdx] };
   }
 
+  // ---------- volatility and trend-strength helpers ----------
+  // Wilder's smoothing (used by ATR, ADX and Supertrend)
+  function wilder(values, period) {
+    const out = new Array(values.length).fill(null);
+    let start = values.findIndex(v => v != null);
+    if (start < 0 || values.length - start < period) return out;
+    let s = 0;
+    for (let i = start; i < start + period; i++) s += values[i];
+    let prev = s / period;
+    out[start + period - 1] = prev;
+    for (let i = start + period; i < values.length; i++) { prev = (prev * (period - 1) + values[i]) / period; out[i] = prev; }
+    return out;
+  }
+  const trueRange = (c, i) => (i === 0 ? c[0].high - c[0].low : Math.max(c[i].high - c[i].low, Math.abs(c[i].high - c[i - 1].close), Math.abs(c[i].low - c[i - 1].close)));
+  function atrSeries(c, period = 14) { return wilder(c.map((_, i) => trueRange(c, i)), period); }
+
+  // ADX with +DI / -DI (Wilder, 14)
+  function adxSeries(c, period = 14) {
+    const n = c.length;
+    const tr = [null], pdm = [null], mdm = [null];
+    for (let i = 1; i < n; i++) {
+      const up = c[i].high - c[i - 1].high, down = c[i - 1].low - c[i].low;
+      tr.push(trueRange(c, i));
+      pdm.push(up > down && up > 0 ? up : 0);
+      mdm.push(down > up && down > 0 ? down : 0);
+    }
+    const sTr = wilder(tr, period), sP = wilder(pdm, period), sM = wilder(mdm, period);
+    const plus = sTr.map((t, i) => (t ? 100 * sP[i] / t : null));
+    const minus = sTr.map((t, i) => (t ? 100 * sM[i] / t : null));
+    const dx = plus.map((p, i) => (p == null || minus[i] == null || p + minus[i] === 0 ? null : 100 * Math.abs(p - minus[i]) / (p + minus[i])));
+    return { adx: wilder(dx, period), plus, minus };
+  }
+
+  // Supertrend (10, 3): returns the line and direction (+1 up, -1 down) per candle
+  function supertrendSeries(c, period = 10, mult = 3) {
+    const atr = atrSeries(c, period);
+    const line = new Array(c.length).fill(null), dir = new Array(c.length).fill(null);
+    let fu = null, fl = null, d = 1;
+    for (let i = 0; i < c.length; i++) {
+      if (atr[i] == null) continue;
+      const mid = (c[i].high + c[i].low) / 2;
+      const bu = mid + mult * atr[i], bl = mid - mult * atr[i];
+      const prevClose = i > 0 ? c[i - 1].close : c[i].close;
+      fu = fu == null || bu < fu || prevClose > fu ? bu : fu;
+      fl = fl == null || bl > fl || prevClose < fl ? bl : fl;
+      if (d === 1 && c[i].close < fl) d = -1;
+      else if (d === -1 && c[i].close > fu) d = 1;
+      dir[i] = d;
+      line[i] = d === 1 ? fl : fu;
+    }
+    return { line, dir };
+  }
+
+  // Breakout-and-retest ("old resistance becomes support"): the top of the range price
+  // broke out of in the last 15 bars. Returns { level, breakoutAgo } or null.
+  function breakoutLevel(c) {
+    const n = c.length;
+    if (n < 70) return null;
+    const range = c.slice(n - 60, n - 15);
+    const level = Math.max(...range.map(x => x.high));
+    for (let i = n - 15; i < n; i++) {
+      if (c[i].close > level * 1.01) return { level, breakoutAgo: n - 1 - i };
+    }
+    return null;
+  }
+
+  // Swing points confirmed by 2 lower highs / higher lows on each side
+  function swings(c, kind, from) {
+    const out = [];
+    for (let i = Math.max(2, from); i < c.length - 2; i++) {
+      const v = kind === 'low' ? c[i].low : c[i].high;
+      const better = (a) => (kind === 'low' ? a > v : a < v);
+      const val = (j) => (kind === 'low' ? c[j].low : c[j].high);
+      if (better(val(i - 1)) && better(val(i - 2)) && better(val(i + 1)) && better(val(i + 2))) out.push(i);
+    }
+    return out;
+  }
+
   // ---------- candlestick shapes ----------
   const body = c => Math.abs(c.close - c.open);
   const rangeOf = c => c.high - c.low;
@@ -101,6 +179,28 @@
   const isDoji = c => rangeOf(c) > 0 && body(c) / rangeOf(c) <= 0.1;
   const isBullishMarubozu = c => isGreen(c) && rangeOf(c) > 0 && body(c) / rangeOf(c) >= 0.9;
   const isBearishMarubozu = c => isRed(c) && rangeOf(c) > 0 && body(c) / rangeOf(c) >= 0.9;
+  const avgBody = (c, n = 10) => c.slice(-n - 3, -3).reduce((a, x) => a + body(x), 0) / Math.max(1, Math.min(n, c.length - 3));
+  function isMorningStar(c) {
+    if (c.length < 13) return false;
+    const [a, b, d] = c.slice(-3), ab = avgBody(c);
+    return isRed(a) && body(a) >= ab && body(b) <= body(a) * 0.35 && Math.max(b.open, b.close) <= a.close + body(a) * 0.1
+      && isGreen(d) && d.close > (a.open + a.close) / 2;
+  }
+  function isEveningStar(c) {
+    if (c.length < 13) return false;
+    const [a, b, d] = c.slice(-3), ab = avgBody(c);
+    return isGreen(a) && body(a) >= ab && body(b) <= body(a) * 0.35 && Math.min(b.open, b.close) >= a.close - body(a) * 0.1
+      && isRed(d) && d.close < (a.open + a.close) / 2;
+  }
+  const isBullishHarami = (p, l) => isRed(p) && isGreen(l) && body(l) < body(p) * 0.6 && l.close <= p.open && l.open >= p.close;
+  const isBearishHarami = (p, l) => isGreen(p) && isRed(l) && body(l) < body(p) * 0.6 && l.open <= p.close && l.close >= p.open;
+  function isThreeWhiteSoldiers(c) {
+    if (c.length < 13) return false;
+    const t = c.slice(-3), ab = avgBody(c);
+    return t.every(x => isGreen(x) && body(x) >= ab * 0.8 && (x.high - x.close) <= body(x) * 0.4)
+      && t[1].close > t[0].close && t[2].close > t[1].close
+      && t[1].open >= t[0].open && t[1].open <= t[0].close * 1.005 && t[2].open >= t[1].open && t[2].open <= t[1].close * 1.005;
+  }
 
   // ---------- parsing helpers ----------
   const num = (s, d) => { const m = s && s.match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : d; };
@@ -116,6 +216,98 @@
   const MATCHERS = [
     // "Higher timeframe trend bullish" can't be judged from one timeframe's candles (the KS-001 report covers it)
     [/higher timeframe|\bhtf\b|weekly trend/, () => null],
+    // "Supertrend bullish", "Supertrend turned bullish in the last 3 days"
+    [/\bsupertrend\b/, (s, m, data, c) => {
+      const { line, dir } = supertrendSeries(c);
+      const d = dir[dir.length - 1];
+      if (d == null) return null;
+      const bear = /bear|down|sell|red/.test(s);
+      const want = bear ? -1 : 1;
+      const label = `Supertrend ${d === 1 ? 'bullish' : 'bearish'} (line ${fmt(line[line.length - 1])})`;
+      if (/turn|flip|cross/.test(s)) {
+        const n = lookback(s, 3);
+        for (let i = dir.length - 1; i > dir.length - 1 - n && i > 0; i--) {
+          if (dir[i] === want && dir[i - 1] === -want) return res(true, `${label}, turned ${dir.length - 1 - i} bars ago`);
+        }
+        return res(false, `${label}, no turn in last ${n} bars`);
+      }
+      return res(d === want, label);
+    }],
+    // "ADX above 25", "+DI above -DI"
+    [/\badx\b|[+-]\s*di\b/, (s, m, data, c) => {
+      const { adx, plus, minus } = adxSeries(c);
+      const a = adx[adx.length - 1], p = plus[plus.length - 1], q = minus[minus.length - 1];
+      if (a == null || p == null) return null;
+      const label = `ADX ${a.toFixed(1)}, +DI ${p.toFixed(1)}, -DI ${q.toFixed(1)}`;
+      if (/\badx\b/.test(s)) { const lvl = num(s.replace(/adx\s*\(\s*\d+\s*\)/, ''), 25); return res(isBelow(s) ? a < lvl : a > lvl, label); }
+      const plusFirst = s.indexOf('+') < s.indexOf('-') || s.indexOf('-') < 0;
+      return res(isBelow(s) === plusFirst ? p < q : p > q, label);
+    }],
+    // "Close at a 20-day high", "Close at a 20-day low", "Price within 5% of 52-week high"
+    [/(\d+)\s*-?\s*(day|week)\s+(high|low)/, (s, m, data, c) => {
+      const n = parseInt(m[1], 10) * (m[2] === 'week' ? 5 : 1);
+      const high = m[3] === 'high';
+      if (c.length < Math.min(n, 60) + 1) return null;
+      const prior = c.slice(Math.max(0, c.length - 1 - n), -1);
+      const lvl = high ? Math.max(...prior.map(x => x.high)) : Math.min(...prior.map(x => x.low));
+      const within = s.match(/within\s+(\d+(?:\.\d+)?)\s*%/);
+      const label = `price ${fmt(data.price)} vs ${m[1]}-${m[2]} ${m[3]} ${fmt(lvl)}`;
+      if (within) {
+        const pct = parseFloat(within[1]) / 100;
+        return res(high ? data.price >= lvl * (1 - pct) : data.price <= lvl * (1 + pct), label);
+      }
+      return res(high ? data.price > lvl : data.price < lvl, label);
+    }],
+    // "Inside bar on the previous candle"
+    [/inside bar/, (s, m, data, c) => {
+      const idx = /previous|prior|yesterday/.test(s) ? c.length - 2 : c.length - 1;
+      if (idx < 1) return null;
+      const a = c[idx - 1], b = c[idx];
+      const ok = b.high <= a.high && b.low >= a.low;
+      return res(ok, ok ? `inside bar (${fmt(b.low)}–${fmt(b.high)} within ${fmt(a.low)}–${fmt(a.high)})` : 'no inside bar');
+    }],
+    // "Retest of breakout level within 3%"
+    [/retest/, (s, m, data, c) => {
+      const pct = num((s.match(/within\s+(\d+(?:\.\d+)?)\s*%/) || [])[1], 3);
+      const b = breakoutLevel(c);
+      if (!b) return res(false, 'no breakout above a range high in the last 15 bars');
+      const d = (data.price - b.level) / b.level * 100;
+      return res(d >= -1 && d <= pct, `broke out above ${fmt(b.level)} ${b.breakoutAgo} bars ago; price is ${d.toFixed(1)}% above it`);
+    }],
+    // "RSI bullish divergence in the last 30 days"
+    [/divergence/, (s, m, data, c) => {
+      const n = lookback(s, 30);
+      const bull = !/bear/.test(s);
+      const r = rsiSeries(closes(c), 14);
+      const pts = swings(c, bull ? 'low' : 'high', c.length - n);
+      if (pts.length < 2) return res(false, `fewer than two swing ${bull ? 'lows' : 'highs'} in last ${n} bars`);
+      const i1 = pts[pts.length - 2], i2 = pts[pts.length - 1];
+      if (r[i1] == null || r[i2] == null || i2 - i1 < 4) return res(false, 'swings too close together');
+      const ok = bull ? c[i2].low < c[i1].low && r[i2] > r[i1] + 2 : c[i2].high > c[i1].high && r[i2] < r[i1] - 2;
+      return res(ok, `swing ${bull ? 'lows' : 'highs'} ${fmt(bull ? c[i1].low : c[i1].high)} → ${fmt(bull ? c[i2].low : c[i2].high)}, RSI ${r[i1].toFixed(0)} → ${r[i2].toFixed(0)}`);
+    }],
+    // "Low touched lower Bollinger Band in the last 3 days"
+    [/(touch|tag)\w*\s+(?:the\s+)?(lower|upper)\s+bollinger/, (s, m, data, c) => {
+      const n = lookback(s, 3), lower = m[2] === 'lower';
+      for (let i = c.length - 1; i >= c.length - n && i >= 20; i--) {
+        const bb = bollinger(c, 20, 2, i);
+        if (bb && (lower ? c[i].low <= bb.lower : c[i].high >= bb.upper)) return res(true, `${lower ? 'low' : 'high'} reached the ${m[2]} band ${c.length - 1 - i} bars ago`);
+      }
+      return res(false, `${m[2]} band not reached in last ${n} bars`);
+    }],
+    // Three-candle and harami patterns
+    [/morning star|evening star|harami|three white soldiers/, (s, m, data, c) => {
+      if (c.length < 13) return null;
+      const p = c[c.length - 2], l = c[c.length - 1];
+      const checks = [];
+      if (/morning star/.test(s)) checks.push(['morning star', isMorningStar(c)]);
+      if (/evening star/.test(s)) checks.push(['evening star', isEveningStar(c)]);
+      if (/bullish harami/.test(s) || (/harami/.test(s) && !/bearish/.test(s))) checks.push(['bullish harami', isBullishHarami(p, l)]);
+      if (/bearish harami/.test(s)) checks.push(['bearish harami', isBearishHarami(p, l)]);
+      if (/three white soldiers/.test(s)) checks.push(['three white soldiers', isThreeWhiteSoldiers(c)]);
+      const hit = checks.find(x => x[1]);
+      return res(!!hit, hit ? `${hit[0]} on the last candles` : `no ${checks.map(x => x[0]).join(' / ')}`);
+    }],
     // KS-001 zones: "qualifying demand zone within 3% below price"
     [/\b(demand|supply)\s+zone/, (s, m, data, c) => {
       if (!root.KS001) return null;
@@ -317,5 +509,5 @@
     return null;
   }
 
-  root.Conditions = { check, rsiSeries, stochSeries, macdHistSeries, bollinger, maSeries, isHammer, isShootingStar, isBullishEngulfing, isBearishEngulfing, isDoji };
+  root.Conditions = { check, atrSeries, adxSeries, supertrendSeries, breakoutLevel, swings, isMorningStar, isEveningStar, isThreeWhiteSoldiers, rsiSeries, stochSeries, macdHistSeries, bollinger, maSeries, isHammer, isShootingStar, isBullishEngulfing, isBearishEngulfing, isDoji };
 })(typeof window !== 'undefined' ? window : globalThis);

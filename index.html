@@ -26,6 +26,7 @@
   <script src="js/account.js"></script>
   <script src="js/stockpicker.js"></script>
   <script src="js/mindguru.js"></script>
+  <script src="js/knowledgesync.js"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2497,6 +2498,7 @@ class App {
     try {
       await Account.boot();
       Account.renderMenu();
+      if (window.KnowledgeSync) await KnowledgeSync.start(Storage);
       await this.engine.init();
       this.analysis = new AnalysisEngine(this.engine);
       this.ui = new UIRenderer(this.engine, this.analysis);
