@@ -3,7 +3,7 @@
 // api/*: never cached — market data, sign-in and MindGuru always come live from the server.
 // Fonts and the PDF library from CDNs: cached after first use.
 
-const VERSION = 'mm-v4';
+const VERSION = 'mm-v5';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './js/marketdata.js', './js/ks001.js', './js/conditions.js', './js/library.js', './js/consensus.js',
@@ -29,8 +29,10 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin === location.origin) {
     if (url.pathname.includes('/api/')) return; // always live
+    // Revalidate with the server every time (cheap 304s) so a deploy shows up at once,
+    // instead of the browser quietly reusing an old script from its HTTP cache.
     event.respondWith(
-      fetch(req)
+      fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' })
         .then((resp) => {
           if (resp.ok) { const copy = resp.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); }
           return resp;

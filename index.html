@@ -18,15 +18,15 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
-  <script src="js/marketdata.js"></script>
-  <script src="js/ks001.js"></script>
-  <script src="js/conditions.js"></script>
-  <script src="js/library.js"></script>
-  <script src="js/consensus.js"></script>
-  <script src="js/account.js"></script>
-  <script src="js/stockpicker.js"></script>
-  <script src="js/mindguru.js"></script>
-  <script src="js/knowledgesync.js"></script>
+  <script src="js/marketdata.js?v=5"></script>
+  <script src="js/ks001.js?v=5"></script>
+  <script src="js/conditions.js?v=5"></script>
+  <script src="js/library.js?v=5"></script>
+  <script src="js/consensus.js?v=5"></script>
+  <script src="js/account.js?v=5"></script>
+  <script src="js/stockpicker.js?v=5"></script>
+  <script src="js/mindguru.js?v=5"></script>
+  <script src="js/knowledgesync.js?v=5"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2080,7 +2080,11 @@ class UIRenderer {
     }
     if (c.tone === 'neutral' && c.agree === 0) {
       const setting = (c.settingUp || []).length;
-      lines.push(`None of the ${c.of} strategies gives a clean signal${setting ? `; ${setting} ${setting === 1 ? 'is' : 'are'} getting close, so check again in a few days` : ''}.`);
+      const active = result.consensus.results.filter(r => r.status === 'Active').length;
+      const soon = setting ? `; ${setting} more ${setting === 1 ? 'is' : 'are'} getting close, so check again in a few days` : '';
+      lines.push(active
+        ? `${active} of ${c.of} strategies show a signal, but MarketMind sets ${active === 1 ? 'it' : 'them'} aside (the reason is in the verdict below)${soon}.`
+        : `None of the ${c.of} strategies gives a signal yet${soon}.`);
     } else if (c.agree) {
       lines.push(`${c.agree} of ${c.of} strategies agree with this.`);
     }
