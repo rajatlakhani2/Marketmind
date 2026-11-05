@@ -6,6 +6,8 @@
 //   Consensus.run({ md, ks, strategies, check, account, riskPercent })
 // md = daily market data (MarketData), ks = KS001.analyze result,
 // check(cond, md) -> { met, detail } | null  (Conditions.check)
+//   learned (optional) = MindGuru brain: { [strategyId]: { buckets: { all, 'trend:Bullish', ... } } }
+//   Each strategy's vote is weighted by how its past projections actually turned out.
 // ============================================================
 (function (root) {
   'use strict';
@@ -50,13 +52,13 @@
       const z = (ks.nearestDemand || []).find(x => x.qualifies);
       if (!z) return null;
       const t = z.target != null ? z.target : z.entry + 3 * z.risk;
-      return longPlan(z.entry, z.stop, t, z.targetSource || '3× risk', { how: `Limit buy at the ${z.pattern} demand zone (proximal line)` });
+      return longPlan(z.entry, z.stop, t, z.targetSource || '3× risk', { how: `Limit buy at the ${z.pattern} demand zone (proximal line)`, ksScore: z.score && z.score.total });
     },
     lib_s_ks_supply: ({ ks }) => {
       const z = (ks.nearestSupply || []).find(x => x.qualifies);
       if (!z) return null;
       const t = z.target != null ? z.target : z.entry - 3 * z.risk;
-      return shortPlan(z.entry, z.stop, t, z.targetSource || '3× risk', { how: `Limit sell at the ${z.pattern} supply zone (proximal line)` });
+      return shortPlan(z.entry, z.stop, t, z.targetSource || '3× risk', { how: `Limit sell at the ${z.pattern} supply zone (proximal line)`, ksScore: z.score && z.score.total });
     },
     lib_s_rsi2: ({ md, c, a }) => {
       const entry = md.price;
@@ -121,8 +123,23 @@
   };
   const SIDE = { lib_s_ks_supply: 'short' };
 
+  // ---------- MindGuru: what each strategy's track record says ----------
+  // Uses the record for today's higher-timeframe trend when it has 8+ results, else the overall record.
+  function learnedFor(learned, id, trend, ksScore) {
+    const s = learned && learned[id];
+    const b = s && s.buckets;
+    if (!b || !b.all || !b.all.trades) return null;
+    let pick = b.all, scope = 'all market conditions';
+    const kb = ksScore == null ? null : ksScore >= 9 ? 'ks:9-10' : ksScore >= 8 ? 'ks:8' : ksScore >= 7 ? 'ks:7' : 'ks:<7';
+    if (kb && b[kb] && b[kb].trades >= 8) { pick = b[kb]; scope = `zones scoring ${kb.slice(3)}`; }
+    else if (trend && b['trend:' + trend] && b['trend:' + trend].trades >= 8) { pick = b['trend:' + trend]; scope = `${trend.toLowerCase()} trend`; }
+    return { ...pick, scope };
+  }
+  // Win rate pulled toward 45% until there are enough results to trust it
+  const shrunkWinRate = (l) => (l.wins + 0.45 * 10) / (l.trades + 10);
+
   // ---------- run ----------
-  function run({ md, ks, strategies, check, account, riskPercent }) {
+  function run({ md, ks, strategies, check, account, riskPercent, learned }) {
     const c = md.priceHistory || [];
     const a = atr(c) || md.price * 0.02;
     const results = (strategies || []).map(s => {
@@ -137,12 +154,31 @@
       const builder = LEVELS[s.id];
       let plan = null;
       try { plan = builder ? builder({ md, ks, c, a }) : null; } catch (e) { plan = null; }
+      const trend = ks && ks.trends && ks.trends.htf ? ks.trends.htf.trend : null;
+      const lr = learnedFor(learned, s.id, trend, plan ? plan.ksScore : null);
       return {
         id: s.id, name: s.name, isBuiltIn: !!s.isBuiltIn, side: plan ? plan.side : (SIDE[s.id] || 'long'),
         status, met, total: checkable.length, unchecked: conds.length - checkable.length, conditions: conds, plan,
+        learned: lr, weight: lr ? lr.weight : 1,
       };
     });
-    return { results, conclusion: conclude({ md, ks, results, a, account, riskPercent }) };
+    const conclusion = conclude({ md, ks, results, a, account, riskPercent });
+    conclusion.mindguru = mindguruView(conclusion, results, learned);
+    return { results, conclusion };
+  }
+
+  // Confidence for the verdict, from the track record of the strategies behind it.
+  function mindguruView(c, results, learned) {
+    if (!learned) return null;
+    const names = new Set(c.supporting || []);
+    const behind = results.filter(r => names.has(r.name) && r.learned);
+    const notes = results.filter(r => r.status === 'Active' && r.learned && r.learned.trades >= 10 && r.weight <= 0.7)
+      .map(r => `${r.name} has a weak record (${Math.round(r.learned.winRate * 100)}% winners, ${r.learned.avgR >= 0 ? '+' : ''}${r.learned.avgR.toFixed(2)}R over ${r.learned.trades} trades in ${r.learned.scope}), so its vote counts less.`);
+    if (!behind.length) return { confidence: null, trades: 0, notes };
+    const trades = behind.reduce((x, r) => x + r.learned.trades, 0);
+    const confidence = behind.reduce((x, r) => x + shrunkWinRate(r.learned) * r.learned.trades, 0) / trades;
+    const avgR = behind.reduce((x, r) => x + r.learned.avgR * r.learned.trades, 0) / trades;
+    return { confidence, avgR, trades, notes };
   }
 
   function conclude({ md, ks, results, a, account, riskPercent }) {
@@ -154,6 +190,10 @@
     const strategyCount = results.length;
     const size = (entry, stop) => (root.KS001 && account > 0 && riskPercent > 0 ? root.KS001.positionSize({ account, riskPercent, entry, stop }) : null);
     const bias = ks && ks.bias;
+    // Votes weighted by MindGuru (1 each when nothing has been learned yet)
+    const wLong = activeLong.reduce((x, r) => x + (r.weight || 1), 0);
+    const wShort = activeShort.reduce((x, r) => x + (r.weight || 1), 0);
+    const distrusted = activeLong.length && wLong < 0.6;
 
     const pickLong = (list) => {
       const entries = list.map(r => r.plan.entry);
@@ -167,7 +207,7 @@
     };
 
     // 1) Long signals active and not outweighed by shorts
-    if (activeLong.length && activeLong.length >= activeShort.length && bias !== 'Short') {
+    if (activeLong.length && wLong >= wShort && bias !== 'Short' && !distrusted) {
       const L = pickLong(activeLong);
       const nowInZone = price >= L.buyLow * 0.995 && price <= L.buyHigh * 1.005;
       return {
@@ -181,7 +221,7 @@
     }
 
     // 2) Short/sell signals dominate
-    if (activeShort.length && (activeShort.length > activeLong.length || bias === 'Short')) {
+    if (activeShort.length && (wShort > wLong || bias === 'Short')) {
       const p = activeShort[0].plan;
       return {
         verdict: 'Sell / avoid buying', tone: 'short', sellAt: p.entry, stop: p.stop, coverAt: p.target, rr: p.rr,
@@ -206,7 +246,9 @@
       sellSource: supply ? `${supply.pattern} supply zone` : 'nearest resistance',
       sizing: buyLevel != null && stop != null && buyLevel > stop ? size(buyLevel, stop) : null,
       agree: 0, of: strategyCount, supporting: [], against: [], settingUp: settingUp.map(r => r.name),
-      summary: (activeLong.length && bias === 'Short'
+      summary: (distrusted && bias !== 'Short'
+          ? `${activeLong.map(r => r.name).join(', ')} ${activeLong.length > 1 ? 'give' : 'gives'} a buy signal, but MindGuru has seen ${activeLong.length > 1 ? 'these strategies' : 'this strategy'} lose more than win, so it is not treated as a buy. `
+          : '') + (activeLong.length && bias === 'Short'
           ? `${activeLong.length} buy signal${activeLong.length > 1 ? 's' : ''} (${activeLong.map(r => r.name).join(', ')}) but the higher-timeframe trend is bearish, so ${activeLong.length > 1 ? 'they are' : 'it is'} counter-trend. `
           : bias === 'Short' ? 'The higher-timeframe trend is bearish, so buying here is against the trend. ' : '') +
         `No strategy has a complete with-trend signal right now${settingUp.length ? ` (${settingUp.length} setting up: ${settingUp.slice(0, 3).map(r => r.name).join(', ')}${settingUp.length > 3 ? '…' : ''})` : ''}. ` +
@@ -215,5 +257,5 @@
     };
   }
 
-  root.Consensus = { run, atr, LEVELS };
+  root.Consensus = { run, atr, LEVELS, learnedFor };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -29,6 +29,7 @@
     const s = String(symbol || '').trim().toUpperCase();
     if (!s) return s;
     if (s.startsWith('^') || s.includes('.')) return s; // index or already suffixed
+    if (/^\d{6}$/.test(s)) return s + '.BO';           // BSE scrip code
     return s + '.NS';
   }
 

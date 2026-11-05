@@ -6,6 +6,10 @@ Runs entirely in the browser (plain HTML, CSS and JavaScript). A tiny proxy fetc
 
 ## Features
 
+- **Every NSE and BSE stock** — search-as-you-type over the full list of listed equities (about 2,000+ NSE and 5,000+ BSE). Companies listed on both exchanges show once; BSE-only companies use their 6-digit BSE code (e.g. `543320`). The list comes from ICICI's security master (with NSE's and BSE's own lists as backup) and refreshes itself weekly.
+- **MindGuru** — the app's learning layer. Every All-Strategy Verdict on live data is saved as projections (each active strategy's entry, stop and target, plus the combined verdict). Once the trading days pass, MindGuru checks each one against the real price path (target hit, stop hit, time exit, or entry never reached) and measures the result in R. Those results become a **trust weight** per strategy — overall, by higher-timeframe trend, and by KS-001 zone score — and the next verdict weighs each strategy's vote by it. **Train on history** replays all strategies on about a year of past daily candles across 45 large caps, so MindGuru starts with over a thousand results instead of waiting weeks. The MindGuru page shows its lessons, a strategy trust table, projected-vs-actual for your own analyses, and a learning log by generation.
+- **Sign-in and users** — MySQL-backed accounts; the admin creates logins for others.
+- **Installable app (PWA)** — light theme, works on phones; install it from the browser for a full-screen app with its own icon.
 - **Live market data** — real OHLC candles for any NSE symbol. Uses your **ICICI Direct (Breeze API)** login when connected, otherwise Yahoo Finance. If neither can be reached the app switches to clearly-marked simulated data and hides all trade plans.
 - **All-Strategy Verdict** — pick a stock and the app runs every strategy on the daily chart. Each strategy shows Buy signal / Setting up / No signal with its own buy, stop-loss and selling levels, and the verdict combines them into one answer: **Buy**, **Buy on dip**, **Wait** (with levels to watch) or **Sell / avoid buying**, with the buying price, selling price, stop-loss, risk/reward and position size.
 - **Price Outlook** — the probable range (nearest demand zone below to nearest supply zone above), what happens if either side breaks, which way price leans and why, and — with ICICI connected — a live buyer vs seller meter from the order book that refreshes every 5 seconds during market hours.
@@ -69,6 +73,19 @@ On the hosted site everyone signs in. The first account is the **admin**, who ca
 3. Open the app. It creates its tables automatically and shows **Create the admin account**. Enter the `setup_key`, your username and password.
 4. Add other people from **Users** in the sidebar. They sign in with the temporary password you give them and must choose their own right away.
 
+**Daily job (optional but recommended)**
+
+The app also learns whenever someone opens it, but a cron job keeps MindGuru current even on days nobody does. cPanel → **Cron Jobs** → once a day after market close (e.g. 4:15 pm IST = 10:45 UTC):
+
+```
+php /home/YOURACCOUNT/public_html/marketmind/api/cron.php
+```
+
+It judges every projection whose day has passed, updates MindGuru, and refreshes the stock list weekly.
+
+**Installing on your phone**
+Open the site in Chrome (Android) and tap **Install app** in the menu, or in Safari (iPhone) tap Share → **Add to Home Screen**. The site must be on `https://`.
+
 **Security notes**
 - Passwords are stored as one-way hashes. Sign-in cookies are HTTP-only and expire after 30 days (or when the browser closes if "Keep me signed in" is off).
 - 8 wrong passwords for one username (or 20 from one network) lock sign-in for 15 minutes.
@@ -109,11 +126,19 @@ Breeze is free for ICICI Direct customers. It needs PHP hosting (your cPanel), s
 │   │   ├── conditions.js # Plain-English strategy condition checker
 │   │   ├── library.js    # Built-in concepts and strategies with source links
 │   │   ├── consensus.js  # All-strategy verdict: per-strategy levels + combined conclusion
-│   │   └── account.js    # Sign-in screens, admin Users panel, per-user settings sync
+│   │   ├── account.js    # Sign-in screens, admin Users panel, per-user settings sync
+│   │   ├── stockpicker.js # Search-as-you-type stock picker
+│   │   └── mindguru.js   # Saves projections, history training, MindGuru page
+│   ├── manifest.webmanifest, sw.js, icons/  # Installable app
 │   └── api/
 │       ├── lib/bootstrap.php  # Config, MySQL connection, automatic table setup, sign-in sessions
 │       ├── auth.php      # Sign-in, first-time admin setup, password change, user settings
 │       ├── users.php     # Admin-only user management
+│       ├── stocks.php    # NSE + BSE stock search and list refresh
+│       ├── mindguru.php  # Record projections, learn from outcomes, MindGuru report
+│       ├── cron.php      # Daily job (command line only)
+│       ├── lib/stocks.php     # Stock list download and search
+│       ├── lib/mindguru.php   # Outcome judging rules and learned weights
 │       ├── marketmind-config.sample.php
 │       ├── chart.php     # Yahoo Finance proxy for hosting
 │       ├── breeze.php    # ICICI Direct Breeze connector (login, candles, quotes)

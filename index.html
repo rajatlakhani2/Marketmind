@@ -2,8 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MarketMind AI — Personal Trading Knowledge Engine</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>MarketMind AI</title>
+  <meta name="description" content="NSE and BSE stock analysis with demand and supply zones, strategy verdicts and MindGuru learning." />
+  <meta name="theme-color" content="#1f4e9e" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="MarketMind" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
   <script src="js/marketdata.js"></script>
@@ -12,15 +24,18 @@
   <script src="js/library.js"></script>
   <script src="js/consensus.js"></script>
   <script src="js/account.js"></script>
+  <script src="js/stockpicker.js"></script>
+  <script src="js/mindguru.js"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --bg-primary: #0a0e17; --bg-secondary: #111827; --bg-card: #1a2332; --bg-hover: #1f2d3d;
-  --border: #2a3a50; --text-primary: #e2e8f0; --text-secondary: #94a3b8; --text-muted: #64748b;
-  --accent: #3b82f6; --accent-hover: #2563eb; --green: #22c55e; --red: #ef4444;
-  --yellow: #f59e0b; --orange: #f97316; --purple: #8b5cf6; --cyan: #06b6d4;
-  --sidebar-w: 240px; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Light "ledger" theme: cool paper, ink-blue accent, market green/red kept dark enough for white */
+  --bg-primary: #f2f4f7; --bg-secondary: #eef1f5; --bg-card: #ffffff; --bg-hover: #e8edf4;
+  --border: #d8dee6; --text-primary: #16202a; --text-secondary: #44515e; --text-muted: #6f7c89;
+  --accent: #1f4e9e; --accent-hover: #173d7d; --accent-soft: #e7eef9; --green: #11804e; --red: #c0352a;
+  --yellow: #9a6205; --orange: #b9520c; --purple: #6a44bd; --cyan: #0b6f8a;
+  --sidebar-w: 236px; --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 html, body { height: 100%; }
 body { font-family: var(--font); background: var(--bg-primary); color: var(--text-primary); }
@@ -387,6 +402,121 @@ textarea { font-family: inherit; }
 @keyframes pulse { 50% { opacity: 0.3; } }
 @media (max-width: 700px) { .outlook-range { grid-template-columns: 1fr; } .outlook-end.right { text-align: left; } } .broker-dot.warn { background: var(--yellow); }
 
+
+/* ===== Light theme refinements (loaded last so they win) ===== */
+body { font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; line-height: 1.45; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#sidebar { background: var(--bg-card); }
+.sidebar-header { padding: 22px 20px 18px; }
+.logo { font-size: 1.15rem; letter-spacing: -0.01em; }
+.logo-accent { color: var(--accent); }
+.nav-links { padding: 10px 10px; }
+.nav-links li a { border-radius: 8px; padding: 9px 12px; margin: 1px 0; color: var(--text-secondary); font-weight: 500; border-left: none; }
+.nav-links li a:hover { background: var(--bg-hover); color: var(--text-primary); border-left: none; }
+.nav-links li a.active { background: var(--accent-soft); color: var(--accent); border-left: none; font-weight: 600; }
+.sidebar-footer { background: var(--bg-card); }
+#main-content { padding: 28px 32px; }
+.page-header h2 { font-size: 1.55rem; font-weight: 600; letter-spacing: -0.015em; }
+.page-sub { color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px; max-width: 70ch; }
+.card { box-shadow: none; }
+.card:hover { border-color: var(--border); }
+.card-title { text-transform: none; letter-spacing: 0; font-size: 0.82rem; color: var(--text-secondary); font-weight: 500; }
+.btn-primary { font-weight: 600; }
+.btn-secondary { background: var(--bg-card); }
+.btn-secondary:hover { background: var(--bg-hover); }
+.btn-secondary:disabled, .btn-danger:disabled { opacity: 0.55; cursor: wait; }
+input, select, textarea { color-scheme: light; }
+#modal-overlay { background: rgba(22,32,42,0.42); }
+.toast { box-shadow: 0 6px 24px rgba(22,32,42,0.14); }
+.v-tile .label, .outlook-end .label { text-transform: none; letter-spacing: 0; font-size: 0.78rem; color: var(--text-secondary); }
+.v-tile { background: var(--bg-card); }
+.s-row { background: var(--bg-card); border: 1px solid var(--border); }
+/* The verdict is the one loud element: a solid stamp */
+.v-badge { font-size: 1.45rem; padding: 8px 20px; border-radius: 10px; letter-spacing: -0.01em; }
+.v-long .v-badge { background: var(--green); color: #fff; }
+.v-short .v-badge { background: var(--red); color: #fff; }
+.v-wait .v-badge { background: #f6e7c8; color: #6e4604; }
+.chip-long { background: #dcf1e6; } .chip-short { background: #f8e0dd; } .chip-setup { background: #f6ecd6; }
+.data-warning { background: #fdf4e3; border-color: #e8c98c; color: #6e4604; }
+/* Stock search */
+.stock-picker { position: relative; }
+.stock-picker input { width: 100%; }
+.stock-picker-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 50; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(22,32,42,0.16); max-height: 340px; overflow-y: auto; width: max(100%, min(400px, calc(100vw - 32px))); }
+.stock-picker-head { font-size: 0.75rem; color: var(--text-muted); padding: 8px 12px 2px; }
+.stock-picker-item { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline; padding: 8px 12px; cursor: pointer; }
+.stock-picker-item.active, .stock-picker-item:hover { background: var(--accent-soft); }
+.sp-symbol { font-weight: 600; font-size: 0.86rem; color: var(--text-primary); }
+.sp-name { font-size: 0.8rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sp-exch b { font-size: 0.64rem; font-weight: 600; color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin-left: 3px; }
+.stock-picker-empty { padding: 12px; font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5; }
+/* Strategy trust weight next to each strategy in the verdict */
+.s-trust { font-size: 0.7rem; font-weight: 600; margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: var(--bg-hover); color: var(--text-secondary); }
+.s-trust.up { background: #dcf1e6; color: var(--green); }
+.s-trust.down { background: #f8e0dd; color: var(--red); }
+.mg-note { display: flex; gap: 12px; margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); font-size: 0.85rem; line-height: 1.55; }
+.mg-note-icon { font-size: 1.3rem; line-height: 1.2; }
+.mg-note p { margin-top: 2px; }
+.mg-note ul { margin: 4px 0 0 18px; color: var(--text-secondary); }
+/* MindGuru page */
+#mindguru-container { display: flex; flex-direction: column; gap: 16px; max-width: 1100px; }
+.mg-hero { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; padding: 22px 24px; border-radius: 14px; background: var(--accent); color: #fff; }
+.mg-gen { font-size: 0.85rem; opacity: 0.8; }
+.mg-hero h3 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.015em; margin-top: 2px; }
+.mg-hero p { font-size: 0.88rem; opacity: 0.88; margin-top: 6px; max-width: 62ch; }
+.mg-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mg-hero .btn-primary { background: #fff; color: var(--accent); }
+.mg-hero .btn-primary:hover { background: #e7eef9; }
+.mg-hero .btn-secondary { background: transparent; color: #fff; border-color: rgba(255,255,255,0.5); padding: 10px 16px; font-size: 0.88rem; }
+.mg-hero .btn-secondary:hover { background: rgba(255,255,255,0.12); }
+.mg-progress { padding: 12px 16px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border); font-size: 0.86rem; }
+.mg-bar { height: 6px; border-radius: 3px; background: var(--bg-hover); margin-top: 8px; overflow: hidden; }
+.mg-bar i { display: block; height: 100%; background: var(--accent); transition: width 0.3s; }
+.mg-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.mg-stat { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; }
+.mg-stat span { font-size: 0.8rem; color: var(--text-secondary); }
+.mg-stat b { font-size: 1.6rem; font-weight: 600; margin-top: 2px; }
+.mg-stat small { font-size: 0.75rem; color: var(--text-muted); }
+.mg-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+.mg-card h4 { font-size: 1rem; font-weight: 600; margin-bottom: 10px; }
+.mg-help { margin: -4px 0 12px; font-size: 0.82rem; max-width: 80ch; line-height: 1.5; }
+.mg-insights { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.mg-insights li { padding: 8px 12px; border-radius: 8px; font-size: 0.86rem; line-height: 1.5; border-left: 3px solid var(--text-muted); background: var(--bg-secondary); }
+.mg-insights .mg-good { border-left-color: var(--green); }
+.mg-insights .mg-bad { border-left-color: var(--red); }
+.mg-insights .mg-info { border-left-color: var(--accent); }
+.mg-table-wrap { overflow-x: auto; }
+.mg-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+.mg-table th { text-align: left; font-weight: 500; color: var(--text-secondary); font-size: 0.78rem; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.mg-table td { padding: 8px 10px; border-bottom: 1px solid var(--bg-hover); vertical-align: middle; }
+.mg-recent td { white-space: nowrap; }
+.mg-plan { color: var(--text-secondary); font-size: 0.8rem; }
+.mg-trust { display: flex; align-items: center; gap: 8px; }
+.mg-trust-bar { position: relative; width: 90px; height: 8px; border-radius: 4px; background: var(--bg-hover); overflow: hidden; }
+.mg-trust-bar i { display: block; height: 100%; }
+.mg-trust-bar i.up { background: var(--green); } .mg-trust-bar i.down { background: var(--red); }
+.mg-trust-bar em { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--text-muted); }
+.mg-status { font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+.st-win { background: #dcf1e6; color: var(--green); } .st-loss { background: #f8e0dd; color: var(--red); }
+.st-wait { background: var(--accent-soft); color: var(--accent); } .st-exp { background: #f6ecd6; color: var(--yellow); } .st-none { background: var(--bg-hover); color: var(--text-muted); }
+.mg-log { list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 0.85rem; }
+.mg-log ul { margin: 4px 0 0 18px; color: var(--text-secondary); font-size: 0.82rem; line-height: 1.6; }
+.mg-how ul { margin-left: 18px; font-size: 0.85rem; line-height: 1.65; color: var(--text-secondary); max-width: 80ch; }
+.mg-admin { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+.install-btn { margin-top: 8px; font-size: 0.78rem; padding: 6px 10px; }
+@media (max-width: 768px) {
+  #main-content { padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); }
+  #sidebar { padding-top: env(safe-area-inset-top); box-shadow: 0 1px 0 var(--border); }
+  .nav-links { padding: 0 8px 8px; }
+  .nav-links li a { padding: 7px 12px; border-radius: 16px; margin: 0; }
+  .nav-links li a.active { background: var(--accent); color: #fff; }
+  .page-header h2 { font-size: 1.3rem; }
+  .mg-stats { grid-template-columns: 1fr; }
+  .mg-hero { padding: 18px; }
+  .mg-hero h3 { font-size: 1.25rem; }
+  .mg-card { padding: 14px; }
+  .v-badge { font-size: 1.25rem; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 /* ===== Accounts: sign-in screen, sidebar account block, users admin ===== */
 #auth-screen { position: fixed; inset: 0; z-index: 3000; background: var(--bg-primary); display: flex; align-items: center; justify-content: center; padding: 20px; overflow-y: auto; }
 body.auth-open #app { visibility: hidden; }
@@ -444,11 +574,12 @@ body.auth-open #app { visibility: hidden; }
         <li><a href="#" data-page="concepts"><span class="nav-icon">&#x1F4A1;</span> Concepts</a></li>
         <li><a href="#" data-page="strategies"><span class="nav-icon">&#x2694;&#xFE0F;</span> Strategies</a></li>
         <li><a href="#" data-page="analyze"><span class="nav-icon">&#x1F4CA;&#xFE0F;</span> Analyze Market</a></li>
+        <li><a href="#" data-page="mindguru"><span class="nav-icon">&#x1F9E0;</span> MindGuru</a></li>
         <li><a href="#" data-page="screener"><span class="nav-icon">&#x1F50D;</span> Strategy Screener</a></li>
         <li><a href="#" data-page="theory"><span class="nav-icon">&#x1F4D6;</span> Market Theory</a></li>
         <li><a href="#" data-page="methodology"><span class="nav-icon">&#x2699;&#xFE0F;</span> Methodology</a></li>
       </ul>
-      <div class="sidebar-footer"><div id="account-menu" class="account-menu"></div><div id="broker-status" class="broker-status"></div><p>MarketMind AI v1.2</p></div>
+      <div class="sidebar-footer"><div id="account-menu" class="account-menu"></div><div id="broker-status" class="broker-status"></div><button id="install-app" class="btn-secondary install-btn hidden">Install app</button><p>MarketMind AI v2.0</p></div>
     </nav>
     <main id="main-content">
       <div id="page-dashboard" class="page active">
@@ -478,8 +609,10 @@ body.auth-open #app { visibility: hidden; }
         <header class="page-header"><h2>Analyze Market</h2></header>
         <div class="analyze-container">
           <div class="analyze-sidebar">
-            <label>Stock Symbol
-              <select id="analyze-symbol">
+            <label>Stock
+              <input type="text" id="analyze-custom-symbol" value="TCS" placeholder="Search any NSE or BSE stock" />
+            </label>
+            <select id="analyze-symbol" class="hidden" aria-hidden="true" tabindex="-1">
                 <option value="RELIANCE">RELIANCE — Reliance Industries</option>
                 <option value="TCS" selected>TCS — Tata Consultancy Services</option>
                 <option value="HDFCBANK">HDFCBANK — HDFC Bank</option>
@@ -525,11 +658,7 @@ body.auth-open #app { visibility: hidden; }
                 <option value="HEROMOTOCO">HEROMOTOCO — Hero MotoCorp</option>
                 <option value="ASIANPAINT">ASIANPAINT — Asian Paints</option>
                 <option value="DIVISLAB">DIVISLAB — Divi's Laboratories</option>
-              </select>
-            </label>
-            <label>Or type any NSE symbol
-              <input type="text" id="analyze-custom-symbol" placeholder="e.g. ZOMATO, IRFC" autocomplete="off" />
-            </label>
+            </select>
             <label>Strategy<select id="analyze-strategy"><option value="__all">All strategies — verdict</option><option value="">No strategy</option></select></label>
             <label>Timeframe
               <select id="analyze-timeframe">
@@ -554,6 +683,10 @@ body.auth-open #app { visibility: hidden; }
           </div>
           <div class="analyze-results" id="analyze-results"></div>
         </div>
+      </div>
+      <div id="page-mindguru" class="page">
+        <header class="page-header"><h2>MindGuru</h2><p class="page-sub">Learns from every projection: what each strategy predicted, and what the market actually did.</p></header>
+        <div id="mindguru-container"></div>
       </div>
       <div id="page-screener" class="page">
         <header class="page-header"><h2>Strategy Screener</h2></header>
@@ -1220,9 +1353,11 @@ class AnalysisEngine {
       });
       const allMode = strategyId === '__all';
       const strategy = strategyId && !allMode ? strategies.find(s => s.id === strategyId) : null;
+      const brain = allMode && window.MindGuru ? await MindGuru.getBrain() : null;
       const consensus = allMode && window.Consensus
-        ? Consensus.run({ md: marketData, ks: ks001, strategies, check: (c, d) => this.knowledge.checkConditionDetail(c, d), account: sizing.account, riskPercent: sizing.riskPercent })
+        ? Consensus.run({ md: marketData, ks: ks001, strategies, check: (c, d) => this.knowledge.checkConditionDetail(c, d), account: sizing.account, riskPercent: sizing.riskPercent, learned: brain ? brain.strategies : null })
         : null;
+      if (consensus && brain) consensus.brain = { generation: brain.generation, trades: brain.trades };
       const relevantConcepts = this._findRelevantConcepts(marketData, strategy, concepts);
       const conflicts = this._findConflicts(relevantConcepts);
       const strategyMatch = strategy ? this._evaluateStrategy(strategy, marketData) : null;
@@ -1706,6 +1841,14 @@ class UIRenderer {
       if (saved.account) acct.value = saved.account;
       if (saved.riskPercent) risk.value = saved.riskPercent;
     } catch { /* storage unavailable */ }
+    const symInput = document.getElementById('analyze-custom-symbol');
+    if (window.StockPicker && symInput) {
+      const popular = [...document.querySelectorAll('#analyze-symbol option')].map(o => {
+        const [sym, ...rest] = o.textContent.split(' — ');
+        return { symbol: o.value, name: rest.join(' — ') || sym };
+      });
+      StockPicker.attach(symInput, { popular });
+    }
     const pickSymbol = () => {
       const custom = (document.getElementById('analyze-custom-symbol').value || '').trim().toUpperCase();
       return custom || document.getElementById('analyze-symbol').value || 'TCS';
@@ -1731,6 +1874,7 @@ class UIRenderer {
       try {
         const result = await this.analysis.analyzeStock(symbol, strategyId, timeframe, chartImage, sizing);
         this._renderAnalysisResults(result, results);
+        if (window.MindGuru) MindGuru.recordVerdict(result);
       } catch (err) {
         console.error('Analysis failed:', err);
         results.innerHTML = `<p style="color:var(--red);padding:20px;">Error: ${err.message || err}</p>
@@ -1897,8 +2041,11 @@ class UIRenderer {
       const lv = p && live
         ? `<span>${p.side === 'short' ? 'Sell' : 'Buy'} ${f(p.entry)}</span><span>Stop ${f(p.stop)}</span><span>${p.side === 'short' ? 'Cover' : 'Sell'} ${f(p.target)}</span>`
         : p ? '<span class="muted-lock">levels hidden on simulated data</span>' : '<span class="muted">no price levels for this strategy</span>';
+      const trust = r.learned
+        ? `<span class="s-trust ${r.weight >= 1.05 ? 'up' : r.weight <= 0.95 ? 'down' : ''}" title="MindGuru: ${Math.round(r.learned.winRate * 100)}% winners, ${r.learned.avgR >= 0 ? '+' : ''}${r.learned.avgR.toFixed(2)}R average over ${r.learned.trades} trades (${this._esc(r.learned.scope)})">×${r.weight.toFixed(2)}</span>`
+        : '';
       return `<details class="s-row">
-        <summary><span class="s-name">${this._esc(r.name)}</span><span class="chip ${chip}">${label}</span><span class="s-count">${r.met}/${r.total}${r.unchecked ? ` +${r.unchecked}?` : ''}</span></summary>
+        <summary><span class="s-name">${this._esc(r.name)}${trust}</span><span class="chip ${chip}">${label}</span><span class="s-count">${r.met}/${r.total}${r.unchecked ? ` +${r.unchecked}?` : ''}</span></summary>
         <div class="s-levels">${lv}</div>
         ${p && p.how ? `<p class="s-how">${this._esc(p.how)}${p.targetWhy ? ` · sell target = ${this._esc(p.targetWhy)}` : ''}</p>` : ''}
         <ul class="s-conds">${r.conditions.map(x => `<li><span class="${x.unknown ? 'condition-warn' : x.met ? 'condition-check' : 'condition-cross'}">${x.unknown ? '?' : x.met ? '✓' : '✗'}</span> ${this._esc(x.condition)} <span class="cond-detail">${this._esc(x.detail)}</span></li>`).join('')}</ul>
@@ -1909,9 +2056,23 @@ class UIRenderer {
       <div class="v-tiles">${tiles}</div>
       <p class="v-summary">${live ? this._esc(c.summary) : 'Price levels are hidden because live data could not be loaded. The strategy statuses below are from simulated prices.'}</p>
       ${sizing}
+      ${this._renderMindGuruNote(c.mindguru, cs.brain, c.tone)}
       <h4>Each strategy <span class="muted">(tap a row for its conditions)</span></h4>
       <div class="s-list">${rows}</div>
       <p class="citation">Daily chart. Levels come from each strategy's own rules; the verdict combines the strategies that are active now. Not a recommendation — check the chart and your own plan before trading.</p>`);
+  }
+
+  // --- MindGuru's view of this verdict ---
+  _renderMindGuruNote(mg, brain, tone) {
+    if (!brain) return '';
+    let main;
+    if (!brain.trades) main = 'MindGuru is still learning: no finished trades yet. This verdict is saved and will be checked against real prices.';
+    else if (mg && mg.confidence != null && tone !== 'neutral') {
+      main = `Strategies behind this verdict have won <b>${Math.round(mg.confidence * 100)}%</b> of ${mg.trades} past trades (average ${mg.avgR >= 0 ? '+' : ''}${mg.avgR.toFixed(2)}R).`;
+    } else if (tone === 'neutral') main = 'No active signal to rate. Each strategy\'s trust weight (×) is shown in the list below.';
+    else main = 'The strategies behind this verdict have no finished trades yet, so MindGuru has no record to rate them on.';
+    const notes = mg && mg.notes && mg.notes.length ? `<ul>${mg.notes.map(n => `<li>${this._esc(n)}</li>`).join('')}</ul>` : '';
+    return `<div class="mg-note"><span class="mg-note-icon">&#x1F9E0;</span><div><b>MindGuru</b> <span class="muted">generation ${brain.generation} · ${brain.trades.toLocaleString('en-IN')} trades learned</span><p>${main}</p>${notes}</div></div>`;
   }
 
   // --- Price Outlook: probable range + lean + live pressure ---
@@ -2123,7 +2284,7 @@ class UIRenderer {
       const start = Math.max(0, z.baseStart - offset);
       const x0 = padL + start * step, x1 = W - padR;
       const top = y(Math.max(z.proximal, z.distal)), bot = y(Math.min(z.proximal, z.distal));
-      const col = z.side === 'demand' ? '34,197,94' : '239,68,68';
+      const col = z.side === 'demand' ? '17,128,78' : '192,53,42';
       const op = z.qualifies ? 0.22 : 0.08;
       svg += `<rect x="${x0}" y="${top}" width="${x1 - x0}" height="${Math.max(1, bot - top)}" fill="rgba(${col},${op})"/>`;
       svg += `<line x1="${x0}" x2="${x1}" y1="${y(z.proximal)}" y2="${y(z.proximal)}" stroke="rgb(${col})" stroke-width="1" opacity="${z.qualifies ? 0.9 : 0.4}"/>`;
@@ -2342,6 +2503,8 @@ class App {
       this._setupNavigation();
       this._navigateTo('dashboard');
       this.renderBrokerStatus(true);
+      Account.ensureStockList();
+      if (window.MindGuru) MindGuru.autoLearn();
       if (location.hash === '#icici=connected') {
         this.ui._toast('ICICI Direct connected — live data enabled', 'success');
         history.replaceState(null, '', location.pathname + location.search);
@@ -2397,6 +2560,7 @@ class App {
       case 'strategies': this.ui.renderStrategies(); break;
       case 'analyze': await this.ui.renderAnalysis(); break;
       case 'screener': this.ui.renderScreener(); break;
+      case 'mindguru': await MindGuru.renderPage(document.getElementById('mindguru-container')); break;
       case 'theory': this.ui.renderTheory(); break;
       case 'methodology': this.ui.renderMethodology(); break;
     }
@@ -2436,6 +2600,25 @@ window.addEventListener('error', (e) => {
 });
 
 app.init();
+
+// Installable app (PWA): offline shell + "Install app" button where the browser supports it
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service worker not registered:', err)));
+}
+let deferredInstall = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstall = e;
+  document.getElementById('install-app')?.classList.remove('hidden');
+});
+document.getElementById('install-app')?.addEventListener('click', async () => {
+  if (!deferredInstall) return;
+  deferredInstall.prompt();
+  await deferredInstall.userChoice;
+  deferredInstall = null;
+  document.getElementById('install-app').classList.add('hidden');
+});
+window.addEventListener('appinstalled', () => document.getElementById('install-app')?.classList.add('hidden'));
   </script>
 </body>
 </html>

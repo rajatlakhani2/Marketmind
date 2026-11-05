@@ -122,6 +122,86 @@ function mm_migrations(): array {
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
             )$t",
         ],
+        // Full NSE + BSE equity list, and app-wide state
+        2 => [
+            "CREATE TABLE app_meta (
+                meta_key VARCHAR(64) NOT NULL PRIMARY KEY,
+                value_json MEDIUMTEXT NOT NULL,
+                updated_at DATETIME NOT NULL
+            )$t",
+            "CREATE TABLE stocks (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                exchange VARCHAR(3) NOT NULL,
+                symbol VARCHAR(20) NOT NULL,
+                name VARCHAR(150) NOT NULL DEFAULT '',
+                isin VARCHAR(12) NOT NULL DEFAULT '',
+                series VARCHAR(5) NOT NULL DEFAULT '',
+                isec_code VARCHAR(20) NOT NULL DEFAULT '',
+                is_active TINYINT NOT NULL DEFAULT 1,
+                updated_at DATETIME NOT NULL
+            )$t",
+            "CREATE UNIQUE INDEX ux_stocks_exch_symbol ON stocks (exchange, symbol)",
+            "CREATE INDEX ix_stocks_isin ON stocks (isin)",
+        ],
+        // MindGuru: every projection, its real outcome, and what was learned from them
+        3 => [
+            "CREATE TABLE predictions (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                source VARCHAR(10) NOT NULL DEFAULT 'live',
+                user_id INT UNSIGNED NULL,
+                symbol VARCHAR(20) NOT NULL,
+                name VARCHAR(150) NOT NULL DEFAULT '',
+                kind VARCHAR(10) NOT NULL,
+                strategy_id VARCHAR(64) NOT NULL,
+                strategy_name VARCHAR(120) NOT NULL DEFAULT '',
+                side VARCHAR(5) NOT NULL,
+                signal_date DATE NOT NULL,
+                price_at_signal DECIMAL(14,4) NOT NULL,
+                entry DECIMAL(14,4) NOT NULL,
+                stop DECIMAL(14,4) NOT NULL,
+                target DECIMAL(14,4) NOT NULL,
+                entry_type VARCHAR(10) NOT NULL,
+                trend VARCHAR(10) NOT NULL DEFAULT '',
+                ks_score DECIMAL(4,1) NULL,
+                context_json TEXT NULL,
+                status VARCHAR(12) NOT NULL DEFAULT 'pending',
+                entered_date DATE NULL,
+                exit_date DATE NULL,
+                exit_price DECIMAL(14,4) NULL,
+                r_multiple DECIMAL(8,3) NULL,
+                mfe_r DECIMAL(8,3) NULL,
+                mae_r DECIMAL(8,3) NULL,
+                days_held INT NULL,
+                created_at DATETIME NOT NULL,
+                checked_at DATETIME NULL,
+                resolved_at DATETIME NULL
+            )$t",
+            "CREATE UNIQUE INDEX ux_predictions_key ON predictions (symbol, kind, strategy_id, signal_date, source)",
+            "CREATE INDEX ix_predictions_status ON predictions (status)",
+            "CREATE INDEX ix_predictions_strategy ON predictions (strategy_id, status)",
+            "CREATE TABLE strategy_stats (
+                strategy_id VARCHAR(64) NOT NULL,
+                bucket VARCHAR(20) NOT NULL,
+                strategy_name VARCHAR(120) NOT NULL DEFAULT '',
+                trades INT NOT NULL DEFAULT 0,
+                wins INT NOT NULL DEFAULT 0,
+                losses INT NOT NULL DEFAULT 0,
+                expired INT NOT NULL DEFAULT 0,
+                no_entry INT NOT NULL DEFAULT 0,
+                win_rate DECIMAL(6,4) NOT NULL DEFAULT 0,
+                avg_r DECIMAL(8,3) NOT NULL DEFAULT 0,
+                weight DECIMAL(6,3) NOT NULL DEFAULT 1,
+                updated_at DATETIME NOT NULL,
+                PRIMARY KEY (strategy_id, bucket)
+            )$t",
+            "CREATE TABLE mindguru_log (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                generation INT NOT NULL,
+                created_at DATETIME NOT NULL,
+                outcomes INT NOT NULL DEFAULT 0,
+                notes_json MEDIUMTEXT NOT NULL
+            )$t",
+        ],
     ];
 }
 

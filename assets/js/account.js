@@ -191,9 +191,56 @@
   }
 
   async function openUsers() {
-    const m = openModal(`<button class="modal-close" data-close>&times;</button><h3>Users</h3><div id="users-body"><p class="auth-text">Loading…</p></div>`);
+    const m = openModal(`<button class="modal-close" data-close>&times;</button><h3>Users</h3><div id="users-body"><p class="auth-text">Loading…</p></div>
+      <h4 class="users-sub">Stock list</h4><div id="stocks-admin"><p class="auth-text">Loading…</p></div>`);
     m.classList.add('modal-wide');
+    renderStockAdmin();
     await renderUsers();
+  }
+
+  // ---------- admin: NSE + BSE stock list ----------
+  async function refreshStocks() {
+    const r = await request('api/stocks.php?action=refresh', {});
+    return r;
+  }
+
+  async function renderStockAdmin() {
+    const el = document.getElementById('stocks-admin');
+    if (!el) return;
+    let info;
+    try { info = await request('api/stocks.php?action=info'); } catch (e) { el.innerHTML = `<p class="auth-error">${esc(e.message)}</p>`; return; }
+    const last = info.lastRefresh;
+    el.innerHTML = `<p class="auth-text"><b>${info.nse.toLocaleString('en-IN')}</b> NSE and <b>${info.bse.toLocaleString('en-IN')}</b> BSE stocks listed.
+        ${last ? `Last updated ${esc(fmtDate(last.at))} from ${esc(last.source)}.` : 'Not downloaded yet.'}
+        The list also refreshes itself every week.</p>
+      <p class="auth-error"></p>
+      <button class="btn-secondary" id="btn-refresh-stocks">Refresh stock list now</button>`;
+    const btn = el.querySelector('#btn-refresh-stocks');
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = 'Downloading… (up to a minute)';
+      try {
+        const r = await refreshStocks();
+        toast(`Stock list updated: ${r.nse} NSE, ${r.bse} BSE`, 'success');
+        renderStockAdmin();
+      } catch (e) {
+        el.querySelector('.auth-error').textContent = e.message;
+        btn.disabled = false; btn.textContent = 'Try again';
+      }
+    };
+  }
+
+  // First time an admin signs in, load the stock list in the background.
+  async function ensureStockList() {
+    if (state.devMode || !state.user || state.user.role !== 'admin') return;
+    try {
+      const info = await request('api/stocks.php?action=info');
+      if (info.nse + info.bse > 0) return;
+      toast('Downloading the full NSE + BSE stock list…', 'info');
+      const r = await refreshStocks();
+      toast(`Stock list ready: ${r.nse} NSE and ${r.bse} BSE stocks`, 'success');
+    } catch (e) {
+      toast('Could not download the stock list: ' + e.message, 'warning');
+    }
   }
 
   async function renderUsers() {
@@ -369,7 +416,7 @@
   });
 
   window.Account = {
-    boot, renderMenu, saveSetting, openUsers, openChangePassword, logout,
+    boot, renderMenu, saveSetting, openUsers, openChangePassword, logout, ensureStockList, request,
     get user() { return state.user; },
     get isAdmin() { return !!state.user && state.user.role === 'admin'; },
     get devMode() { return state.devMode; },

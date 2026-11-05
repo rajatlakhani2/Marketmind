@@ -179,9 +179,17 @@ function symbol_map(array $cfg): array {
 function resolve_symbol(array $cfg, string $symbol): array {
     $symbol = strtoupper(trim($symbol));
     if (!preg_match('/^[A-Z0-9&\-]{1,20}$/', $symbol)) json_out(400, ['error' => 'Invalid symbol']);
+    // A 6-digit symbol is a BSE scrip code; its ICICI code comes from the stock list in MySQL.
+    if (preg_match('/^\d{6}$/', $symbol)) {
+        $st = mm_db()->prepare("SELECT isec_code, name FROM stocks WHERE exchange = 'BSE' AND symbol = ?");
+        $st->execute([$symbol]);
+        $row = $st->fetch();
+        if (!$row || $row['isec_code'] === '') json_out(404, ['error' => "ICICI has no BSE stock code for $symbol"]);
+        return ['nse' => $symbol, 'isec' => $row['isec_code'], 'name' => $row['name'], 'exch' => 'BSE'];
+    }
     $map = symbol_map($cfg);
     if (!isset($map[$symbol])) json_out(404, ['error' => "ICICI has no NSE stock code for $symbol"]);
-    return ['nse' => $symbol, 'isec' => $map[$symbol][0], 'name' => $map[$symbol][1]];
+    return ['nse' => $symbol, 'isec' => $map[$symbol][0], 'name' => $map[$symbol][1], 'exch' => 'NSE'];
 }
 
 function cache_get(string $key, int $ttl): ?array {
@@ -277,7 +285,7 @@ try {
         $sym = resolve_symbol($cfg, (string) ($_GET['symbol'] ?? ''));
 
         $ttl = $interval === '1day' ? 600 : 60;
-        $key = "c|{$sym['isec']}|$interval|$days";
+        $key = "c|{$sym['exch']}|{$sym['isec']}|$interval|$days";
         if ($hit = cache_get($key, $ttl)) json_out(200, $hit);
 
         $tz = new DateTimeZone('Asia/Kolkata');
@@ -293,7 +301,7 @@ try {
                 'from_date' => $cursor->format('Y-m-d\TH:i:s') . '.000Z',
                 'to_date' => $chunkEnd->format('Y-m-d\TH:i:s') . '.000Z',
                 'stock_code' => $sym['isec'],
-                'exch_code' => 'NSE',
+                'exch_code' => $sym['exch'],
                 'product_type' => 'cash',
             ]);
             [$status, $resp, $err] = http_request('GET', $cfg['hist_url'] . '?' . $q, null, [
@@ -323,10 +331,10 @@ try {
 
     if ($action === 'quote') {
         $sym = resolve_symbol($cfg, (string) ($_GET['symbol'] ?? ''));
-        $data = breeze_v1($cfg, $session, 'quotes', ['stock_code' => $sym['isec'], 'exchange_code' => 'NSE', 'product_type' => 'cash']);
+        $data = breeze_v1($cfg, $session, 'quotes', ['stock_code' => $sym['isec'], 'exchange_code' => $sym['exch'], 'product_type' => 'cash']);
         $rows = $data['Success'] ?? [];
         $q = null;
-        foreach ($rows as $r) { if (strtoupper($r['exchange_code'] ?? '') === 'NSE') { $q = $r; break; } }
+        foreach ($rows as $r) { if (strtoupper($r['exchange_code'] ?? '') === $sym['exch']) { $q = $r; break; } }
         if (!$q) $q = $rows[0] ?? null;
         if (!$q) json_out(404, ['error' => 'No quote returned']);
         $num = fn($k) => isset($q[$k]) && $q[$k] !== '' ? (float) $q[$k] : null;
