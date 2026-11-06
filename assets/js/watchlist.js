@@ -350,9 +350,25 @@
     </div>`;
   }
 
+  // Compact one-line summary of a call, for the collapsed row
+  function callLine(c) {
+    if (!c) return '<span class="muted">Checking…</span>';
+    if (c.error) return `<span class="muted">Not available</span>`;
+    const r0 = v => (v == null || !isFinite(v) ? '—' : '₹' + Math.round(v).toLocaleString('en-IN'));
+    const e = c.entryZone ? `${r0(c.entryZone[0])}–${r0(c.entryZone[1])}` : r0(c.entry);
+    const bits = c.action === 'SELL'
+      ? [`Book profit ~<b>${r0(c.price)}</b>`, c.entry || c.entryZone ? `re-buy ${e}` : '']
+      : [c.entry || c.entryZone ? `Entry ${e}` : '', c.stop ? `SL <b class="text-red">${r0(c.stop)}</b>` : '', c.t1 ? `T1 <b class="text-green">${r0(c.t1)}</b>` : '', c.rr != null && c.action !== 'WAIT' ? `R:R ${c.rr.toFixed(1)}` : ''];
+    const filtered = bits.filter(Boolean);
+    return `<span class="wl-call ${c.tone}">${c.action}</span><span class="wl-line">${filtered.join(' · ') || esc(c.say).slice(0, 60)}</span>`;
+  }
+  let view = 'pos';
+  try { view = localStorage.getItem('mm-wl-view') === 'intra' ? 'intra' : 'pos'; } catch { /* default */ }
+  const openRows = new Set();
+
   function render(container) {
     const rows = S.items.map(it => S.rows.get(it.symbol) || { symbol: it.symbol, name: it.name });
-    const count = a => rows.filter(r => r.pos && r.pos.action === a).length;
+    const count = a => rows.filter(r => r[view] && r[view].action === a).length;
     const time = S.lastRun ? new Date(S.lastRun).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
     const bar = S.busy
       ? `<span class="live-dot"></span><span>Checking ${S.progress} of ${S.items.length} stocks…</span>`
@@ -366,18 +382,29 @@
         <span class="muted">${S.items.length} of 30</span>
       </div>
       <div class="live-bar">${bar}</div>
-      ${S.items.length ? `<div class="wl-summary">Positional calls: <span class="wl-call buy">BUY ${count('BUY')}</span> <span class="wl-call dip">BUY ON DIP ${count('BUY ON DIP')}</span> <span class="wl-call sell">SELL ${count('SELL')}</span> <span class="wl-call wait">WAIT ${count('WAIT')}</span></div>` : ''}
+      ${S.items.length ? `<div class="wl-toolbar">
+        <div class="seg" role="tablist"><button type="button" role="tab" data-view="pos" class="${view === 'pos' ? 'active' : ''}">Positional</button><button type="button" role="tab" data-view="intra" class="${view === 'intra' ? 'active' : ''}">Intraday</button></div>
+        <div class="wl-summary"><span class="wl-call buy">BUY ${count('BUY')}</span><span class="wl-call dip">DIP ${count('BUY ON DIP')}</span><span class="wl-call sell">SELL ${count('SELL')}</span><span class="wl-call wait">WAIT ${count('WAIT')}</span></div>
+      </div>` : ''}
       ${S.items.length ? rows.map(r => {
         const res = results && results[r.symbol] && daysUntil(results[r.symbol]) >= 0 && daysUntil(results[r.symbol]) <= 7 ? `<span class="tag tag-orange">Results ${daysUntil(results[r.symbol]) === 0 ? 'today' : 'in ' + daysUntil(results[r.symbol]) + 'd'}: levels may not hold</span>` : '';
         const id = (S.items.find(i => i.symbol === r.symbol) || {}).id;
-        return `<div class="wl-card">
-          <div class="wl-head">
-            <div><b class="wl-sym">${esc(r.symbol)}</b> <span class="muted">${esc(String(r.name || '').slice(0, 40))}</span> ${res}</div>
-            <div class="wl-price">${r.price != null ? `${rs(r.price)} <span class="${r.change > 0 ? 'text-green' : r.change < 0 ? 'text-red' : ''}">${pct(r.change)}</span>` : ''}
-              <button type="button" class="link-btn" data-analyze="${esc(r.symbol)}">Analyze</button>
-              <button type="button" class="link-btn" data-remove="${id}">Remove</button></div>
-          </div>
-          ${r.error ? `<p class="muted">Couldn't check ${esc(r.symbol)}: ${esc(r.error)}</p>` : `<div class="wl-cols">${callBox(r.pos, 'pos')}${callBox(r.intra, 'intra')}</div>${trackHtml(r.symbol)}${r.opt ? `<details class="wl-opt" open><summary>Options · buy &amp; sell points (${esc(r.symbol)} ATM, lot ${r.opt.lot})</summary>${FnO.plansHtml(r.opt, null, true)}</details>` : ''}`}
+        const isOpen = openRows.has(r.symbol);
+        return `<div class="wl-card${isOpen ? ' open' : ''}">
+          <button type="button" class="wl-row" data-toggle="${esc(r.symbol)}" aria-expanded="${isOpen}">
+            <div class="wl-row-top">
+              <div class="wl-id"><b class="wl-sym">${esc(r.symbol)}</b><small>${esc(String(r.name || '').slice(0, 34))}</small></div>
+              <div class="wl-price">${r.price != null ? `<b>${rs(r.price)}</b><small class="${r.change > 0 ? 'up' : r.change < 0 ? 'down' : ''}">${pct(r.change)}</small>` : ''}</div>
+            </div>
+            <div class="wl-row-call">${r.error ? `<span class="muted">Couldn't check: ${esc(r.error)}</span>` : callLine(r[view])}<span class="wl-chev" aria-hidden="true">›</span></div>
+            ${res ? `<div>${res}</div>` : ''}
+          </button>
+          ${isOpen ? `<div class="wl-detail">
+            ${r.error ? '' : callBox(r[view], view)}
+            ${trackHtml(r.symbol)}
+            ${r.opt ? `<details class="wl-opt"><summary>Options · buy &amp; sell points (ATM, lot ${r.opt.lot})</summary>${FnO.plansHtml(r.opt, null, true)}</details>` : ''}
+            <div class="wl-actions"><button type="button" class="btn-secondary" data-analyze="${esc(r.symbol)}">Full analysis</button><button type="button" class="btn-danger" data-remove="${id}">Remove</button></div>
+          </div>` : ''}
         </div>`;
       }).join('') : '<p class="muted" style="padding:8px 0;">Add stocks to get buy and sell calls with entry, stop-loss and targets from demand and supply zones.</p>'}
       <p class="citation">BUY = buy now; BUY ON DIP = buy only if price falls to the demand zone; SELL = sell / book profit if you hold it; WAIT = no trade. Entry and stop come from the nearest demand zone, targets from the supply zones above. Calls combine the 24 strategies with trend, RSI, moving-average and MACD checks. Not a recommendation.</p>`;
@@ -385,6 +412,8 @@
   }
 
   function wire(container) {
+    container.querySelectorAll('[data-view]').forEach(b => { b.onclick = () => { view = b.dataset.view; try { localStorage.setItem('mm-wl-view', view); } catch { /* ok */ } render(container); }; });
+    container.querySelectorAll('[data-toggle]').forEach(b => { b.onclick = () => { const k = b.dataset.toggle; openRows.has(k) ? openRows.delete(k) : openRows.add(k); render(container); }; });
     const input = container.querySelector('#wl-add-sym');
     if (root.StockPicker) root.StockPicker.attach(input, { popular: [] });
     const add = async () => {
