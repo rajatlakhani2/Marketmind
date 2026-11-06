@@ -271,13 +271,17 @@
   // Live quote (ICICI only): LTP, best bid/offer with quantities, day range.
   // Cached for 4 s so one analysis (daily + weekly + monthly + quote) asks ICICI once.
   const quoteCache = new Map();
+  const quoteInFlight = new Map();   // parts of the app asking at the same moment share one request
   async function getQuote(symbol) {
     const sym = String(symbol || '').trim().toUpperCase();
     const hit = quoteCache.get(sym);
     if (hit && Date.now() - hit.at < 4000) return hit.q;
-    const q = await getJSON(`${BREEZE_URL}?action=quote&symbol=${encodeURIComponent(sym)}`);
-    quoteCache.set(sym, { at: Date.now(), q });
-    return q;
+    if (quoteInFlight.has(sym)) return quoteInFlight.get(sym);
+    const p = getJSON(`${BREEZE_URL}?action=quote&symbol=${encodeURIComponent(sym)}`)
+      .then(q => { quoteCache.set(sym, { at: Date.now(), q }); return q; })
+      .finally(() => quoteInFlight.delete(sym));
+    quoteInFlight.set(sym, p);
+    return p;
   }
 
   // ICICI's daily candles only include today after its end-of-day run, so during (and

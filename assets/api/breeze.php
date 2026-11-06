@@ -110,10 +110,15 @@ function breeze_v1(array $cfg, array $session, string $endpoint, array $body): a
         'X-AppKey: ' . $cfg['api_key'],
         'X-SessionToken: ' . $session['token'],
     ];
-    [$status, $resp, $err] = http_request('GET', $cfg['api_url'] . $endpoint, $json, $headers);
+    // ICICI now and then answers a busy moment with a non-JSON page; wait briefly and try once more
+    for ($try = 0; $try < 2; $try++) {
+        if ($try) usleep(700000);
+        [$status, $resp, $err] = http_request('GET', $cfg['api_url'] . $endpoint, $json, $headers);
+        $data = $resp === null ? null : json_decode($resp, true);
+        if (is_array($data)) break;
+    }
     if ($resp === null) throw new RuntimeException('Could not reach ICICI: ' . $err);
-    $data = json_decode($resp, true);
-    if (!is_array($data)) throw new RuntimeException('ICICI returned an invalid response');
+    if (!is_array($data)) throw new RuntimeException('ICICI returned an invalid response (HTTP ' . $status . ')');
     check_breeze_error($data);
     return $data;
 }
@@ -422,6 +427,7 @@ try {
 
     if ($action === 'quote') {
         $sym = resolve_symbol($cfg, (string) ($_GET['symbol'] ?? ''));
+        if ($hit = cache_get('quote|' . $sym['nse'], 3)) json_out(200, $hit);
         $data = breeze_v1($cfg, $session, 'quotes', ['stock_code' => $sym['isec'], 'exchange_code' => $sym['exch'], 'product_type' => 'cash']);
         $rows = $data['Success'] ?? [];
         $q = null;
@@ -429,7 +435,7 @@ try {
         if (!$q) $q = $rows[0] ?? null;
         if (!$q) json_out(404, ['error' => 'No quote returned']);
         $num = fn($k) => isset($q[$k]) && $q[$k] !== '' ? (float) $q[$k] : null;
-        json_out(200, [
+        $out = [
             'symbol' => $sym['nse'], 'isec' => $sym['isec'], 'name' => $sym['name'],
             'ltp' => $num('ltp'), 'ltt' => $q['ltt'] ?? null,
             'bid' => $num('best_bid_price'), 'bidQty' => $num('best_bid_quantity'),
@@ -439,7 +445,9 @@ try {
             'upperCircuit' => $num('upper_circuit'), 'lowerCircuit' => $num('lower_circuit'),
             'volume' => $num('total_quantity_traded'),
             'at' => time(),
-        ]);
+        ];
+        cache_put('quote|' . $sym['nse'], $out);
+        json_out(200, $out);
     }
 
     // ---------- F&O ----------
