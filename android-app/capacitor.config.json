@@ -1,0 +1,19 @@
+{
+  "appId": "in.org.kuhu.marketmind",
+  "appName": "MarketMind",
+  "webDir": "www",
+  "server": {
+    "url": "https://marketmind.kuhu.org.in/",
+    "androidScheme": "https",
+    "errorPath": "offline.html",
+    "allowNavigation": ["marketmind.kuhu.org.in", "*.icicidirect.com", "icicidirect.com"]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "appendUserAgent": "MarketMindApp"
+  },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 600, "backgroundColor": "#ffffff", "showSpinner": false },
+    "StatusBar": { "style": "LIGHT", "backgroundColor": "#ffffff", "overlaysWebView": false }
+  }
+}

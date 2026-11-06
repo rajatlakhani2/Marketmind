@@ -1,0 +1,80 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ['android-app/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install Capacitor
+        run: npm install --no-audit --no-fund
+      - name: Create the Android project
+        run: |
+          npx cap add android
+          npx capacitor-assets generate --android --iconBackgroundColor '#1f4e9e' --splashBackgroundColor '#ffffff'
+          npx cap sync android
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          # With the two secrets set, every build is signed with the same key, so new APKs install over old ones.
+          # Without them, a one-off key is made for this build (uninstall the old app before installing a new one).
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/app/release.jks
+            PASS="$KEYSTORE_PASS"
+          else
+            PASS="marketmind-$GITHUB_RUN_ID"
+            keytool -genkeypair -v -keystore android/app/release.jks -alias marketmind -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$PASS" -keypass "$PASS" -dname "CN=MarketMind, O=Personal, C=IN"
+          fi
+          cat >> android/app/build.gradle <<GRADLE
+
+          android {
+              signingConfigs {
+                  mm {
+                      storeFile file('release.jks')
+                      storePassword '$PASS'
+                      keyAlias 'marketmind'
+                      keyPassword '$PASS'
+                  }
+              }
+              buildTypes { release { signingConfig signingConfigs.mm; minifyEnabled false } }
+          }
+          GRADLE
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/MarketMind.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarketMind-apk
+          path: MarketMind.apk
+      - name: Publish as a release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-${{ github.run_number }}
+          name: MarketMind Android ${{ github.run_number }}
+          body: Install MarketMind.apk on your Android phone. The app opens https://marketmind.kuhu.org.in, so features update without a new APK.
+          files: MarketMind.apk
+          make_latest: true

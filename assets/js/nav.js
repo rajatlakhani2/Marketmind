@@ -104,6 +104,22 @@
     // Re-render when admin pages appear / badges change
     new MutationObserver(() => render()).observe(document.getElementById('nav-links'), { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
     render();
+    initAndroidBack();
+  }
+
+  // Android app: the phone's back button closes the account sheet, then returns to Home, then leaves the app
+  function initAndroidBack() {
+    const App = root.Capacitor && root.Capacitor.Plugins && root.Capacitor.Plugins.App;
+    if (!App || !App.addListener) return;
+    document.documentElement.classList.add('in-app');
+    App.addListener('backButton', () => {
+      const sheet = document.getElementById('account-sheet');
+      const modal = document.getElementById('modal-overlay');
+      if (sheet && !sheet.classList.contains('hidden')) { sheet.classList.add('hidden'); document.body.classList.remove('sheet-open'); return; }
+      if (modal && !modal.classList.contains('hidden')) { modal.classList.add('hidden'); return; }
+      if (current !== 'dashboard') { go('dashboard'); return; }
+      App.exitApp();
+    });
   }
 
   root.Nav = { init, sync, go, GROUPS };
