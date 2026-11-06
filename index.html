@@ -18,20 +18,20 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
-  <script src="js/marketdata.js?v=13"></script>
-  <script src="js/ks001.js?v=13"></script>
-  <script src="js/conditions.js?v=13"></script>
-  <script src="js/library.js?v=13"></script>
-  <script src="js/consensus.js?v=13"></script>
-  <script src="js/account.js?v=13"></script>
-  <script src="js/stockpicker.js?v=13"></script>
-  <script src="js/mindguru.js?v=13"></script>
-  <script src="js/knowledgesync.js?v=13"></script>
-  <script src="js/fno.js?v=13"></script>
-  <script src="js/events.js?v=13"></script>
-  <script src="js/trading.js?v=13"></script>
-  <script src="js/scan.js?v=13"></script>
-  <script src="js/watchlist.js?v=13"></script>
+  <script src="js/marketdata.js?v=14"></script>
+  <script src="js/ks001.js?v=14"></script>
+  <script src="js/conditions.js?v=14"></script>
+  <script src="js/library.js?v=14"></script>
+  <script src="js/consensus.js?v=14"></script>
+  <script src="js/account.js?v=14"></script>
+  <script src="js/stockpicker.js?v=14"></script>
+  <script src="js/mindguru.js?v=14"></script>
+  <script src="js/knowledgesync.js?v=14"></script>
+  <script src="js/fno.js?v=14"></script>
+  <script src="js/events.js?v=14"></script>
+  <script src="js/trading.js?v=14"></script>
+  <script src="js/scan.js?v=14"></script>
+  <script src="js/watchlist.js?v=14"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -500,6 +500,12 @@ textarea { font-family: inherit; }
 .wl-why { margin-top: 8px; font-size: 0.82rem; }
 .wl-why summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .wl-why ul { padding-left: 18px; margin-top: 6px; display: flex; flex-direction: column; gap: 3px; line-height: 1.5; color: var(--text-secondary); }
+.op-table td { white-space: normal; min-width: 90px; vertical-align: top; }
+.op-table td:nth-child(2) { min-width: 170px; }
+.op-fav td { background: rgba(31,78,158,0.06); }
+.op-write td:first-child { border-left: 3px solid var(--red); }
+.wl-opt { margin-top: 10px; }
+.wl-opt > summary { cursor: pointer; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 6px; }
 /* ICICI reminder banner */
 .icici-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; background: #fdf4e3; border: 1px solid #e8c98c; color: #6e4604; border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.86rem; line-height: 1.5; }
 .icici-banner-text { flex: 1; min-width: 220px; }

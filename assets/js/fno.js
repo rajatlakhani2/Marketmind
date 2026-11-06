@@ -165,6 +165,99 @@
     };
   }
 
+  // ---------- option buy / sell points from the underlying's demand and supply zones ----------
+  // Each option is priced at the underlying's zone levels with Black-Scholes, using that strike's
+  // own implied volatility (from its live price). Estimates: time decay lowers premiums every day.
+  const firstExpiry = u => u.options.find(d => daysTo(d) >= 5) || u.options[0];
+
+  function optionPlans({ u, expiry, calls, puts, spot, call }) {
+    if (!call || call.error || !spot) return null;
+    const T = yearsTo(expiry), lot = u.lot || 1;
+    const D = call.demand, S = call.supply;
+    const strikes = [...new Set([...calls, ...puts].map(r => r.strike))].sort((a, b) => a - b);
+    if (!strikes.length) return null;
+    const nearest = x => strikes.reduce((b, k) => (Math.abs(k - x) < Math.abs(b - x) ? k : b), strikes[0]);
+    const row = (rows, k) => rows.find(r => r.strike === k);
+    const ivOf = (r, isCall, K) => (r && impliedVol(r.ltp, spot, K, T, isCall)) || null;
+    const atmIV = (() => { const k = nearest(spot); const a = [ivOf(row(calls, k), true, k), ivOf(row(puts, k), false, k)].filter(Boolean); return a.length ? a.reduce((x, y) => x + y) / a.length : 20; })();
+    const price = (K, isCall, at) => { const r = row(isCall ? calls : puts, K); const iv = ivOf(r, isCall, K) || atmIV; return bsPrice(at, K, T, iv / 100, isCall); };
+    const live = (K, isCall, side) => { const r = row(isCall ? calls : puts, K); if (!r) return null; return side === 'buy' ? (r.ask > 0 ? r.ask : r.ltp) : (r.bid > 0 ? r.bid : r.ltp); };
+    const r2 = v => (v == null || !isFinite(v) ? null : Math.max(0.05, Math.round(v * 20) / 20));   // NSE tick 0.05
+    const plans = [];
+    const bullish = call.action === 'BUY' || call.action === 'BUY ON DIP';
+    const bearish = call.action === 'SELL';
+    const name = (K, isCall) => `${int(K)} ${isCall ? 'CE' : 'PE'}`;
+
+    // BUY CALL: at the demand zone (or now on a BUY call); stop if the zone fails; target the supply zone
+    if (D && S && S.proximal > D.proximal) {
+      const now = call.action === 'BUY';
+      const at = now ? spot : D.proximal;
+      const K = nearest(at);
+      const entry = now ? live(K, true, 'buy') : price(K, true, at);
+      const stop = price(K, true, D.stop), target = price(K, true, S.proximal);
+      if (entry > 0) plans.push({ kind: 'buy', isCall: true, strike: K, label: `Buy ${name(K, true)}`, favoured: bullish,
+        when: now ? `Now (${u.kind === 'index' ? 'index' : 'stock'} ${rs(spot, 0)} is at the demand zone)` : `When ${u.symbol} falls to ${rs(D.proximal)} (demand zone)`,
+        entry: r2(entry), stop: r2(stop), target: r2(target),
+        stopWhy: `${u.symbol} closes below ${rs(D.stop)}`, targetWhy: `${u.symbol} reaches ${rs(S.proximal)} (supply)` });
+    }
+    // BUY PUT: at the supply zone (or now on a SELL call); stop if the zone breaks; target the demand zone
+    if (S && D && S.proximal > D.proximal) {
+      const now = call.action === 'SELL';
+      const at = now ? spot : S.proximal;
+      const K = nearest(at);
+      const entry = now ? live(K, false, 'buy') : price(K, false, at);
+      const stop = price(K, false, S.stop), target = price(K, false, D.proximal);
+      if (entry > 0) plans.push({ kind: 'buy', isCall: false, strike: K, label: `Buy ${name(K, false)}`, favoured: bearish,
+        when: now ? `Now (${u.kind === 'index' ? 'index' : 'stock'} ${rs(spot, 0)} is at the supply zone)` : `When ${u.symbol} rises to ${rs(S.proximal)} (supply zone)`,
+        entry: r2(entry), stop: r2(stop), target: r2(target),
+        stopWhy: `${u.symbol} closes above ${rs(S.stop)}`, targetWhy: `${u.symbol} falls to ${rs(D.proximal)} (demand)` });
+    }
+    // SELL PUT (writing): strike below the demand zone; sellers keep the premium if price stays above the zone
+    if (D) {
+      const K = [...strikes].reverse().find(k => k <= D.distal);
+      const prem = K != null ? live(K, false, 'sell') : null;
+      if (prem > 0) plans.push({ kind: 'write', isCall: false, strike: K, label: `Sell ${name(K, false)}`, favoured: !bearish,
+        when: `Now, while ${u.symbol} stays above the demand zone ${rs(D.distal)} – ${rs(D.proximal)}`,
+        entry: r2(prem), stop: r2(Math.max(price(K, false, D.stop), prem * 2)), target: r2(prem * 0.2),
+        stopWhy: `${u.symbol} closes below ${rs(D.stop)}, or the premium doubles`, targetWhy: 'buy back after about 80% of the premium has decayed' });
+    }
+    // SELL CALL (writing): strike above the supply zone; sellers keep the premium if price stays below it
+    if (S) {
+      const K = strikes.find(k => k >= S.distal);
+      const prem = K != null ? live(K, true, 'sell') : null;
+      if (prem > 0) plans.push({ kind: 'write', isCall: true, strike: K, label: `Sell ${name(K, true)}`, favoured: !bullish,
+        when: `Now, while ${u.symbol} stays below the supply zone ${rs(S.proximal)} – ${rs(S.distal)}`,
+        entry: r2(prem), stop: r2(Math.max(price(K, true, S.stop), prem * 2)), target: r2(prem * 0.2),
+        stopWhy: `${u.symbol} closes above ${rs(S.stop)}, or the premium doubles`, targetWhy: 'buy back after about 80% of the premium has decayed' });
+    }
+    for (const p of plans) {
+      const buy = p.kind === 'buy';
+      p.risk = p.stop != null ? (buy ? p.entry - p.stop : p.stop - p.entry) * lot : null;
+      p.reward = p.target != null ? (buy ? p.target - p.entry : p.entry - p.target) * lot : null;
+      p.cost = buy ? p.entry * lot : null;
+      if (buy && p.risk != null && p.risk <= 0) p.risk = p.entry * lot;   // stop at or above entry: worst case is the premium
+    }
+    return { expiry, days: Math.ceil(daysTo(expiry)), lot, spot, contract: spot * lot, plans, symbol: u.symbol, kind: u.kind };
+  }
+
+  function plansHtml(P, only, compact) {
+    if (!P) return '<p class="muted">Option levels need the underlying\'s demand and supply zones; none are available right now.</p>';
+    const list = P.plans.filter(p => !only || (only === 'calls' ? p.isCall : !p.isCall));
+    if (!list.length) return '<p class="muted">No demand or supply zone close enough to plan an option trade from.</p>';
+    const margin = `${rs(P.contract * 0.12, 0)} – ${rs(P.contract * 0.2, 0)}`;
+    return `<div class="fno-tablewrap"><table class="screener-table fno-table op-table">
+      <thead><tr><th>Trade</th><th>When</th><th>Entry premium</th><th>Stop-loss</th><th>Target</th><th>Per lot (${int(P.lot)})</th></tr></thead>
+      <tbody>${list.map(p => `<tr class="${p.favoured ? 'op-fav' : ''} ${p.kind === 'write' ? 'op-write' : ''}">
+        <td><b class="${p.kind === 'write' ? 'text-red' : p.isCall ? 'text-green' : 'text-red'}">${p.favoured ? '★ ' : ''}${esc(p.label)}</b><br><span class="muted">${p.kind === 'write' ? 'option selling' : 'option buying'}</span></td>
+        <td>${esc(p.when)}</td>
+        <td><b>${rs(p.entry)}</b><br><span class="muted">${p.kind === 'write' ? 'sell at' : 'buy at'}</span></td>
+        <td class="text-red">${rs(p.stop)}<br><span class="muted">${esc(p.stopWhy)}</span></td>
+        <td class="text-green">${rs(p.target)}<br><span class="muted">${esc(p.targetWhy)}</span></td>
+        <td>${p.kind === 'buy' ? `cost ${rs(p.cost, 0)}<br>` : `margin ~${margin}<br>`}risk ${rs(p.risk, 0)} · gain ${rs(p.reward, 0)}</td>
+      </tr>`).join('')}</tbody></table></div>
+      ${compact ? `<p class="citation">Expiry ${fmtDate(P.expiry)} (${P.days} days) · ★ matches the positional call · premiums at future levels are estimates · option selling needs margin and has unlimited risk.</p>` : `<p class="citation">Expiry ${fmtDate(P.expiry)} (${P.days} days). ★ = matches the current call. Premiums at future price levels are estimates (Black-Scholes with each strike's live implied volatility) and fall a little every day from time decay; check the live premium before placing. Option buying risks the premium paid. <b>Option selling needs margin (roughly 12–20% of the contract value, check in the ICICI app) and its loss is not limited</b>, so always use the stop-loss.</p>`}`;
+  }
+
   // ---------- loading ----------
   async function load(container, { quiet } = {}) {
     if (busy) return;
@@ -173,7 +266,7 @@
     if (!quiet && body) body.innerHTML = '<p class="muted" style="padding:16px;">Loading live F&amp;O data from ICICI…</p>';
     try {
       const u = meta.find(x => x.isec === state.isec) || meta[0];
-      if (!state.expiry || !u.options.includes(state.expiry)) state.expiry = u.options[0] || u.futures[0];
+      if (!state.expiry || !u.options.includes(state.expiry)) state.expiry = firstExpiry(u) || u.futures[0];
       const [calls, puts] = await Promise.all([
         get('option_chain', { isec: u.isec, expiry: state.expiry, right: 'call' }),
         get('option_chain', { isec: u.isec, expiry: state.expiry, right: 'put' }),
@@ -237,9 +330,15 @@
     const tabs = ['summary', 'calls', 'puts', 'futures'].map(t => `<button type="button" class="fno-tab${state.tab === t ? ' active' : ''}" data-tab="${t}">${{ summary: 'Summary', calls: 'Calls (CE)', puts: 'Puts (PE)', futures: 'Futures' }[t]}</button>`).join('');
 
     let panel = '';
-    if (state.tab === 'summary') panel = verdictHtml + tiles + oiNotes(A);
-    if (state.tab === 'calls') panel = chainTable(data.calls, true, A, spot);
-    if (state.tab === 'puts') panel = chainTable(data.puts, false, A, spot);
+    let P = null;
+    if (data.verdictDone && data.verdict && root.Watchlist) {
+      const v = data.verdict;
+      try { P = optionPlans({ u, expiry: state.expiry, calls: data.calls, puts: data.puts, spot, call: root.Watchlist._makeCall({ md: v.marketData, ks: v.ks001, cs: v.consensus }, 'pos') }); } catch (e) { console.warn('Option plans:', e.message); }
+    }
+    const plansBox = only => `<div class="analysis-section" style="margin-top:0;"><h3>Option buy &amp; sell points <span class="muted" style="font-weight:400;font-size:0.8rem;">from ${esc(u.symbol)}'s demand and supply zones (daily chart)</span></h3>${data.verdictDone ? plansHtml(P, only) : '<p class="muted">Working out the zones…</p>'}</div>`;
+    if (state.tab === 'summary') panel = verdictHtml + plansBox() + tiles + oiNotes(A);
+    if (state.tab === 'calls') panel = plansBox('calls') + chainTable(data.calls, true, A, spot);
+    if (state.tab === 'puts') panel = plansBox('puts') + chainTable(data.puts, false, A, spot);
     if (state.tab === 'futures') panel = futuresTable(data.futures, spot, u);
 
     body.innerHTML = `
@@ -348,7 +447,7 @@
       const fillExpiries = () => {
         const u = meta.find(x => x.isec === sel.value);
         exp.innerHTML = u.options.map(d => `<option value="${d}">${fmtDate(d)}</option>`).join('');
-        if (u.options.includes(state.expiry)) exp.value = state.expiry; else state.expiry = exp.value;
+        if (u.options.includes(state.expiry)) exp.value = state.expiry; else { state.expiry = firstExpiry(u); exp.value = state.expiry; }
       };
       fillExpiries();
       sel.onchange = () => { state.isec = sel.value; state.expiry = null; state.showAll = false; fillExpiries(); data = null; load(container); };
@@ -370,5 +469,5 @@
     if (u) { state.isec = u.isec; state.expiry = null; const sel = document.getElementById('fno-under'); if (sel) { sel.value = u.isec; sel.onchange && sel.onchange(); } }
   }
 
-  root.FnO = { renderPage, openFor, _impliedVol: impliedVol, _analyse: analyse };
+  root.FnO = { renderPage, openFor, optionPlans, plansHtml, firstExpiry, _impliedVol: impliedVol, _analyse: analyse };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -66,6 +66,27 @@
     try { const q = await MarketData.getQuote(md.symbol); return q && q.ltp > 0 ? q.ltp : md.price; } catch { return md.price; }
   }
 
+  // ---------- options for F&O stocks ----------
+  let foMeta = null, foMetaAt = 0;
+  const chainCache = new Map();   // isec|expiry -> { at, calls, puts }
+  async function getJSON(url) { const r = await fetch(url, { cache: 'no-store' }); const j = await r.json().catch(() => null); if (!r.ok || !j) throw new Error((j && j.error) || `HTTP ${r.status}`); return j; }
+  async function optionsFor(symbol, posCall, spot) {
+    if (!root.FnO || !posCall || posCall.error) return null;
+    if (!foMeta || Date.now() - foMetaAt > 6 * 3600e3) { foMeta = (await getJSON('api/breeze.php?action=fo_meta')).underlyings; foMetaAt = Date.now(); }
+    const u = foMeta.find(x => x.symbol === symbol || x.isec === symbol);
+    if (!u) return null;                              // not an F&O stock
+    const expiry = FnO.firstExpiry(u);
+    const key = `${u.isec}|${expiry}`;
+    let ch = chainCache.get(key);
+    if (!ch || Date.now() - ch.at > 2 * 60e3) {       // option chains refresh every 2 minutes
+      const [c, p] = await Promise.all(['call', 'put'].map(right => getJSON(`api/breeze.php?action=option_chain&isec=${encodeURIComponent(u.isec)}&expiry=${expiry}&right=${right}`)));
+      ch = { at: Date.now(), calls: c.rows, puts: p.rows };
+      chainCache.set(key, ch);
+    }
+    const chainSpot = [...ch.calls, ...ch.puts].map(r => r.spot).find(v => v > 0);
+    return FnO.optionPlans({ u, expiry, calls: ch.calls, puts: ch.puts, spot: spot || chainSpot, call: posCall });
+  }
+
   async function analyse(symbol) {
     const k = root.app.analysis.knowledge;
     const out = { symbol };
@@ -73,6 +94,7 @@
     const pos = await root.Opportunities.verdict(symbol);
     out.price = pos.md.price; out.change = pos.md.changePercent; out.name = pos.md.name; out.source = pos.md.source;
     out.pos = makeCall(pos, 'pos');
+    try { out.opt = await optionsFor(symbol, out.pos, out.price); } catch (e) { out.opt = null; out.optError = e.message; }
     // Intraday: 15-minute chart, hourly built from it, daily from above
     try {
       const md = await k.getMarketData(symbol, '15m');
@@ -178,7 +200,9 @@
     if (c.settingUp && c.settingUp.length) strategies.push(`Getting close: ${c.settingUp.slice(0, 4).join(', ')}${c.settingUp.length > 4 ? '…' : ''}.`);
     if (c.against && c.against.length) strategies.push(`Against: ${c.against.join(', ')}.`);
 
-    return { action, tone, say, price: p, entry, entryZone, stop, t1, t2, rr: rrOut, agree: c.agree, of: c.of, strategies, concepts, zones, at: Date.now() };
+    const zone = z => z && { proximal: z.proximal, distal: z.distal, stop: stopOf(z) };
+    return { action, tone, say, price: p, entry, entryZone, stop, t1, t2, rr: rrOut, agree: c.agree, of: c.of, strategies, concepts, zones,
+      demand: zone(D), supply: zone(S), at: Date.now() };
   }
 
   // ---------- state, alerts ----------
@@ -298,7 +322,7 @@
               <button type="button" class="link-btn" data-analyze="${esc(r.symbol)}">Analyze</button>
               <button type="button" class="link-btn" data-remove="${id}">Remove</button></div>
           </div>
-          ${r.error ? `<p class="muted">Couldn't check ${esc(r.symbol)}: ${esc(r.error)}</p>` : `<div class="wl-cols">${callBox(r.pos, 'pos')}${callBox(r.intra, 'intra')}</div>`}
+          ${r.error ? `<p class="muted">Couldn't check ${esc(r.symbol)}: ${esc(r.error)}</p>` : `<div class="wl-cols">${callBox(r.pos, 'pos')}${callBox(r.intra, 'intra')}</div>${r.opt ? `<details class="wl-opt" open><summary>Options · buy &amp; sell points (${esc(r.symbol)} ATM, lot ${r.opt.lot})</summary>${FnO.plansHtml(r.opt, null, true)}</details>` : ''}`}
         </div>`;
       }).join('') : '<p class="muted" style="padding:8px 0;">Add stocks to get buy and sell calls with entry, stop-loss and targets from demand and supply zones.</p>'}
       <p class="citation">BUY = buy now; BUY ON DIP = buy only if price falls to the demand zone; SELL = sell / book profit if you hold it; WAIT = no trade. Entry and stop come from the nearest demand zone, targets from the supply zones above. Calls combine the 24 strategies with trend, RSI, moving-average and MACD checks. Not a recommendation.</p>`;
