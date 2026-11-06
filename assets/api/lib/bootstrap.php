@@ -281,6 +281,17 @@ function mm_migrations(): array {
                 PRIMARY KEY (scan_date, symbol)
             )$t",
         ],
+        // Personal watchlist: each login keeps its own stocks
+        7 => [
+            "CREATE TABLE user_watchlist (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                user_id INT UNSIGNED NOT NULL,
+                symbol VARCHAR(20) NOT NULL,
+                name VARCHAR(150) NOT NULL DEFAULT '',
+                added_at DATETIME NOT NULL
+            )$t",
+            "CREATE UNIQUE INDEX ux_user_watchlist ON user_watchlist (user_id, symbol)",
+        ],
     ];
 }
 

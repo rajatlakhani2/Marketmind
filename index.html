@@ -30,7 +30,8 @@
   <script src="js/fno.js?v=7"></script>
   <script src="js/events.js?v=7"></script>
   <script src="js/trading.js?v=9"></script>
-  <script src="js/scan.js?v=9"></script>
+  <script src="js/scan.js?v=10"></script>
+  <script src="js/watchlist.js?v=10"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -477,6 +478,28 @@ textarea { font-family: inherit; }
 @media (max-width: 700px) { .tr-card-grid, .tr-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .opp-actions { white-space: nowrap; }
 .opp-actions .link-btn { display: block; padding: 2px 0; }
+/* Watchlist */
+.wl-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; font-size: 0.85rem; color: var(--text-secondary); }
+.wl-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+.wl-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 12px; margin-bottom: 10px; }
+.wl-sym { font-size: 1.05rem; }
+.wl-price { font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.wl-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 760px) { .wl-cols { grid-template-columns: minmax(0, 1fr); } }
+.wl-col { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.wl-col-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 6px; }
+.wl-call-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.wl-call { display: inline-block; padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.82rem; letter-spacing: 0.03em; }
+.wl-call.buy { background: var(--green); color: #fff; }
+.wl-call.dip { background: rgba(17,128,78,0.12); color: var(--green); border: 1px solid rgba(17,128,78,0.4); }
+.wl-call.sell { background: var(--red); color: #fff; }
+.wl-call.wait { background: var(--bg-secondary, #eef1f6); color: var(--text-secondary); border: 1px solid var(--border); }
+.wl-say { font-size: 0.88rem; line-height: 1.55; margin: 4px 0 8px; color: var(--text-primary); }
+.wl-levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 10px; font-variant-numeric: tabular-nums; font-size: 0.86rem; }
+.wl-levels .label { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.wl-why { margin-top: 8px; font-size: 0.82rem; }
+.wl-why summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.wl-why ul { padding-left: 18px; margin-top: 6px; display: flex; flex-direction: column; gap: 3px; line-height: 1.5; color: var(--text-secondary); }
 /* ICICI reminder banner */
 .icici-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; background: #fdf4e3; border: 1px solid #e8c98c; color: #6e4604; border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.86rem; line-height: 1.5; }
 .icici-banner-text { flex: 1; min-width: 220px; }
@@ -682,6 +705,7 @@ body.auth-open #app { visibility: hidden; }
         <li><a href="#" data-page="concepts"><span class="nav-icon">&#x1F4A1;</span> Concepts</a></li>
         <li><a href="#" data-page="strategies"><span class="nav-icon">&#x2694;&#xFE0F;</span> Strategies</a></li>
         <li><a href="#" data-page="analyze"><span class="nav-icon">&#x1F4CA;&#xFE0F;</span> Analyze Market</a></li>
+        <li><a href="#" data-page="watchlist"><span class="nav-icon">&#x2B50;</span> Watchlist</a></li>
         <li><a href="#" data-page="mindguru"><span class="nav-icon">&#x1F9E0;</span> MindGuru</a></li>
         <li><a href="#" data-page="fno"><span class="nav-icon">&#x1F4C8;</span> Futures &amp; Options</a></li>
         <li><a href="#" data-page="events"><span class="nav-icon">&#x1F4C5;</span> Events &amp; News</a></li>
@@ -826,6 +850,10 @@ body.auth-open #app { visibility: hidden; }
       <div id="page-holdings" class="page">
         <header class="page-header"><h2>My Holdings</h2></header>
         <div id="holdings-container"></div>
+      </div>
+      <div id="page-watchlist" class="page">
+        <header class="page-header"><h2>Watchlist</h2></header>
+        <div id="watchlist-container"></div>
       </div>
       <div id="page-screener" class="page">
         <header class="page-header"><h2>Strategy Screener</h2></header>
@@ -2931,6 +2959,7 @@ class App {
       case 'events': await EventsPage.renderPage(document.getElementById('events-container')); break;
       case 'trading': await Trading.renderPage(document.getElementById('trading-container')); break;
       case 'opps': await Opportunities.renderPage(document.getElementById('opps-container')); break;
+      case 'watchlist': await Watchlist.renderPage(document.getElementById('watchlist-container')); break;
       case 'holdings': await Holdings.renderPage(document.getElementById('holdings-container')); break;
       case 'mindguru': await MindGuru.renderPage(document.getElementById('mindguru-container')); break;
       case 'theory': this.ui.renderTheory(); break;
