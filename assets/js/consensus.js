@@ -223,11 +223,14 @@
 
   // ---------- MindGuru: what each strategy's track record says ----------
   // Uses the record for today's higher-timeframe trend when it has 8+ results, else the overall record.
-  function learnedFor(learned, id, trend, ksScore) {
+  function learnedFor(learned, id, trend, ksScore, symbol) {
     const s = learned && learned[id];
     const b = s && s.buckets;
     if (!b || !b.all || !b.all.trades) return null;
     let pick = b.all, scope = 'all market conditions';
+    // This stock's own record wins once there are enough judged calls on it
+    const sb = symbol && b[('sym:' + String(symbol).toUpperCase()).slice(0, 20)];
+    if (sb && sb.trades >= 8) return { ...sb, scope: `${String(symbol).toUpperCase()} itself` };
     const kb = ksScore == null ? null : ksScore >= 9 ? 'ks:9-10' : ksScore >= 8 ? 'ks:8' : ksScore >= 7 ? 'ks:7' : 'ks:<7';
     if (kb && b[kb] && b[kb].trades >= 8) { pick = b[kb]; scope = `zones scoring ${kb.slice(3)}`; }
     else if (trend && b['trend:' + trend] && b['trend:' + trend].trades >= 8) { pick = b['trend:' + trend]; scope = `${trend.toLowerCase()} trend`; }
@@ -253,7 +256,7 @@
       let plan = null;
       try { plan = builder ? builder({ md, ks, c, a }) : null; } catch (e) { plan = null; }
       const trend = ks && ks.trends && ks.trends.htf ? ks.trends.htf.trend : null;
-      const lr = learnedFor(learned, s.id, trend, plan ? plan.ksScore : null);
+      const lr = learnedFor(learned, s.id, trend, plan ? plan.ksScore : null, md.symbol);
       return {
         id: s.id, name: s.name, isBuiltIn: !!s.isBuiltIn, side: plan ? plan.side : (SIDE[s.id] || 'long'),
         status, met, total: checkable.length, unchecked: conds.length - checkable.length, conditions: conds, plan,

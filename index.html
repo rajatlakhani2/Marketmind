@@ -22,16 +22,17 @@
   <script src="js/ks001.js?v=14"></script>
   <script src="js/conditions.js?v=14"></script>
   <script src="js/library.js?v=14"></script>
-  <script src="js/consensus.js?v=14"></script>
+  <script src="js/consensus.js?v=16"></script>
   <script src="js/account.js?v=14"></script>
   <script src="js/stockpicker.js?v=14"></script>
-  <script src="js/mindguru.js?v=14"></script>
+  <script src="js/mindguru.js?v=16"></script>
   <script src="js/knowledgesync.js?v=14"></script>
-  <script src="js/fno.js?v=15"></script>
+  <script src="js/optbuilder.js?v=16"></script>
+  <script src="js/fno.js?v=16"></script>
   <script src="js/events.js?v=14"></script>
   <script src="js/trading.js?v=14"></script>
   <script src="js/scan.js?v=14"></script>
-  <script src="js/watchlist.js?v=14"></script>
+  <script src="js/watchlist.js?v=16"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -497,6 +498,45 @@ textarea { font-family: inherit; }
 .wl-say { font-size: 0.88rem; line-height: 1.55; margin: 4px 0 8px; color: var(--text-primary); }
 .wl-levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 10px; font-variant-numeric: tabular-nums; font-size: 0.86rem; }
 .wl-levels .label { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+/* Option strategy builder */
+.ob-tpls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ob-tpl { border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 0.82rem; cursor: pointer; }
+.ob-tpl.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ob-about { font-size: 0.85rem; margin: 4px 0 10px; line-height: 1.5; }
+.ob-params { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 10px; }
+.ob-params label { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; color: var(--text-muted); }
+.ob-params select, .ob-legs select, .ob-num { font: inherit; font-size: 0.85rem; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); }
+.ob-num { width: 84px; }
+.ob-custom { border-color: var(--yellow); }
+.ob-del { border: none; background: none; color: var(--red); font-size: 1.2rem; cursor: pointer; padding: 2px 8px; }
+.ob-tiles { margin-top: 12px; }
+.ob-chartbox { margin-top: 14px; }
+.ob-chart-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ob-legend { display: flex; gap: 14px; font-size: 0.8rem; color: var(--text-secondary); }
+.ob-legend i { display: inline-block; width: 18px; height: 0; vertical-align: middle; margin-right: 5px; }
+.ob-sw-ex { border-top: 2px solid var(--accent); }
+.ob-sw-td { border-top: 2px dashed var(--purple); }
+.ob-wrap { position: relative; }
+.ob-chart { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.ob-grid { stroke: var(--border); stroke-width: 1; opacity: 0.6; }
+.ob-zero { stroke: var(--text-muted); stroke-width: 1; }
+.ob-tick { fill: var(--text-muted); font-size: 11px; font-family: var(--font); }
+.ob-axis { fill: var(--text-secondary); font-size: 11px; font-family: var(--font); }
+.ob-spot { stroke: var(--text-muted); stroke-dasharray: 3 3; }
+.ob-fill-up { fill: var(--green); opacity: 0.12; }
+.ob-fill-dn { fill: var(--red); opacity: 0.12; }
+.ob-expiry { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.ob-today { fill: none; stroke: var(--purple); stroke-width: 2; stroke-dasharray: 5 4; }
+.ob-be { fill: var(--bg-card); stroke: var(--text-primary); stroke-width: 2; }
+.ob-cross { stroke: var(--text-secondary); stroke-width: 1; }
+.ob-dot-ex { fill: var(--accent); stroke: var(--bg-card); stroke-width: 2; }
+.ob-dot-td { fill: var(--purple); stroke: var(--bg-card); stroke-width: 2; }
+.ob-tip { position: absolute; top: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 0.8rem; line-height: 1.5; box-shadow: 0 4px 14px rgba(0,0,0,0.1); pointer-events: none; min-width: 150px; }
+.ob-day { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-secondary); margin-top: 6px; flex-wrap: wrap; }
+.ob-day input { flex: 1; min-width: 140px; }
+.wl-track { margin-top: 10px; font-size: 0.84rem; color: var(--text-secondary); }
+.wl-track summary { cursor: pointer; }
+.wl-track ul { padding-left: 18px; margin: 6px 0; display: flex; flex-direction: column; gap: 3px; }
 .wl-why { margin-top: 8px; font-size: 0.82rem; }
 .wl-why summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .wl-why ul { padding-left: 18px; margin-top: 6px; display: flex; flex-direction: column; gap: 3px; line-height: 1.5; color: var(--text-secondary); }

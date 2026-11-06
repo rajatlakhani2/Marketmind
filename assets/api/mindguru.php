@@ -24,10 +24,15 @@ try {
 
     if ($action === 'record') {
         $body = mm_require_post();
-        $source = ($body['source'] ?? 'live') === 'backtest' ? 'backtest' : 'live';
+        $source = in_array($body['source'] ?? 'live', ['backtest', 'watch'], true) ? $body['source'] : 'live';
         $items = $body['predictions'] ?? null;
         if (!is_array($items) || count($items) > 500) mm_json(400, ['error' => 'Send 1–500 predictions at a time']);
         mm_json(200, ['ok' => true] + mg_record($pdo, (int) $user['id'], $source, $items));
+    }
+
+    if ($action === 'watch_stats') {
+        $syms = explode(',', (string) ($_GET['symbols'] ?? ''));
+        mm_json(200, ['stats' => (object) mg_watch_stats($pdo, array_slice($syms, 0, 40))]);
     }
 
     if ($action === 'learn') {

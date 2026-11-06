@@ -296,6 +296,9 @@
   function render(container) {
     const body = container.querySelector('#fno-body');
     if (!body || !data) return;
+    // Don't wipe the builder while someone is typing in it; the next refresh catches up
+    const ae = document.activeElement;
+    if (state.tab === 'builder' && ae && body.contains(ae) && ae.matches('input, select') && !render.force) return;
     const { u, spot, A } = data;
     const fut = data.futures.find(f => !f.error && f.ltp);
     const premium = fut && spot ? fut.ltp - spot : null;
@@ -327,7 +330,7 @@
         <p class="ps-foot">Educational idea, not a recommendation. Options can lose 100% of the premium. Check liquidity (bid/ask gap) before trading.</p>
       </div>`;
 
-    const tabs = ['summary', 'calls', 'puts', 'futures'].map(t => `<button type="button" class="fno-tab${state.tab === t ? ' active' : ''}" data-tab="${t}">${{ summary: 'Summary', calls: 'Calls (CE)', puts: 'Puts (PE)', futures: 'Futures' }[t]}</button>`).join('');
+    const tabs = ['summary', 'calls', 'puts', 'futures', 'builder'].map(t => `<button type="button" class="fno-tab${state.tab === t ? ' active' : ''}" data-tab="${t}">${{ summary: 'Summary', calls: 'Calls (CE)', puts: 'Puts (PE)', futures: 'Futures', builder: 'Strategy builder' }[t]}</button>`).join('');
 
     let panel = '';
     let P = null;
@@ -340,12 +343,19 @@
     if (state.tab === 'calls') panel = plansBox('calls') + chainTable(data.calls, true, A, spot);
     if (state.tab === 'puts') panel = plansBox('puts') + chainTable(data.puts, false, A, spot);
     if (state.tab === 'futures') panel = futuresTable(data.futures, spot, u);
+    const bctx = state.tab === 'builder' && root.OptBuilder ? {
+      isec: u.isec, symbol: u.symbol, lot: u.lot || 1, calls: data.calls, puts: data.puts, spot, expiry: state.expiry,
+      T: yearsTo(state.expiry), days: Math.max(0, Math.ceil(daysTo(state.expiry))), atmIV: data.atmIV,
+      tone: data.verdictDone && data.verdict && data.verdict.consensus ? (data.verdict.consensus.conclusion.tone || 'neutral') : null,
+    } : null;
+    if (state.tab === 'builder') panel = bctx ? OptBuilder.html(bctx) : '<p class="muted">Strategy builder is loading…</p>';
 
     body.innerHTML = `
       <div class="live-bar">${live}</div>
       <div class="fno-tabs" role="tablist">${tabs}</div>
       <div class="fno-panel">${panel}</div>`;
     body.querySelectorAll('.fno-tab').forEach(b => { b.onclick = () => { state.tab = b.dataset.tab; render(container); }; });
+    if (bctx) OptBuilder.wire(body, bctx, () => { render.force = true; try { render(container); } finally { render.force = false; } });
     const all = body.querySelector('#fno-showall');
     if (all) all.onclick = () => { state.showAll = !state.showAll; render(container); };
   }

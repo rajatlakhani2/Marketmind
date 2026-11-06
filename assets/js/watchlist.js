@@ -94,6 +94,7 @@
     const pos = await root.Opportunities.verdict(symbol);
     out.price = pos.md.price; out.change = pos.md.changePercent; out.name = pos.md.name; out.source = pos.md.source;
     out.pos = makeCall(pos, 'pos');
+    recordCall(symbol, pos, out.pos);
     try { out.opt = await optionsFor(symbol, out.pos, out.price); } catch (e) { out.opt = null; out.optError = e.message; }
     // Intraday: 15-minute chart, hourly built from it, daily from above
     try {
@@ -106,6 +107,58 @@
       out.intra = makeCall({ md, ks, cs }, 'intra');
     } catch (e) { out.intra = { error: e.message }; }
     return out;
+  }
+
+  // ---------- MindGuru: record each positional call so it gets judged ----------
+  // The call itself goes in as '__watch_pos' (source 'watch'); the strategies behind it
+  // as normal live projections, so their record on this stock builds up too.
+  function recordCall(symbol, v, c) {
+    try {
+      if (!root.MindGuru || !c || !['BUY', 'BUY ON DIP', 'SELL'].includes(c.action)) return;
+      const hist = v.md.priceHistory || [];
+      if (!hist.length) return;
+      const last = new Date(hist[hist.length - 1].time + IST).toISOString().slice(0, 10);
+      if (marketOpen() && last !== istDate()) return;          // today's price didn't load: don't record a stale call
+      const key = `${symbol}|rec`;
+      if (seen[key]) return;
+      let call = null;
+      if (c.action === 'SELL') {
+        // Judged as a fall: right if price reaches the demand zone below before rising above the supply zone's stop
+        const stop = c.supply ? c.supply.stop : null, target = c.demand ? c.demand.proximal : null;
+        if (stop > c.price && target < c.price) call = { side: 'short', entry: c.price, stop, target };
+      } else if (c.entry && c.stop && c.t1 && c.stop < c.entry && c.entry < c.t1) {
+        call = { side: 'long', entry: c.action === 'BUY' ? c.price : c.entry, stop: c.stop, target: c.t1 };
+      }
+      const preds = MindGuru.projections(v.cs, v.md, v.ks, last).filter(p => p.kind === 'strategy');
+      seen[key] = true; saveSeen();
+      const jobs = [];
+      if (preds.length) jobs.push(MindGuru.api('record', { source: 'live', predictions: preds }));
+      if (call) jobs.push(MindGuru.api('record', { source: 'watch', predictions: [{ ...call, kind: 'watch', strategyId: '__watch_pos', strategyName: 'Watchlist call',
+        symbol, name: v.md.name || symbol, signalDate: last, price: c.price, trend: v.ks.trends.htf.trend,
+        context: { action: c.action, agree: c.agree, of: c.of, t2: c.t2, rr: c.rr } }] }));
+      Promise.all(jobs).catch(e => { delete seen[key]; saveSeen(); console.warn('MindGuru could not save the Watchlist call:', e.message); });
+    } catch (e) { console.warn('recordCall', e); }
+  }
+
+  // Track record of past calls per stock
+  let track = {}, trackAt = 0;
+  async function loadTrack(force) {
+    if (!root.MindGuru || !S.items.length || (!force && Date.now() - trackAt < 10 * 60e3)) return;
+    trackAt = Date.now();
+    try { track = (await MindGuru.api('watch_stats', undefined, '&symbols=' + encodeURIComponent(S.items.map(i => i.symbol).join(',')))).stats || {}; }
+    catch { /* shown when available */ }
+  }
+  const STATUS_WORD = { target_hit: 'target hit', stop_hit: 'stop hit', expired: 'ran out of time', no_entry: 'price never came to entry', pending: 'still open' };
+  function trackHtml(sym) {
+    const t = track[sym];
+    if (!t) return `<div class="wl-track muted">MindGuru record: no judged calls on this stock yet. Each BUY / SELL call is saved and checked against the real price.</div>`;
+    const head = t.judged
+      ? `MindGuru record: <b>${t.right} of ${t.judged}</b> past calls right, average <b class="${t.avgR >= 0 ? 'text-green' : 'text-red'}">${t.avgR > 0 ? '+' : ''}${t.avgR}R</b>`
+      : 'MindGuru record: no call has finished yet';
+    const extra = [t.pending ? `${t.pending} open` : '', t.noEntry ? `${t.noEntry} never reached entry` : ''].filter(Boolean).join(', ');
+    const rows = t.recent.map(r => `<li>${esc(r.date)} · ${r.side === 'long' ? 'BUY' : 'SELL'} at ${rs(r.entry)} (stop ${rs(r.stop)}, target ${rs(r.target)}): ${STATUS_WORD[r.status] || r.status}${r.r != null ? ` <b class="${r.r >= 0 ? 'text-green' : 'text-red'}">${r.r > 0 ? '+' : ''}${r.r.toFixed(2)}R</b>` : ''}</li>`).join('');
+    return `<details class="wl-track"><summary>${head}${extra ? ` <span class="muted">(${extra})</span>` : ''}</summary><ul>${rows}</ul>
+      <p class="muted small">R = result in units of the risk taken (entry to stop). +2R means it made twice what it risked. Strategies that keep failing on this stock get less say in its calls once it has 8 judged trades.</p></details>`;
   }
 
   // ---------- the call ----------
@@ -244,7 +297,7 @@
       }
     };
     try { await Promise.all([worker(), worker()]); }
-    finally { S.busy = false; S.lastRun = Date.now(); if (container && pageActive()) render(container); }
+    finally { S.busy = false; S.lastRun = Date.now(); await loadTrack(); if (container && pageActive()) render(container); }
   }
 
   const pageActive = () => { const p = document.getElementById('page-watchlist'); return p && p.classList.contains('active'); };
@@ -322,7 +375,7 @@
               <button type="button" class="link-btn" data-analyze="${esc(r.symbol)}">Analyze</button>
               <button type="button" class="link-btn" data-remove="${id}">Remove</button></div>
           </div>
-          ${r.error ? `<p class="muted">Couldn't check ${esc(r.symbol)}: ${esc(r.error)}</p>` : `<div class="wl-cols">${callBox(r.pos, 'pos')}${callBox(r.intra, 'intra')}</div>${r.opt ? `<details class="wl-opt" open><summary>Options · buy &amp; sell points (${esc(r.symbol)} ATM, lot ${r.opt.lot})</summary>${FnO.plansHtml(r.opt, null, true)}</details>` : ''}`}
+          ${r.error ? `<p class="muted">Couldn't check ${esc(r.symbol)}: ${esc(r.error)}</p>` : `<div class="wl-cols">${callBox(r.pos, 'pos')}${callBox(r.intra, 'intra')}</div>${trackHtml(r.symbol)}${r.opt ? `<details class="wl-opt" open><summary>Options · buy &amp; sell points (${esc(r.symbol)} ATM, lot ${r.opt.lot})</summary>${FnO.plansHtml(r.opt, null, true)}</details>` : ''}`}
         </div>`;
       }).join('') : '<p class="muted" style="padding:8px 0;">Add stocks to get buy and sell calls with entry, stop-loss and targets from demand and supply zones.</p>'}
       <p class="citation">BUY = buy now; BUY ON DIP = buy only if price falls to the demand zone; SELL = sell / book profit if you hold it; WAIT = no trade. Entry and stop come from the nearest demand zone, targets from the supply zones above. Calls combine the 24 strategies with trend, RSI, moving-average and MACD checks. Not a recommendation.</p>`;
@@ -372,7 +425,7 @@
     if (!S.loaded) container.innerHTML = '<p class="muted" style="padding:16px;">Loading your watchlist…</p>';
     try { S.items = (await call('list')).items; S.loaded = true; } catch (e) { if (!S.loaded) { container.innerHTML = `<div class="data-warning">${esc(e.message)}</div>`; return; } }
     const missing = S.items.some(it => !S.rows.has(it.symbol));
-    await resultsDates();
+    await Promise.all([resultsDates(), loadTrack(true)]);
     render(container);
     startLoop();
     // Fresh calls when the page opens (if the last check is more than a minute old, or a stock is new)

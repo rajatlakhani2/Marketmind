@@ -16,7 +16,7 @@
 
   let brain = null, brainAt = 0, serverOk = true;
 
-  async function api(action, body) {
+  async function api(action, body, query) {
     const opts = { headers: { Accept: 'application/json' } };
     if (body !== undefined) {
       opts.method = 'POST';
@@ -24,7 +24,7 @@
       opts.headers['X-Requested-With'] = 'MarketMind';
       opts.body = JSON.stringify(body);
     }
-    const r = await fetch(`${API}?action=${action}`, opts);
+    const r = await fetch(`${API}?action=${action}${query || ''}`, opts);
     let j;
     try { j = await r.json(); } catch { serverOk = false; throw new Error('MindGuru needs the PHP server and database'); }
     if (!r.ok) throw Object.assign(new Error(j.error || `HTTP ${r.status}`), { status: r.status });
@@ -169,7 +169,9 @@
     const live = count('live'), livePending = count('live', 'pending'), hist = count('backtest');
     const b = rep.brain;
     const verdict = rep.stats.find((s) => s.strategyId === '__verdict');
-    const strategies = rep.stats.filter((s) => s.strategyId !== '__verdict');
+    const watch = rep.stats.find((s) => s.strategyId === '__watch_pos');
+    const strategies = rep.stats.filter((s) => s.strategyId !== '__verdict' && s.strategyId !== '__watch_pos');
+    const watchSyms = watch ? Object.entries(watch.buckets || {}).filter(([k, v]) => k.startsWith('sym:') && v.trades > 0).sort((x, y) => y[1].trades - x[1].trades) : [];
     const maxW = 2;
 
     el.innerHTML = `
@@ -191,6 +193,20 @@
         <div class="mg-stat"><span>Average result</span><b class="${verdict.avgR >= 0 ? 'text-green' : 'text-red'}">${rFmt(verdict.avgR)}</b><small>per verdict trade</small></div>
         <div class="mg-stat"><span>Entry reached</span><b>${pct(verdict.trades / Math.max(1, verdict.trades + verdict.noEntry))}</b><small>of buy-on-dip levels</small></div>
       </div>` : ''}
+
+      <section class="mg-card">
+        <h4>Watchlist calls</h4>
+        <p class="muted mg-help">Every positional BUY, BUY ON DIP and SELL call on your Watchlist is saved once a day and checked against what the price really did (target, stop, or 30 trading days). The strategies behind each call are recorded too, so a strategy that keeps getting one of your stocks wrong counts for less on that stock once it has 8 judged trades.</p>
+        ${watch && watch.trades ? `<div class="mg-stats">
+          <div class="mg-stat"><span>Calls right</span><b>${pct(watch.winRate)}</b><small>${watch.trades} judged</small></div>
+          <div class="mg-stat"><span>Average result</span><b class="${watch.avgR >= 0 ? 'text-green' : 'text-red'}">${rFmt(watch.avgR)}</b><small>per call</small></div>
+          <div class="mg-stat"><span>Entry reached</span><b>${pct(watch.trades / Math.max(1, watch.trades + watch.noEntry))}</b><small>of buy-on-dip calls</small></div>
+        </div>
+        ${watchSyms.length ? `<div class="mg-table-wrap"><table class="mg-table"><thead><tr><th>Stock</th><th>Judged calls</th><th>Right</th><th>Avg</th></tr></thead><tbody>
+          ${watchSyms.map(([k, v]) => `<tr><td>${esc(k.slice(4))}</td><td>${v.trades}</td><td>${pct(v.winRate)}</td><td class="${v.avgR >= 0 ? 'text-green' : 'text-red'}">${rFmt(v.avgR)}</td></tr>`).join('')}
+        </tbody></table></div>` : ''}`
+          : `<p class="muted">No Watchlist call has finished yet. Calls are judged from the next trading day; most take days to weeks to reach their target or stop.</p>`}
+      </section>
 
       <section class="mg-card">
         <h4>What MindGuru has learned</h4>
@@ -289,5 +305,5 @@
     el.querySelector('#mg-reset-all')?.addEventListener('click', () => reset('all', 'Delete EVERYTHING MindGuru has recorded and learned, including your real projections? This cannot be undone.'));
   }
 
-  window.MindGuru = { getBrain, recordVerdict, learn, autoLearn, train, renderPage, projections };
+  window.MindGuru = { getBrain, recordVerdict, learn, autoLearn, train, renderPage, projections, api };
 })();

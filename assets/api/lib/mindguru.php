@@ -87,7 +87,7 @@ function mg_record(PDO $pdo, ?int $userId, string $source, array $items): array 
             $date = (string) ($p['signalDate'] ?? '');
             $price = mg_num($p['price'] ?? null); $entry = mg_num($p['entry'] ?? null);
             $stop = mg_num($p['stop'] ?? null); $target = mg_num($p['target'] ?? null);
-            $ok = preg_match('/^[A-Z0-9&\-]{1,20}$/', $symbol) && in_array($kind, ['strategy', 'verdict'], true)
+            $ok = preg_match('/^[A-Z0-9&\-]{1,20}$/', $symbol) && in_array($kind, ['strategy', 'verdict', 'watch'], true)
                 && preg_match('/^[A-Za-z0-9_\-]{1,64}$/', $sid) && in_array($side, ['long', 'short'], true)
                 && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) && $date <= $today
                 && $price > 0 && $entry > 0 && $stop > 0 && $target > 0
@@ -225,9 +225,11 @@ function mg_recompute(PDO $pdo): array {
     foreach ($pdo->query("SELECT strategy_id, strategy_name, trades, win_rate, weight FROM strategy_stats WHERE bucket = 'all'") as $r) $prev[$r['strategy_id']] = $r;
 
     $agg = [];
-    $rows = $pdo->query("SELECT strategy_id, strategy_name, status, r_multiple, trend, ks_score, source FROM predictions WHERE status IN ('target_hit','stop_hit','expired','no_entry')");
+    $rows = $pdo->query("SELECT strategy_id, strategy_name, status, r_multiple, trend, ks_score, source, symbol FROM predictions WHERE status IN ('target_hit','stop_hit','expired','no_entry')");
     foreach ($rows as $r) {
         $buckets = ['all', 'src:' . $r['source']];
+        // Per-stock record from real calls only (backtests cover too many stocks to keep per stock)
+        if ($r['source'] !== 'backtest') $buckets[] = substr('sym:' . $r['symbol'], 0, 20);
         if ($r['trend'] !== '') $buckets[] = 'trend:' . $r['trend'];
         if ($b = mg_ks_bucket($r['ks_score'])) $buckets[] = $b;
         foreach ($buckets as $b) {
@@ -329,5 +331,45 @@ function mg_insights(array $brain): array {
             $out[] = ['tone' => 'info', 'text' => sprintf('%s: price reached the planned entry only %d times out of %d. Its entry levels may be too far from price.', $s['name'], $all['trades'], $all['trades'] + $all['noEntry'])];
         }
     }
+    // Per stock (from real calls): where a strategy keeps winning or losing
+    foreach ($brain['strategies'] as $sid => $s) {
+        foreach ($s['buckets'] ?? [] as $k => $v) {
+            if (strpos($k, 'sym:') !== 0 || $v['trades'] < 8) continue;
+            $sym = substr($k, 4);
+            if ($v['avgR'] <= -0.15) $out[] = ['tone' => 'bad', 'text' => sprintf('%s keeps getting %s wrong: %.2fR lost per trade over %d trades. Its votes count for less on %s.', $s['name'], $sym, abs($v['avgR']), $v['trades'], $sym)];
+            elseif ($v['avgR'] >= 0.3) $out[] = ['tone' => 'good', 'text' => sprintf('%s works well on %s: %+.2fR per trade over %d trades. Its votes count for more on %s.', $s['name'], $sym, $v['avgR'], $v['trades'], $sym)];
+        }
+    }
+    return $out;
+}
+
+// ---------- Watchlist calls: their record per stock ----------
+// Positional Watchlist calls are stored as strategy '__watch_pos', source 'watch'.
+function mg_watch_stats(PDO $pdo, array $symbols): array {
+    $symbols = array_values(array_filter(array_map(fn($x) => strtoupper((string) $x), $symbols), fn($x) => preg_match('/^[A-Z0-9&\-]{1,20}$/', $x)));
+    if (!$symbols) return [];
+    $st = $pdo->prepare("SELECT symbol, side, status, r_multiple, signal_date, entry, stop, target, exit_price, exit_date FROM predictions
+        WHERE source = 'watch' AND strategy_id = '__watch_pos' AND symbol IN (" . implode(',', array_fill(0, count($symbols), '?')) . ")
+        ORDER BY signal_date DESC, id DESC");
+    $st->execute($symbols);
+    $out = [];
+    foreach ($st->fetchAll() as $r) {
+        $o = &$out[$r['symbol']];
+        $o = $o ?? ['judged' => 0, 'right' => 0, 'sumR' => 0.0, 'pending' => 0, 'noEntry' => 0, 'recent' => []];
+        if ($r['status'] === 'pending') $o['pending']++;
+        elseif ($r['status'] === 'no_entry') $o['noEntry']++;
+        elseif (in_array($r['status'], MG_RESOLVED, true)) {
+            $R = (float) $r['r_multiple'];
+            $o['judged']++; $o['sumR'] += $R; if ($R > 0) $o['right']++;
+        }
+        if (count($o['recent']) < 6 && $r['status'] !== 'invalid') $o['recent'][] = [
+            'date' => $r['signal_date'], 'side' => $r['side'], 'status' => $r['status'], 'r' => $r['r_multiple'] !== null ? (float) $r['r_multiple'] : null,
+            'entry' => (float) $r['entry'], 'stop' => (float) $r['stop'], 'target' => (float) $r['target'],
+            'exit' => $r['exit_price'] !== null ? (float) $r['exit_price'] : null, 'exitDate' => $r['exit_date'],
+        ];
+        unset($o);
+    }
+    foreach ($out as &$o) { $o['avgR'] = $o['judged'] ? round($o['sumR'] / $o['judged'], 2) : null; unset($o['sumR']); }
+    unset($o);
     return $out;
 }
