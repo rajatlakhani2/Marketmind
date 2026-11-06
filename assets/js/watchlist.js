@@ -124,7 +124,9 @@
       let call = null;
       if (c.action === 'SELL') {
         // Judged as a fall: right if price reaches the demand zone below before rising above the supply zone's stop
-        const stop = c.supply ? c.supply.stop : null, target = c.demand ? c.demand.proximal : null;
+        // No demand zone below: judge it against a fall of 1.5× the risk instead
+        const stop = c.supply ? c.supply.stop : null;
+        const target = c.demand ? c.demand.proximal : stop > c.price ? c.price - 1.5 * (stop - c.price) : null;
         if (stop > c.price && target < c.price) call = { side: 'short', entry: c.price, stop, target };
       } else if (c.entry && c.stop && c.t1 && c.stop < c.entry && c.entry < c.t1) {
         call = { side: 'long', entry: c.action === 'BUY' ? c.price : c.entry, stop: c.stop, target: c.t1 };
