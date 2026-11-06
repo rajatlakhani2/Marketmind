@@ -218,8 +218,8 @@
       const prem = K != null ? live(K, false, 'sell') : null;
       if (prem > 0) plans.push({ kind: 'write', isCall: false, strike: K, label: `Sell ${name(K, false)}`, favoured: !bearish,
         when: `Now, while ${u.symbol} stays above the demand zone ${rs(D.distal)} – ${rs(D.proximal)}`,
-        entry: r2(prem), stop: r2(Math.max(price(K, false, D.stop), prem * 2)), target: r2(prem * 0.2),
-        stopWhy: `${u.symbol} closes below ${rs(D.stop)}, or the premium doubles`, targetWhy: 'buy back after about 80% of the premium has decayed' });
+        entry: r2(prem), stop: r2(Math.max(prem * 1.2, Math.min(price(K, false, D.stop), prem * 2))), target: r2(prem * 0.2),
+        stopWhy: `buy back if the premium doubles or ${u.symbol} closes below ${rs(D.stop)}, whichever comes first`, targetWhy: 'buy back after about 80% of the premium has decayed' });
     }
     // SELL CALL (writing): strike above the supply zone; sellers keep the premium if price stays below it
     if (S) {
@@ -227,8 +227,8 @@
       const prem = K != null ? live(K, true, 'sell') : null;
       if (prem > 0) plans.push({ kind: 'write', isCall: true, strike: K, label: `Sell ${name(K, true)}`, favoured: !bullish,
         when: `Now, while ${u.symbol} stays below the supply zone ${rs(S.proximal)} – ${rs(S.distal)}`,
-        entry: r2(prem), stop: r2(Math.max(price(K, true, S.stop), prem * 2)), target: r2(prem * 0.2),
-        stopWhy: `${u.symbol} closes above ${rs(S.stop)}, or the premium doubles`, targetWhy: 'buy back after about 80% of the premium has decayed' });
+        entry: r2(prem), stop: r2(Math.max(prem * 1.2, Math.min(price(K, true, S.stop), prem * 2))), target: r2(prem * 0.2),
+        stopWhy: `buy back if the premium doubles or ${u.symbol} closes above ${rs(S.stop)}, whichever comes first`, targetWhy: 'buy back after about 80% of the premium has decayed' });
     }
     for (const p of plans) {
       const buy = p.kind === 'buy';
