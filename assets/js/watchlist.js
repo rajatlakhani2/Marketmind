@@ -93,7 +93,8 @@
     const c = cs.conclusion, p = md.price;
     const demand = (ks.nearestDemand || []).filter(z => z.distal <= p);
     const supply = (ks.nearestSupply || []).filter(z => z.distal >= p);
-    const D = demand[0], S = supply[0], S2 = supply[1];
+    const D = demand[0], S = supply[0];
+    const S2 = S ? supply.find(z => z.proximal > S.distal) : null;   // the next zone fully above the first
     const stopOf = z => (z.stop != null ? z.stop : z.distal);
     const htf = ks.trends.htf.trend;
     const inDemand = D && p <= D.proximal;
@@ -142,12 +143,19 @@
     const base = entry || p;
     let t1 = S && S.proximal > base ? S.proximal : (c.sell1 != null && c.sell1 > base ? c.sell1 : null);
     let t2 = S2 && S2.proximal > base ? S2.proximal : (t1 && stop && base > stop ? base + 3 * (base - stop) : null);
-    if (t2 != null && t1 != null && t2 <= t1) t2 = null;
+    if (t2 != null && t1 != null && t2 <= t1 * 1.005) t2 = null;
     const rr = entry && stop && t1 && entry > stop ? (t1 - entry) / (entry - stop) : null;
 
     // A buy with little room to the next supply zone is not worth it yet
     let note = '';
     let rrOut = rr;
+    // Buying the dip only makes sense if the dip leaves room to the next supply zone
+    if (action === 'BUY ON DIP' && (rr == null || rr < 1.5)) {
+      action = 'WAIT'; tone = 'wait';
+      note = rr == null
+        ? `Leaning bullish, but there is no clear demand zone and stop to buy from on this chart. Wait.`
+        : `Leaning bullish, but even a dip to ${rs(entry)} leaves only ${rr.toFixed(1)}× the risk before the next supply zone at ${rs(t1)}. Wait.`;
+    }
     if (action === 'BUY' && rr != null && rr < 1.5) {
       action = 'WAIT'; tone = 'wait';
       note = `Strategies point up, but the supply zone at ${rs(t1)} is close: the possible gain is only ${rr.toFixed(1)}× the risk. Wait for a dip to the demand zone${D ? ` (${rs(D.proximal)})` : ''} or a breakout above ${rs(S ? S.distal : t1)}.`;
@@ -160,9 +168,9 @@
     // Plain-words instruction
     let say;
     if (action === 'BUY') say = `Buy now around ${rs(p)}${entryZone ? ` (demand zone ${rs(entryZone[0])} – ${rs(entryZone[1])})` : ''}. Stop-loss ${rs(stop)}: exit if a ${kind === 'pos' ? 'day' : '15-min candle'} closes below it. Book profit near ${rs(t1)}${t2 ? `, then ${rs(t2)}` : ''}.`;
-    else if (action === 'BUY ON DIP') say = entry ? `Don't buy at ${rs(p)}. Buy only if it dips to ${rs(entry)} (demand zone ${rs(entryZone[0])} – ${rs(entryZone[1])}), stop-loss ${rs(stop)}, target ${rs(t1)}.` : `Bullish, but no demand zone to buy from yet. Wait.`;
-    else if (action === 'SELL') say = `If you hold it, sell / book profit around ${rs(p)}${S && atSupply ? ` (price is in the supply zone ${rs(S.proximal)} – ${rs(S.distal)})` : ''}${c.tone === 'short' ? '; strategies point down' : ''}. Don't buy now${entry ? `; look again near ${rs(entry)}` : ''}.`;
-    else say = note || `No trade now. Buy near ${rs(entry)} if price comes down to the demand zone${t1 ? `; the next supply (selling) zone is ${rs(t1)}` : ''}.`;
+    else if (action === 'BUY ON DIP') say = `Don't buy at ${rs(p)}. Buy only if it dips to ${rs(entry)} (${D ? 'demand zone' : 'strategy buy zone'} ${rs(entryZone[0])} – ${rs(entryZone[1])}), stop-loss ${rs(stop)}, target ${rs(t1)}.`;
+    else if (action === 'SELL') say = `If you hold it, sell / book profit around ${rs(p)}${S && atSupply ? ` (price has reached the supply zone ${rs(S.proximal)} – ${rs(S.distal)})` : ''}${c.tone === 'short' ? '; strategies point down' : ''}. Don't buy now${entry ? `; look again near ${rs(entry)}` : ''}.`;
+    else say = note || (entry ? `No trade now. Buy near ${rs(entry)} if price comes down to the ${D ? 'demand' : 'strategy buy'} zone${t1 ? `; the next supply (selling) zone is ${rs(t1)}` : ''}.` : 'No trade now: no demand zone below the price on this chart.');
 
     const strategies = [];
     if (c.supporting && c.supporting.length) strategies.push(`${c.tone === 'short' ? 'Sell' : 'Buy'} signal from ${c.supporting.length} of ${c.of}: ${c.supporting.join(', ')}.`);

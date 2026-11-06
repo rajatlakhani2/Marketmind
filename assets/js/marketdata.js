@@ -254,11 +254,13 @@
     const json = await getJSON(`${BREEZE_URL}?action=candles&symbol=${encodeURIComponent(sym)}&interval=${req.interval}&days=${req.days}`);
     let candles = (json.candles || []).map(r => ({ time: r[0] * 1000, date: new Date(r[0] * 1000).toISOString(), open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5] }));
     if (!candles.length) throw new Error('ICICI returned no candles');
-    if (req.interval === '1day') candles = await withTodayCandle(sym, candles);
+    let quoteFailed = false;
+    if (req.interval === '1day') { const t = await withTodayCandle(sym, candles); candles = t.candles; quoteFailed = t.quoteFailed; }
     if (req.aggregate) candles = aggregateCandles(candles, req.aggregate);
     if (req.period) candles = aggregateByPeriod(candles, req.period);
     const data = { meta: { longName: json.name ? titleCase(json.name) : sym, currency: 'INR', isec: json.isec }, candles };
-    cache.set(key, { at: Date.now(), data });
+    // Don't keep a result that is missing today's candle: the next request tries again
+    if (!quoteFailed) cache.set(key, { at: Date.now(), data });
     return data;
   }
 
@@ -290,18 +292,21 @@
     return { y: +m[3], mo: MONTHS[m[2].toUpperCase()], d: +m[1] };
   }
   async function withTodayCandle(sym, candles) {
-    let q;
-    try { q = await getQuote(sym); } catch { return candles; }
+    let q = null;
+    for (let i = 0; i < 2 && !q; i++) {   // one retry: a busy minute can make ICICI refuse a quote
+      try { q = await getQuote(sym); } catch { if (i === 0) await new Promise(r => setTimeout(r, 1500)); }
+    }
+    if (!q) return { candles, quoteFailed: true };
     const d = parseLtt(q && q.ltt);
-    if (!d || !(q.ltp > 0) || !(q.open > 0) || !(q.high > 0) || !(q.low > 0)) return candles;
+    if (!d || !(q.ltp > 0) || !(q.open > 0) || !(q.high > 0) || !(q.low > 0)) return { candles, quoteFailed: false };
     const dayStart = Date.UTC(d.y, d.mo, d.d) - IST_MS;              // IST midnight, as ICICI stamps daily candles
     const last = candles[candles.length - 1];
-    if (istDay(dayStart) <= istDay(last.time)) return candles;     // ICICI already has today's candle
-    return [...candles, {
+    if (istDay(dayStart) <= istDay(last.time)) return { candles, quoteFailed: false };     // ICICI already has today's candle
+    return { quoteFailed: false, candles: [...candles, {
       time: dayStart, date: new Date(dayStart).toISOString(),
       open: q.open, high: Math.max(q.high, q.ltp), low: Math.min(q.low, q.ltp), close: q.ltp,
       volume: q.volume || 0, live: true,
-    }];
+    }] };
   }
 
   // ---------- Yahoo Finance (via api/chart.php) ----------
