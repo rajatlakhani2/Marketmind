@@ -222,7 +222,8 @@
   function startLoop() {
     if (S.timer) return;
     const tick = async () => {
-      if (!S.loaded) { try { S.items = (await call('list')).items; S.loaded = true; } catch { return; } }
+      // Pick up changes made on other devices every 5 minutes
+      if (!S.loaded || Date.now() - (S.listAt || 0) > 5 * 60e3) { try { S.items = (await call('list')).items; S.loaded = true; S.listAt = Date.now(); } catch { if (!S.loaded) return; } }
       if (marketOpen() && !document.hidden && Date.now() - S.lastRun >= intervalMs() - 5e3) refreshAll(document.getElementById('watchlist-container'));
     };
     S.timer = setInterval(tick, 15e3);
@@ -269,7 +270,7 @@
     const bar = S.busy
       ? `<span class="live-dot"></span><span>Checking ${S.progress} of ${S.items.length} stocks…</span>`
       : marketOpen()
-        ? `<span class="live-dot"></span><span><strong>Live</strong> · re-checks every ${Math.round(intervalMs() / 60e3)} min on live prices · last check ${time}. Pop-ups when a call changes or a level is reached.</span><button type="button" class="live-toggle" id="wl-refresh">Check now</button>`
+        ? `<span class="live-dot"></span><span><strong>Live</strong> · re-checks every ${Math.round(intervalMs() / 60e3)} min on live prices${time ? ` · last check ${time}` : ''}. Pop-ups when a call changes or a level is reached.</span><button type="button" class="live-toggle" id="wl-refresh">Check now</button>`
         : `<span class="tag tag-yellow">Market closed</span><span>Calls use the last traded prices${time ? ` (checked ${time})` : ''}.</span><button type="button" class="live-toggle" id="wl-refresh">Check now</button>`;
     container.innerHTML = `
       <div class="fno-controls">
@@ -335,15 +336,15 @@
 
   async function renderPage(container) {
     if (!container) return;
-    if (!S.loaded) {
-      container.innerHTML = '<p class="muted" style="padding:16px;">Loading your watchlist…</p>';
-      try { S.items = (await call('list')).items; S.loaded = true; } catch (e) { container.innerHTML = `<div class="data-warning">${esc(e.message)}</div>`; return; }
-    }
+    // Always re-read the list: it may have changed on another device or tab
+    if (!S.loaded) container.innerHTML = '<p class="muted" style="padding:16px;">Loading your watchlist…</p>';
+    try { S.items = (await call('list')).items; S.loaded = true; } catch (e) { if (!S.loaded) { container.innerHTML = `<div class="data-warning">${esc(e.message)}</div>`; return; } }
+    const missing = S.items.some(it => !S.rows.has(it.symbol));
     await resultsDates();
     render(container);
     startLoop();
-    // Fresh calls when the page opens (if the last check is more than a minute old)
-    if (Date.now() - S.lastRun > 60e3) refreshAll(container);
+    // Fresh calls when the page opens (if the last check is more than a minute old, or a stock is new)
+    if (missing || Date.now() - S.lastRun > 60e3) refreshAll(container);
   }
 
   // Keep checking in the background (pop-ups on any page) once someone is signed in
