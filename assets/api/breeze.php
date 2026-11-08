@@ -373,7 +373,7 @@ if (!$session) json_out(401, ['error' => 'Not logged in to ICICI today', 'needsL
 
 try {
     if ($action === 'candles') {
-        $intervals = ['1minute' => 12, '5minute' => 12, '30minute' => 70, '1day' => 1350]; // calendar days per request (<=1000 candles)
+        $intervals = ['1minute' => 2, '5minute' => 12, '30minute' => 70, '1day' => 1350]; // calendar days per request (<=1000 candles)
         $maxDays   = ['1minute' => 5, '5minute' => 30, '30minute' => 200, '1day' => 4500];
         $interval = $_GET['interval'] ?? '1day';
         if (!isset($intervals[$interval])) json_out(400, ['error' => 'Invalid interval']);

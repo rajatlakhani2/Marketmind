@@ -11,6 +11,7 @@
   // Yahoo interval + range to request for each app timeframe.
   // 4h isn't offered by Yahoo, so it is built from 1h bars.
   const TF_REQUEST = {
+    '1m':  { interval: '1m',  range: '5d' },
     '5m':  { interval: '5m',  range: '1mo' },
     '15m': { interval: '15m', range: '1mo' },
     '30m': { interval: '30m', range: '1mo' },
@@ -169,7 +170,7 @@
     const seed = String(symbol || 'X').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
     let s = seed * 9301 + 49297;
     const rand = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; }; // deterministic per symbol
-    const stepMs = { '5m': 3e5, '15m': 9e5, '30m': 18e5, '1h': 36e5, '4h': 144e5, '1d': 864e5, '1w': 6048e5, '1mo': 2592e6 }[timeframe] || 864e5;
+    const stepMs = { '1m': 6e4, '5m': 3e5, '15m': 9e5, '30m': 18e5, '1h': 36e5, '4h': 144e5, '1d': 864e5, '1w': 6048e5, '1mo': 2592e6 }[timeframe] || 864e5;
     const n = 300;
     let price = 100 + (seed % 1900);
     const vol = 0.012 + (seed % 20) / 1000;
@@ -190,6 +191,7 @@
   const BREEZE_URL = 'api/breeze.php';
   // Breeze offers 1minute / 5minute / 30minute / 1day; other timeframes are built from these.
   const BREEZE_TF = {
+    '1m':  { interval: '1minute',  days: 3 },
     '5m':  { interval: '5minute',  days: 14 },
     '15m': { interval: '5minute',  days: 28,   aggregate: 3 },
     '30m': { interval: '30minute', days: 100 },

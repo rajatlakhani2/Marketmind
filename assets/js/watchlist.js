@@ -403,7 +403,7 @@
             ${r.error ? '' : callBox(r[view], view)}
             ${trackHtml(r.symbol)}
             ${r.opt ? `<details class="wl-opt"><summary>Options · buy &amp; sell points (ATM, lot ${r.opt.lot})</summary>${FnO.plansHtml(r.opt, null, true)}</details>` : ''}
-            <div class="wl-actions"><button type="button" class="btn-secondary" data-analyze="${esc(r.symbol)}">Full analysis</button><button type="button" class="btn-danger" data-remove="${id}">Remove</button></div>
+            <div class="wl-actions"><button type="button" class="btn-primary" data-stock="${esc(r.symbol)}">Chart, all timeframes &amp; live buyers</button><button type="button" class="btn-secondary" data-analyze="${esc(r.symbol)}">Full analysis</button><button type="button" class="btn-danger" data-remove="${id}">Remove</button></div>
           </div>` : ''}
         </div>`;
       }).join('') : '<p class="muted" style="padding:8px 0;">Add stocks to get buy and sell calls with entry, stop-loss and targets from demand and supply zones.</p>'}
@@ -413,6 +413,7 @@
 
   function wire(container) {
     container.querySelectorAll('[data-view]').forEach(b => { b.onclick = () => { view = b.dataset.view; try { localStorage.setItem('mm-wl-view', view); } catch { /* ok */ } render(container); }; });
+    container.querySelectorAll('[data-stock]').forEach(b => { b.onclick = () => root.Stock && Stock.open(b.dataset.stock); });
     container.querySelectorAll('[data-toggle]').forEach(b => { b.onclick = () => { const k = b.dataset.toggle; openRows.has(k) ? openRows.delete(k) : openRows.add(k); render(container); }; });
     const input = container.querySelector('#wl-add-sym');
     if (root.StockPicker) root.StockPicker.attach(input, { popular: [] });

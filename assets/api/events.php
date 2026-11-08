@@ -4,6 +4,8 @@
 // GET ?action=calendar                 -> { meetings: [...], actions: [...] }  market-wide, upcoming
 // GET ?action=stock&symbol=TCS         -> { meetings, actions, next }          one stock: upcoming + recent
 // GET ?action=news[&symbol=TCS]        -> { items: [{ title, source, link, at }] }  stock or market news
+// GET ?action=depth&symbol=TCS          -> live order book: 5 bids / 5 offers, total buy & sell quantity, delivery %
+// GET ?action=depth_many&symbols=A,B    -> { rows: { A: {...}, B: {...} } }  for the Live board
 //
 // Sources: NSE's public event calendar and corporate-actions feeds, and Google News RSS.
 // Results are cached on the server (calendar 1 h, a stock 1 h, news 15 min).
@@ -57,6 +59,33 @@ function nse(string $path): array {
     $j = json_decode($b, true);
     if ($s !== 200 || !is_array($j)) throw new RuntimeException("NSE did not answer (HTTP $s)");
     return $j;
+}
+
+// ---------- order book ----------
+function nse_depth(string $sym, int $ttl = 4): array {
+    $key = "depth|$sym";
+    if ($hit = ev_cache_get($key, $ttl)) return $hit;
+    $j = nse('/api/quote-equity?symbol=' . rawurlencode($sym) . '&section=trade_info');
+    $ob = $j['marketDeptOrderBook'] ?? null;
+    if (!is_array($ob)) throw new RuntimeException('NSE has no order book for ' . $sym);
+    $lvl = fn($rows) => array_values(array_map(fn($r) => ['price' => (float) ($r['price'] ?? 0), 'qty' => (int) ($r['quantity'] ?? 0)],
+        array_filter((array) $rows, fn($r) => (float) ($r['price'] ?? 0) > 0 || (int) ($r['quantity'] ?? 0) > 0)));
+    $ti = $ob['tradeInfo'] ?? [];
+    $dp = $j['securityWiseDP'] ?? [];
+    $num = fn($v) => is_numeric($v) ? (float) $v : null;
+    $out = [
+        'symbol' => $sym,
+        'totalBuy' => (int) ($ob['totalBuyQuantity'] ?? 0), 'totalSell' => (int) ($ob['totalSellQuantity'] ?? 0),
+        'bids' => array_slice($lvl($ob['bid'] ?? []), 0, 5), 'asks' => array_slice($lvl($ob['ask'] ?? []), 0, 5),
+        'volume' => $num($ti['totalTradedVolume'] ?? null),       // in lakh shares on NSE's page
+        'value' => $num($ti['totalTradedValue'] ?? null),         // ₹ crore
+        'vwap' => $num($ob['vwap'] ?? ($ti['vwap'] ?? null)),
+        'deliveryPct' => $num($dp['deliveryToTradedQuantity'] ?? null),
+        'deliveryDate' => $dp['secWiseDelPosDate'] ?? null,
+        'at' => time(),
+    ];
+    ev_cache_put($key, $out);
+    return $out;
 }
 
 // ---------- shaping ----------
@@ -172,6 +201,22 @@ try {
         ];
         ev_cache_put("stock|$sym", $out);
         mm_json(200, $out);
+    }
+
+    // Live buyers and sellers: NSE's order book (5 best bids and offers, total buy and sell quantity, delivery %)
+    if ($action === 'depth') {
+        $sym = clean_symbol((string) ($_GET['symbol'] ?? ''));
+        mm_json(200, nse_depth($sym));
+    }
+    if ($action === 'depth_many') {
+        $syms = array_slice(array_values(array_unique(array_filter(array_map(fn($x) => strtoupper(trim($x)), explode(',', (string) ($_GET['symbols'] ?? '')))))), 0, 40);
+        $out = []; $t0 = microtime(true);
+        foreach ($syms as $s) {
+            if (!preg_match('/^[A-Z0-9&\-]{1,20}$/', $s)) continue;
+            if (microtime(true) - $t0 > 18) { $out[$s] = ['symbol' => $s, 'error' => 'later']; continue; }   // stay inside PHP's time limit
+            try { $out[$s] = nse_depth($s, 25); } catch (Throwable $e) { $out[$s] = ['symbol' => $s, 'error' => $e->getMessage()]; }
+        }
+        mm_json(200, ['rows' => $out, 'at' => time()]);
     }
 
     if ($action === 'news') {

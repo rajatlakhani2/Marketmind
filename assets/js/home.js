@@ -86,7 +86,7 @@
       <li data-sym="${esc(i.symbol)}"><div><b>${esc(i.symbol)}</b><small>${esc(i.name || '')}</small></div>
       <div class="q-num"><b>${q ? num(q.ltp) : '—'}</b><small class="chg ${tone(q && q.changePct)}">${q ? pct(q.changePct) : ''}</small></div></li>`).join('')}</ul>
       ${list.length > 8 ? `<p class="home-more">+${list.length - 8} more on the Watchlist</p>` : ''}`);
-    document.querySelectorAll('#home-watch [data-sym]').forEach(li => { li.onclick = () => root.Nav && Nav.go('watchlist'); });
+    document.querySelectorAll('#home-watch [data-sym]').forEach(li => { li.onclick = () => (root.Stock ? Stock.open(li.dataset.sym) : root.Nav && Nav.go('watchlist')); });
   }
 
   async function opps() {

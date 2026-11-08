@@ -20,7 +20,7 @@ $symbol   = isset($_GET['symbol'])   ? strtoupper(trim($_GET['symbol'])) : '';
 $interval = isset($_GET['interval']) ? $_GET['interval'] : '1d';
 $range    = isset($_GET['range'])    ? $_GET['range']    : '1y';
 
-$intervals = ['5m', '15m', '30m', '60m', '1d', '1wk', '1mo'];
+$intervals = ['1m', '5m', '15m', '30m', '60m', '1d', '1wk', '1mo'];
 $ranges    = ['5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'max'];
 
 if (!preg_match('/^\^?[A-Z0-9&\-]{1,20}(\.(NS|BO))?$/', $symbol)) fail(400, 'Invalid symbol');
@@ -28,7 +28,7 @@ if (!in_array($interval, $intervals, true)) fail(400, 'Invalid interval');
 if (!in_array($range, $ranges, true)) fail(400, 'Invalid range');
 
 // Short-lived file cache (intraday: 60s, daily and above: 5 min)
-$ttl = in_array($interval, ['5m', '15m', '30m', '60m'], true) ? 60 : 300;
+$ttl = in_array($interval, ['1m', '5m', '15m', '30m', '60m'], true) ? 60 : 300;
 $cacheDir = sys_get_temp_dir() . '/marketmind_cache';
 if (!is_dir($cacheDir)) @mkdir($cacheDir, 0700, true);
 $cacheFile = $cacheDir . '/' . md5($symbol . '|' . $interval . '|' . $range) . '.json';

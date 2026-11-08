@@ -16,7 +16,7 @@
   const GROUPS = [
     { id: 'home', label: 'Home', pages: [['dashboard', 'Overview']] },
     { id: 'watch', label: 'Watchlist', pages: [['watchlist', 'Watchlist']] },
-    { id: 'markets', label: 'Markets', pages: [['analyze', 'Analyze'], ['opps', 'Opportunities'], ['fno', 'F&O'], ['events', 'Events & News'], ['screener', 'Screener']] },
+    { id: 'markets', label: 'Markets', pages: [['stock', 'Stock'], ['live', 'Live buyers'], ['opps', 'Opportunities'], ['fno', 'F&O'], ['analyze', 'Analyze'], ['events', 'Events & News'], ['screener', 'Screener']] },
     { id: 'trade', label: 'Trade', pages: [['trading', 'Orders'], ['holdings', 'Holdings']] },
     { id: 'learn', label: 'Learn', pages: [['mindguru', 'MindGuru'], ['strategies', 'Strategies'], ['concepts', 'Concepts'], ['knowledge', 'Library'], ['theory', 'Theory'], ['methodology', 'Methodology']] },
   ];
@@ -98,8 +98,107 @@
     });
   }
 
+
+  // ---------- universal search: stocks, pages, strategies, concepts ----------
+  const PAGE_WORDS = {
+    dashboard: 'home overview index nifty sensex', watchlist: 'watchlist calls buy sell my stocks', stock: 'stock chart price', live: 'live buyers sellers order book depth market depth pressure',
+    opps: 'opportunities scan setups ideas', fno: 'f&o fno options futures option chain calls puts strategy builder iron condor straddle', analyze: 'analyze analysis verdict',
+    events: 'events news results dividend corporate actions calendar', screener: 'screener filter', trading: 'orders trading algo approve', holdings: 'holdings portfolio',
+    mindguru: 'mindguru learning record accuracy', strategies: 'strategies', concepts: 'concepts', knowledge: 'library documents upload books', theory: 'theory', methodology: 'methodology sources',
+  };
+  const pageLabel = p => { for (const g of GROUPS) for (const [id, l] of g.pages) if (id === p) return [l, g.label]; return [p, '']; };
+  let SQ = { items: [], sel: 0, timer: null, seq: 0 };
+  const recent = () => { try { return JSON.parse(localStorage.getItem('mm-recent-stocks') || '[]'); } catch { return []; } };
+  const remember = st => { try { const r = recent().filter(x => x.symbol !== st.symbol); r.unshift({ symbol: st.symbol, name: st.name || '' }); localStorage.setItem('mm-recent-stocks', JSON.stringify(r.slice(0, 8))); } catch { /* ok */ } };
+  const escH = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function openSearch(prefill) {
+    const ov = document.getElementById('search-ov');
+    ov.classList.remove('hidden'); document.body.classList.add('sheet-open');
+    const inp = ov.querySelector('input');
+    inp.value = prefill || ''; runSearch(inp.value);
+    setTimeout(() => inp.focus(), 30);
+  }
+  function closeSearch() { document.getElementById('search-ov').classList.add('hidden'); document.body.classList.remove('sheet-open'); }
+
+  function runSearch(q) {
+    q = q.trim();
+    const seq = ++SQ.seq;
+    const ql = q.toLowerCase();
+    const items = [];
+    if (!q) {
+      recent().forEach(r => items.push({ kind: 'stock', title: r.symbol, sub: r.name, run: () => openStock(r) }));
+      if (!items.length) ['RELIANCE', 'HDFCBANK', 'TCS', 'INFY', 'SBIN'].forEach(sym => items.push({ kind: 'stock', title: sym, sub: 'Popular', run: () => openStock({ symbol: sym }) }));
+    } else {
+      // pages
+      for (const g of GROUPS) for (const [id, label] of g.pages) {
+        if (!visible(id)) continue;
+        if (label.toLowerCase().includes(ql) || (PAGE_WORDS[id] || '').includes(ql)) items.push({ kind: 'page', title: label, sub: g.label, run: () => go(id) });
+      }
+      // strategies & concepts from the knowledge base
+      const eng = root.app && app.ui && app.ui.engine;
+      if (eng && q.length >= 2) {
+        (eng.strategies || []).filter(x => (x.name || '').toLowerCase().includes(ql)).slice(0, 4).forEach(x => items.push({ kind: 'strategy', title: x.name, sub: x.category || 'Strategy', run: () => openStrategy(x) }));
+        (eng.concepts || []).filter(x => (x.name || '').toLowerCase().includes(ql)).slice(0, 4).forEach(x => items.push({ kind: 'concept', title: x.name, sub: x.category || 'Concept', run: () => openConcept(x) }));
+      }
+    }
+    SQ.items = items; SQ.sel = 0; drawResults(q, true);
+    if (!q) return;
+    clearTimeout(SQ.timer);
+    SQ.timer = setTimeout(async () => {
+      try {
+        const r = await fetch(`api/stocks.php?action=search&limit=8&q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } });
+        const j = await r.json();
+        if (seq !== SQ.seq) return;
+        const stocks = (j.results || []).map(st => ({ kind: 'stock', title: st.nse || st.symbol, sub: `${st.name || ''}${st.exchange && st.exchange !== 'NSE' ? ' · ' + st.exchange : ''}`, run: () => openStock({ symbol: st.nse || st.symbol, name: st.name }) }));
+        SQ.items = [...stocks, ...SQ.items]; SQ.sel = 0; drawResults(q, false);
+      } catch { if (seq === SQ.seq) drawResults(q, false); }
+    }, 180);
+  }
+  const KIND = { stock: 'Stock', page: 'Go to', strategy: 'Strategy', concept: 'Concept' };
+  function drawResults(q, loading) {
+    const box = document.querySelector('#search-ov .so-results');
+    if (!SQ.items.length) { box.innerHTML = `<p class="so-empty">${loading ? 'Searching…' : `Nothing found for “${escH(q)}”.`}</p>`; return; }
+    let lastKind = null;
+    box.innerHTML = (!q ? '<div class="so-group">Recent stocks</div>' : '') + SQ.items.map((it, i) => {
+      const head = q && it.kind !== lastKind ? `<div class="so-group">${{ stock: 'Stocks', page: 'Pages', strategy: 'Strategies', concept: 'Concepts' }[it.kind]}</div>` : '';
+      lastKind = it.kind;
+      return `${head}<button type="button" class="so-item${i === SQ.sel ? ' sel' : ''}" data-i="${i}"><span class="so-k ${it.kind}">${KIND[it.kind]}</span><b>${escH(it.title)}</b><small>${escH(it.sub || '')}</small></button>`;
+    }).join('') + (loading && q ? '<p class="so-empty small">Searching stocks…</p>' : '');
+    box.querySelectorAll('.so-item').forEach(b => { b.onclick = () => pick(+b.dataset.i); });
+  }
+  function pick(i) { const it = SQ.items[i]; if (!it) return; closeSearch(); it.run(); }
+  function openStock(st) { remember(st); if (root.Stock) Stock.open(st.symbol, st.name); }
+  function openStrategy(x) {
+    go('strategies');
+    setTimeout(() => { try { app.ui.currentStrategy = x; app.ui._renderStrategyDetail(x); app.ui._renderStrategiesList(); } catch { /* list still opens */ } }, 300);
+  }
+  function openConcept(x) {
+    go('concepts');
+    setTimeout(() => { const inp = document.getElementById('concept-search'); if (inp) { inp.value = x.name; inp.dispatchEvent(new Event('input')); } }, 300);
+  }
+  function initSearch() {
+    const ov = document.getElementById('search-ov'), inp = ov.querySelector('input');
+    document.querySelectorAll('[data-open-search]').forEach(b => { b.onclick = () => openSearch(); });
+    inp.addEventListener('input', () => runSearch(inp.value));
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault(); SQ.sel = Math.max(0, Math.min(SQ.items.length - 1, SQ.sel + (e.key === 'ArrowDown' ? 1 : -1)));
+        document.querySelectorAll('#search-ov .so-item').forEach((b, i) => b.classList.toggle('sel', i === SQ.sel));
+        const s = document.querySelector('#search-ov .so-item.sel'); if (s) s.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') { e.preventDefault(); pick(SQ.sel); }
+    });
+    ov.addEventListener('click', e => { if (e.target === ov || e.target.closest('[data-close-search]')) closeSearch(); });
+    document.addEventListener('keydown', e => {
+      const typing = /input|textarea|select/i.test((document.activeElement || {}).tagName || '');
+      if ((e.key === 'k' && (e.ctrlKey || e.metaKey)) || (e.key === '/' && !typing)) { e.preventDefault(); openSearch(); }
+      else if (e.key === 'Escape' && !ov.classList.contains('hidden')) closeSearch();
+    });
+  }
+
   function init() {
     initSheet();
+    initSearch();
     initHelp();
     // Re-render when admin pages appear / badges change
     new MutationObserver(() => render()).observe(document.getElementById('nav-links'), { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
@@ -113,6 +212,8 @@
     if (!App || !App.addListener) return;
     document.documentElement.classList.add('in-app');
     App.addListener('backButton', () => {
+      const so = document.getElementById('search-ov');
+      if (so && !so.classList.contains('hidden')) { closeSearch(); return; }
       const sheet = document.getElementById('account-sheet');
       const modal = document.getElementById('modal-overlay');
       if (sheet && !sheet.classList.contains('hidden')) { sheet.classList.add('hidden'); document.body.classList.remove('sheet-open'); return; }
@@ -122,5 +223,5 @@
     });
   }
 
-  root.Nav = { init, sync, go, GROUPS };
+  root.Nav = { init, sync, go, GROUPS, search: openSearch };
 })(window);
