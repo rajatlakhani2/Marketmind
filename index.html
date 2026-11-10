@@ -36,7 +36,8 @@
   <script src="js/candlechart.js?v=21"></script>
   <script src="js/stock.js?v=21"></script>
   <script src="js/live.js?v=22"></script>
-  <script src="js/nav.js?v=21"></script>
+  <script src="js/backtest.js?v=23"></script>
+  <script src="js/nav.js?v=23"></script>
   <script src="js/home.js?v=20"></script>
   <style>
 /* ===== RESET & BASE ===== */
@@ -1081,6 +1082,20 @@ table.ob .r { text-align: right; }
   .live-sum b { font-size: 1.2rem; }
 }
 
+/* Back-tester */
+.bt-form { padding: 16px 18px; margin-bottom: 14px; }
+.bt-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin-bottom: 10px; }
+.bt-row label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--text-muted); font-weight: 600; }
+.bt-row select, .bt-row input { font: inherit; font-size: 0.9rem; padding: 7px 10px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); min-width: 120px; }
+.bt-bar { margin-top: 10px; }
+.bt-sum { padding: 16px 18px; margin-bottom: 14px; }
+.bt-sum h3 { font-size: 1.02rem; font-weight: 650; }
+.bt-find { margin: 10px 0 6px 18px; display: flex; flex-direction: column; gap: 5px; font-size: 0.9rem; line-height: 1.5; }
+.bt-chart svg { width: 100%; height: auto; display: block; margin-top: 8px; }
+.bt-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
+.bt-legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.bt-table td, .bt-table th { white-space: nowrap; }
+
   </style>
 </head>
 <body>
@@ -1097,6 +1112,7 @@ table.ob .r { text-align: right; }
         <li><a href="#" data-page="strategies"><span class="nav-icon">&#x2694;&#xFE0F;</span> Strategies</a></li>
         <li><a href="#" data-page="analyze"><span class="nav-icon">&#x1F4CA;&#xFE0F;</span> Analyze Market</a></li>
         <li><a href="#" data-page="watchlist"><span class="nav-icon">&#x2B50;</span> Watchlist</a></li>
+        <li><a href="#" data-page="backtest"><span class="nav-icon">&#x1F9EA;</span> Back-test</a></li>
         <li><a href="#" data-page="stock"><span class="nav-icon">&#x1F50E;</span> Stock</a></li>
         <li><a href="#" data-page="live"><span class="nav-icon">&#x1F4CA;</span> Live buyers</a></li>
         <li><a href="#" data-page="mindguru"><span class="nav-icon">&#x1F9E0;</span> MindGuru</a></li>
@@ -1264,6 +1280,10 @@ table.ob .r { text-align: right; }
       <div id="page-holdings" class="page">
         <header class="page-header"><h2>My Holdings</h2></header>
         <div id="holdings-container"></div>
+      </div>
+      <div id="page-backtest" class="page">
+        <header class="page-header"><h2>Back-test</h2></header>
+        <div id="backtest-container"></div>
       </div>
       <div id="page-stock" class="page">
         <div id="stock-container"></div>
@@ -3386,6 +3406,7 @@ class App {
       case 'opps': await Opportunities.renderPage(document.getElementById('opps-container')); break;
       case 'watchlist': await Watchlist.renderPage(document.getElementById('watchlist-container')); break;
       case 'stock': await Stock.renderPage(document.getElementById('stock-container')); break;
+      case 'backtest': await Backtest.renderPage(document.getElementById('backtest-container')); break;
       case 'live': await LivePage.renderPage(document.getElementById('live-container')); break;
       case 'holdings': await Holdings.renderPage(document.getElementById('holdings-container')); break;
       case 'mindguru': await MindGuru.renderPage(document.getElementById('mindguru-container')); break;

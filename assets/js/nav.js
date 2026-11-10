@@ -18,7 +18,7 @@
     { id: 'watch', label: 'Watchlist', pages: [['watchlist', 'Watchlist']] },
     { id: 'markets', label: 'Markets', pages: [['stock', 'Stock'], ['live', 'Live buyers'], ['opps', 'Opportunities'], ['fno', 'F&O'], ['analyze', 'Analyze'], ['events', 'Events & News'], ['screener', 'Screener']] },
     { id: 'trade', label: 'Trade', pages: [['trading', 'Orders'], ['holdings', 'Holdings']] },
-    { id: 'learn', label: 'Learn', pages: [['mindguru', 'MindGuru'], ['strategies', 'Strategies'], ['concepts', 'Concepts'], ['knowledge', 'Library'], ['theory', 'Theory'], ['methodology', 'Methodology']] },
+    { id: 'learn', label: 'Learn', pages: [['mindguru', 'MindGuru'], ['backtest', 'Back-test'], ['strategies', 'Strategies'], ['concepts', 'Concepts'], ['knowledge', 'Library'], ['theory', 'Theory'], ['methodology', 'Methodology']] },
   ];
   const groupOf = page => GROUPS.find(g => g.pages.some(p => p[0] === page)) || GROUPS[0];
   const lastPage = {};
@@ -104,7 +104,7 @@
     dashboard: 'home overview index nifty sensex', watchlist: 'watchlist calls buy sell my stocks', stock: 'stock chart price', live: 'live buyers sellers order book depth market depth pressure',
     opps: 'opportunities scan setups ideas', fno: 'f&o fno options futures option chain calls puts strategy builder iron condor straddle', analyze: 'analyze analysis verdict',
     events: 'events news results dividend corporate actions calendar', screener: 'screener filter', trading: 'orders trading algo approve', holdings: 'holdings portfolio',
-    mindguru: 'mindguru learning record accuracy', strategies: 'strategies', concepts: 'concepts', knowledge: 'library documents upload books', theory: 'theory', methodology: 'methodology sources',
+    mindguru: 'mindguru learning record accuracy', backtest: 'backtest back-test test history results accuracy', strategies: 'strategies', concepts: 'concepts', knowledge: 'library documents upload books', theory: 'theory', methodology: 'methodology sources',
   };
   const pageLabel = p => { for (const g of GROUPS) for (const [id, l] of g.pages) if (id === p) return [l, g.label]; return [p, '']; };
   let SQ = { items: [], sel: 0, timer: null, seq: 0 };
