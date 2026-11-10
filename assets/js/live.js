@@ -58,7 +58,9 @@
   function draw(container) {
     const list = S.list || [];
     const rows = list.map(s => {
-      const d = S.rows[s] || {}, q = S.prices[s];
+      let d = S.rows[s] || {}; const q = S.prices[s];
+      // NSE refused: fall back to ICICI's best bid / best offer quantity
+      if ((d.error || d.totalBuy == null) && q && q.bidQty != null && q.askQty != null) d = { ...d, totalBuy: q.bidQty, totalSell: q.askQty, top: true, error: null };
       const t = (d.totalBuy || 0) + (d.totalSell || 0);
       return { s, d, q, share: t ? d.totalBuy / t : null, ratio: d.totalSell ? d.totalBuy / d.totalSell : null };
     });
@@ -80,10 +82,10 @@
           const b = r.share != null ? r.share * 100 : null;
           return `<tr data-sym="${esc(r.s)}"><td><b>${esc(r.s)}</b></td>
             <td>${r.q && r.q.ltp ? `${num(r.q.ltp)}<br><small class="${r.q.changePct > 0 ? 'up' : r.q.changePct < 0 ? 'down' : ''}">${r.q.changePct != null ? (r.q.changePct > 0 ? '+' : '') + r.q.changePct.toFixed(2) + '%' : ''}</small>` : '<span class="muted">—</span>'}</td>
-            <td class="live-barcol">${b != null ? `<div class="pbar sm"><div class="pbar-b" style="width:${b}%"></div></div><div class="pbar-l sm"><span class="up">${qty(r.d.totalBuy)}</span><span class="${r.ratio >= 1.1 ? 'up' : r.ratio <= 0.9 ? 'down' : 'muted'}">${r.ratio.toFixed(2)}×</span><span class="down">${qty(r.d.totalSell)}</span></div>` : `<span class="muted small">${r.d.error === 'later' ? 'next refresh' : r.d.error ? 'not available' : S.busy ? 'loading…' : '—'}</span>`}</td>
+            <td class="live-barcol">${b != null ? `<div class="pbar sm"><div class="pbar-b" style="width:${b}%"></div></div><div class="pbar-l sm"><span class="up">${qty(r.d.totalBuy)}</span><span class="${r.ratio >= 1.1 ? 'up' : r.ratio <= 0.9 ? 'down' : 'muted'}">${r.ratio.toFixed(2)}×</span><span class="down">${qty(r.d.totalSell)}</span></div>${r.d.top ? '<small class="muted">best bid / offer only</small>' : ''}` : `<span class="muted small">${r.d.error === 'later' ? 'next refresh' : r.d.error ? 'not available' : S.busy ? 'loading…' : '—'}</span>`}</td>
             <td class="hide-sm">${r.d.deliveryPct != null ? num(r.d.deliveryPct, 1) + '%' : '—'}</td></tr>`;
         }).join('')}</tbody></table></div></div>` : ''}
-      <p class="citation">Buyers vs sellers = all shares waiting in NSE's order book to be bought (green) and sold (red). More than 1.0× means more buyers waiting. It changes every second and can flip fast, so use it with the demand & supply call, not alone. Delivery % is from the last session. Prices come from ICICI when you are connected.${S.at ? ` Order book at ${new Date(S.at * 1000).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}.` : ''}</p>`;
+      <p class="citation">Buyers vs sellers = all shares waiting in NSE's order book to be bought (green) and sold (red). More than 1.0× means more buyers waiting. It changes every second and can flip fast, so use it with the demand & supply call, not alone. Delivery % is from the last session. Prices come from ICICI when you are connected. When NSE refuses the request, only ICICI's best bid and best offer quantity is shown.${S.at ? ` Order book at ${new Date(S.at * 1000).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}.` : ''}</p>`;
     container.querySelectorAll('[data-set]').forEach(b => { b.onclick = () => { S.set = b.dataset.set; S.rows = {}; S.list = null; try { localStorage.setItem('mm-live-set', S.set); } catch { /* ok */ } refresh(container); }; });
     const rf = container.querySelector('#live-refresh'); if (rf) rf.onclick = () => refresh(container);
     container.querySelectorAll('th[data-sort]').forEach(th => { th.onclick = () => { S.sort = th.dataset.sort; draw(container); }; });
