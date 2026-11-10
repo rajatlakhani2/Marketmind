@@ -49,11 +49,13 @@ function ev_get(string $url, array $headers = [], bool $useCookies = false): arr
 }
 
 // NSE JSON API. NSE sometimes wants its cookies first, so on a refusal visit the home page and retry once.
-function nse(string $path): array {
-    $h = ['Accept: application/json, text/plain, */*', 'Referer: ' . NSE . '/'];
+function nse(string $path, string $warm = '/'): array {
+    $h = ['Accept: application/json, text/plain, */*', 'Referer: ' . NSE . $warm];
     [$s, $b] = ev_get(NSE . $path, $h, true);
     if ($s !== 200) {
+        // NSE wants the cookies its own pages set: open the home page (and the page the data belongs to), then retry
         ev_get(NSE . '/', ['Accept: text/html'], true);
+        if ($warm !== '/') ev_get(NSE . $warm, ['Accept: text/html', 'Referer: ' . NSE . '/'], true);
         [$s, $b] = ev_get(NSE . $path, $h, true);
     }
     $j = json_decode($b, true);
@@ -65,7 +67,7 @@ function nse(string $path): array {
 function nse_depth(string $sym, int $ttl = 4): array {
     $key = "depth|$sym";
     if ($hit = ev_cache_get($key, $ttl)) return $hit;
-    $j = nse('/api/quote-equity?symbol=' . rawurlencode($sym) . '&section=trade_info');
+    $j = nse('/api/quote-equity?symbol=' . rawurlencode($sym) . '&section=trade_info', '/get-quotes/equity?symbol=' . rawurlencode($sym));
     $ob = $j['marketDeptOrderBook'] ?? null;
     if (!is_array($ob)) throw new RuntimeException('NSE has no order book for ' . $sym);
     $lvl = fn($rows) => array_values(array_map(fn($r) => ['price' => (float) ($r['price'] ?? 0), 'qty' => (int) ($r['quantity'] ?? 0)],
