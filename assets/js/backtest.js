@@ -126,10 +126,10 @@
       const window = daily.slice(Math.max(0, t - 399), t + 1);
       const md = MarketData.buildMarketData({ symbol: sym, timeframe: '1d', candles: window, meta: { longName: meta && meta.longName }, source: 'History' });
       const ks = KS001.analyze({ price: md.price, ltf: { tf: '1d', candles: window }, itf: { tf: '1w', candles: weekly.slice(-200) }, htf: { tf: '1mo', candles: monthly.slice(-120) } });
-      const cs = Consensus.run({ md, ks, strategies, check });
-      const plans = MindGuru.projections(cs, md, ks, istDate(T));
-      const b = demandBounce(ks, window); if (b) plans.push(b);
       const day = istDate(T), up = mkt(day);
+      const cs = Consensus.run({ md, ks, strategies, check, market: up });
+      const plans = MindGuru.projections(cs, md, ks, day);
+      const b = demandBounce(ks, window); if (b) plans.push(b);
       for (const p of plans) {
         if ((busy.get(p.strategyId) || -1) >= t) continue;
         const tr = simulate(p, daily, t + 1, { lastEntryIdx: f => f + RULES.swing.entryBars - 1, exitIdx: fi => fi + RULES.swing.holdBars, costPct: COST.swing });
@@ -161,7 +161,7 @@
         if (itf.length < 30 || htf.length < 60) continue;
         const md = MarketData.buildMarketData({ symbol: sym, timeframe: '15m', candles: window, meta: null, source: 'History' });
         const ks = KS001.analyze({ price: md.price, ltf: { tf: '15m', candles: window }, itf: { tf: '1h', candles: itf }, htf: { tf: '1d', candles: htf } });
-        const cs = Consensus.run({ md, ks, strategies, check });
+        const cs = Consensus.run({ md, ks, strategies, check, market: up });
         const plans = MindGuru.projections(cs, md, ks, dy.d);
         const b = demandBounce(ks, window); if (b) plans.push(b);
         for (const p of plans) {
@@ -262,7 +262,8 @@
         <p class="citation">Replays the real engine on past prices: every strategy, the All-Strategy Verdict, and the new "demand zone + bounce" rule. Signals fill on the next bar (gaps included), the stop is checked before the target, swing trades exit after 30 days at most, intraday trades by 15:15. Costs are taken off every trade (${COST.swing}% swing, ${COST.intraday}% intraday, round trip). Only one open trade per strategy per stock at a time. Intraday history is only about 60 days (Yahoo's limit), so intraday results are a rough first look. Past results do not guarantee future ones.</p>
         <div id="bt-progress"></div>
       </div>
-      <div id="bt-results"></div>`;
+      <div id="bt-results"></div>
+      <div id="bt-tiers"></div>`;
     const $ = s => container.querySelector(s);
     container.querySelectorAll('#bt-style [data-v]').forEach(b => { b.onclick = () => { cfg.style = b.dataset.v; S.cfg = cfg; renderPage(container); }; });
     $('#bt-run').onclick = async () => {
@@ -280,10 +281,53 @@
         const eta = p.done ? Math.round((Date.now() - t0) / p.done * (p.total - p.done) / 1000) : null;
         el.innerHTML = `<div class="pbar sm bt-bar"><div class="pbar-b" style="width:${pct}%"></div></div><p class="muted small">${p.sym ? `Replaying ${esc(p.sym)} · ` : ''}${p.done} of ${p.total} stocks · ${p.trades} trades so far${eta != null ? ` · about ${eta > 90 ? Math.round(eta / 60) + ' min' : eta + ' s'} left` : ''}. Keep this page open.</p>`;
       });
+      // A full swing run updates the strategy tiers (Proven / Watch / Not proven)
+      const r = S.res;
+      if (r && !r.cancelled && cfg.style === 'swing' && cfg.years >= 3 && symbols.length >= 50 && root.Tiers && root.Account && Account.isAdmin) {
+        try {
+          const j = await Tiers.submitBacktest(r);
+          S.tierMsg = j.changes && j.changes.length ? `Tiers updated: ${j.changes.map(c => `${c.name} ${TL[c.from] || c.from} → ${TL[c.to] || c.to}`).join(' · ')}.` : 'Tiers checked against this run: no change.';
+        } catch (e) { S.tierMsg = `Tiers were not updated: ${e.message}`; }
+      } else if (r && cfg.style === 'swing') S.tierMsg = 'Tiers update only from a complete swing run of 3+ years on 50+ stocks (admin).';
       renderPage(container);
     };
     const st = $('#bt-stop'); if (st) st.onclick = () => { S.cancel = true; };
     if (S.res) results($('#bt-results'), S.res, cfg);
+    tierCard(container.querySelector('#bt-tiers'));
+  }
+
+  // ---------- strategy tiers card ----------
+  const TL = { proven: 'Proven', watch: 'Watch', unproven: 'Not proven' };
+  async function tierCard(el) {
+    if (!el || !root.Tiers) return;
+    await Tiers.ready();
+    const days = Tiers.daysSinceBacktest();
+    const admin = root.Account && Account.isAdmin;
+    const strategies = (root.app && app.engine && app.engine.strategies || []).filter(s => Consensus.LEVELS[s.id]);
+    const order = { proven: 0, watch: 1, unproven: 2 };
+    const rows = strategies.map(s => ({ s, t: Tiers.info(s.id) })).sort((a, b) => order[a.t.tier] - order[b.t.tier] || a.s.name.localeCompare(b.s.name));
+    const mk = Tiers.market();
+    const f = v => (v == null || !isFinite(v) ? '—' : fmtR(Number(v)));
+    el.innerHTML = `<div class="card bt-tiers">
+      <h3>Strategy tiers</h3>
+      <p class="muted small">Proven = full vote, Watch = half, Not proven = shown but not counted. Shorts count only while NIFTY is below its 200-day average${mk ? ` (now ${mk.above200 ? 'above: shorts not counted' : 'below: shorts count'})` : ''}.
+        Last tier back-test: ${days == null ? 'none' : days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} ago`}.</p>
+      ${days != null && days > 30 ? `<p class="auth-error">It is time for the monthly re-test: run Swing · 5 years · 100 stocks. Tiers update by themselves when it finishes.</p>` : ''}
+      ${S.tierMsg ? `<p><b>${esc(S.tierMsg)}</b></p>` : ''}
+      <div class="tbl-wrap"><table class="st-table"><thead><tr><th>Strategy</th><th>Back-test</th><th class="hide-sm">Years +</th><th class="hide-sm">Live</th><th class="hide-sm">Why</th>${admin ? '<th>Set by hand</th>' : ''}</tr></thead><tbody>
+      ${rows.map(({ s, t }) => `<tr><td>${esc(s.name)} ${Tiers.badge(s.id)}</td><td>${t.bt ? f(t.bt.avg) : '—'}</td><td class="hide-sm">${t.bt && t.bt.years ? `${t.bt.yearsPos}/${t.bt.years}` : '—'}</td>
+        <td class="hide-sm">${t.live && t.live.n ? `${f(t.live.avg)} · ${t.live.n}` : '—'}</td><td class="hide-sm muted small">${esc(t.why || t.note || '')}</td>
+        ${admin ? `<td><select data-ov="${esc(s.id)}"><option value="">Automatic</option>${Object.entries(TL).map(([k, l]) => `<option value="${k}"${t.override === k ? ' selected' : ''}>${l}</option>`).join('')}</select></td>` : ''}</tr>`).join('')}
+      </tbody></table></div>
+      <p class="citation">Rules: Proven = 100+ trades, at least +0.10R per trade after costs, positive in at least half the years. Watch = 30+ trades and above 0. A buffer stops tiers flipping every month (Proven holds down to +0.05R, Watch down to −0.03R). Live MindGuru results move a strategy one tier: down after 30+ trades at −0.10R or worse, up after 50+ trades at +0.15R or better. A tier set by hand always wins.</p>
+    </div>`;
+    el.querySelectorAll('[data-ov]').forEach(sel => {
+      sel.onchange = async () => {
+        sel.disabled = true;
+        try { await Tiers.setOverride(sel.dataset.ov, sel.value); S.tierMsg = 'Tier saved.'; } catch (e) { S.tierMsg = `Not saved: ${e.message}`; }
+        tierCard(el);
+      };
+    });
   }
 
   function results(el, res, cfg) {
@@ -304,9 +348,9 @@
         ${chart(res.stats.filter(s => s.n >= 30).slice(0, 4).concat(verdict && verdict.n >= 30 && !res.stats.slice(0, 4).includes(verdict) ? [verdict] : []))}
       </div>
       <div class="card"><div class="tbl-wrap"><table class="st-table bt-table">
-        <thead><tr><th>Strategy</th><th>Result</th><th>Trades</th><th>Right</th><th>Avg / trade</th><th class="hide-sm">Profit factor</th><th class="hide-sm">Worst losing run</th><th class="hide-sm">Deepest drop</th><th>Total at ${cfg.risk}%</th><th class="hide-sm">With market filter</th>${years.length <= 6 ? years.map(y => `<th class="hide-sm">${y}</th>`).join('') : ''}</tr></thead>
+        <thead><tr><th>Strategy</th><th>Tier now</th><th>Result</th><th>Trades</th><th>Right</th><th>Avg / trade</th><th class="hide-sm">Profit factor</th><th class="hide-sm">Worst losing run</th><th class="hide-sm">Deepest drop</th><th>Total at ${cfg.risk}%</th><th class="hide-sm">With market filter</th>${years.length <= 6 ? years.map(y => `<th class="hide-sm">${y}</th>`).join('') : ''}</tr></thead>
         <tbody>${res.stats.map(s => `<tr>
-          <td><b>${esc(s.name)}</b></td><td><span class="wl-call ${V[s.verdict][1]}">${V[s.verdict][0]}</span></td><td>${s.n}</td><td>${Math.round(s.win * 100)}%</td>
+          <td><b>${esc(s.name)}</b></td><td>${root.Tiers && s.id[0] !== '_' ? Tiers.badge(s.id) : ''}</td><td><span class="wl-call ${V[s.verdict][1]}">${V[s.verdict][0]}</span></td><td>${s.n}</td><td>${Math.round(s.win * 100)}%</td>
           <td class="${s.avg >= 0 ? 'up' : 'down'}"><b>${fmtR(s.avg)}</b></td><td class="hide-sm">${s.pf != null ? s.pf.toFixed(2) : '—'}</td><td class="hide-sm">${s.worst}</td><td class="hide-sm">${s.dd.toFixed(1)}R</td>
           <td class="${s.total >= 0 ? 'up' : 'down'}">${inr(money(s.total))}</td><td class="hide-sm">${s.avgUp != null && s.nUp >= 10 ? fmtR(s.avgUp) : '—'}</td>
           ${years.length <= 6 ? years.map(y => `<td class="hide-sm ${s.years[y] ? (s.years[y].avg >= 0 ? 'up' : 'down') : ''}">${s.years[y] ? fmtR(s.years[y].avg) : ''}</td>`).join('') : ''}</tr>`).join('')}</tbody></table></div>

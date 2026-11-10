@@ -74,16 +74,16 @@
     const md = res.marketData, c = res.consensus && res.consensus.conclusion;
     if (!md.live || !c || c.tone !== 'long') return null;
     if (product === 'mis' && c.verdict !== 'Buy') return null;              // intraday: only when price is in the zone now
-    // Only strong setups: 2+ strategies agree and the gain is at least 1.5× the risk
-    if (c.agree < 2 || !(c.rr >= 1.5)) return null;
+    // Only strong setups: backed by a Proven strategy (or two Watch ones) and the gain is at least 1.5× the risk
+    if (!Tiers.isStrong(c) || !(c.rr >= 1.5)) return null;
     if (product === 'cnc' && res.ks001 && res.ks001.trends.htf.trend === 'Bearish') return null;  // no delivery buys against a falling monthly trend
     const entry = c.verdict === 'Buy' ? Math.min(md.price, c.buyHigh || md.price) : c.buyHigh;
     if (!(entry > 0) || c.stop == null || c.sell1 == null) return null;
     const qty = stockQty(st.settings, entry, c.stop);
     if (qty < 1) return null;
     const why = c.verdict === 'Buy'
-      ? `${c.agree} of ${c.of} strategies give a buy and price ₹${md.price.toFixed(2)} is in the buy zone.`
-      : `${c.agree} of ${c.of} strategies give a buy; this limit order waits for a dip to ₹${entry.toFixed(2)}.`;
+      ? `Buy backed by ${c.supporting.join(', ')} and price ₹${md.price.toFixed(2)} is in the buy zone.`
+      : `Buy backed by ${c.supporting.join(', ')}; this limit order waits for a dip to ₹${entry.toFixed(2)}.`;
     return {
       purpose: 'entry', product, symbol: w.symbol, name: w.name || md.name, qty, lot: 1, limit: +entry.toFixed(2),
       stop: c.stop, target: c.sell1, timeframe: tf, verdict: c.verdict,
@@ -98,7 +98,7 @@
     const res = await root.app.analysis.analyzeStock(w.symbol, '__all', '1d', null, {});
     const c = res.consensus && res.consensus.conclusion;
     if (!res.marketData.live || !c || (c.tone !== 'long' && c.tone !== 'short') || (c.tone === 'long' && c.verdict !== 'Buy')) return null;
-    if (c.agree < 2) return null;  // only when 2+ strategies agree
+    if (!Tiers.isStrong(c)) return null;  // only when backed by a Proven strategy (or two Watch ones)
     const right = c.tone === 'long' ? 'call' : 'put';
     const expiry = u.options.find(d => (Date.parse(d + 'T10:00:00Z') - Date.now()) / 864e5 >= 5);
     if (!expiry) return null;

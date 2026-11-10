@@ -110,7 +110,11 @@
             <div class="st-callbar" id="st-callbar"></div>
           </section>
           <section class="card st-card st-o4">
-            <div class="st-card-head"><h3>Buy / sell calls on every timeframe</h3><span class="muted small">from demand & supply zones</span></div>
+            <div class="st-card-head"><h3>Tested strategies · daily</h3><span class="muted small">Proven counts fully, Watch half</span></div>
+            <div id="st-tested"><div class="skeleton"></div></div>
+          </section>
+          <section class="card st-card st-o4">
+            <div class="st-card-head"><h3>Buy / sell calls on every timeframe</h3><span class="muted small">from demand & supply zones ${root.Tiers ? Tiers.zoneBadge() : ''}</span></div>
             <div id="st-matrix"></div>
           </section>
           <section class="card st-card st-o5">
@@ -133,6 +137,7 @@
     depth(token);
     drawTf(token);
     matrix(token);
+    tested(token);
     events(token);
     watchState();
     S.timer = setInterval(() => {
@@ -254,6 +259,38 @@
       }
     };
     await Promise.all([worker(), worker()]);
+  }
+
+  // ---------- the back-tested strategies on the daily chart ----------
+  async function tested(token) {
+    const box = () => document.getElementById('st-tested');
+    try {
+      const k = root.app && root.app.analysis && root.app.analysis.knowledge;
+      if (!k || !root.Consensus) throw new Error('analysis engine not loaded');
+      const md = await loadTf('1d');
+      const hist = md.priceHistory || [];
+      if (hist.length < 60) throw new Error('not enough daily candles');
+      const price = livePrice(md);
+      const ks = KS001.analyze({ price, ltf: { tf: '1d', candles: hist }, itf: { tf: '1w', candles: MarketData.aggregateByPeriod(hist, 'week') }, htf: { tf: '1mo', candles: MarketData.aggregateByPeriod(hist, 'month') } });
+      const [brain] = await Promise.all([root.MindGuru ? MindGuru.getBrain().catch(() => null) : null, root.Tiers ? Tiers.ready() : null]);
+      const cs = Consensus.run({ md: { ...md, price }, ks, strategies: k.strategies, check: (c, d) => k.checkConditionDetail(c, d), learned: brain ? brain.strategies : null });
+      if (token !== S.token || !box()) return;
+      const c = cs.conclusion;
+      const active = cs.results.filter(r => r.status === 'Active');
+      const counted = active.filter(r => r.counted), ignored = active.filter(r => !r.counted);
+      const near = cs.results.filter(r => r.status === 'Setting up' && r.counted).slice(0, 4);
+      const mk = Tiers.market();
+      const call = c.tone === 'long' ? `<span class="wl-call ${c.verdict === 'Buy' ? 'buy' : 'dip'}">${esc(c.verdict.toUpperCase())}</span>${c.backing === 'proven' ? Tiers.badge(counted.find(r => r.tier === 'proven').id) : '<span class="tier tier-watch">Watch</span>'}`
+        : c.tone === 'short' ? '<span class="wl-call sell">SELL</span>' : '<span class="wl-call wait">WAIT</span>';
+      box().innerHTML = `
+        <div class="wl-call-row">${call}${c.tone === 'long' ? `<span class="muted">buy ${rs(c.buyLow)}${c.buyHigh !== c.buyLow ? '–' + rs(c.buyHigh) : ''} · SL ${rs(c.stop)} · T1 ${rs(c.sell1)}</span>` : ''}</div>
+        <ul class="st-tested">
+          ${counted.length ? counted.map(r => `<li>${Tiers.badge(r.id)} <b>${esc(r.name)}</b> <span class="muted">${r.side === 'short' ? 'sell' : 'buy'} signal now</span></li>`).join('') : '<li class="muted">No Proven or Watch strategy has a signal today.</li>'}
+          ${near.length ? `<li class="muted">Getting close: ${near.map(r => `${esc(r.name)} (${r.tierLabel})`).join(', ')}</li>` : ''}
+          ${ignored.length ? `<li class="muted">Not counted: ${ignored.map(r => esc(r.name) + (r.shortBlocked ? ' (short; NIFTY is above its 200-day)' : '')).join(', ')}</li>` : ''}
+        </ul>
+        <p class="muted small">${mk ? `NIFTY ${num(mk.nifty, 0)} is ${mk.above200 ? 'above' : 'below'} its 200-day average (${num(mk.ma200, 0)}), so short signals ${mk.above200 ? 'are not counted' : 'count'}.` : 'Short signals are not counted until the NIFTY 200-day check loads.'}</p>`;
+    } catch (e) { if (box()) box().innerHTML = `<p class="muted">Not available: ${esc(e.message)}</p>`; }
   }
 
   function summary() {

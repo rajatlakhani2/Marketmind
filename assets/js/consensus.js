@@ -240,7 +240,17 @@
   const shrunkWinRate = (l) => (l.wins + 0.45 * 10) / (l.trades + 10);
 
   // ---------- run ----------
-  function run({ md, ks, strategies, check, account, riskPercent, learned }) {
+  // Tier weight of a strategy (Proven 1, Watch 0.5, Not proven 0). tiers === false switches tiers off.
+  // Shorts count only while NIFTY is below its 200-day average (market: true = above, false = below).
+  function tierFor(id, side, tiers, market) {
+    const T = tiers === false ? null : root.Tiers;
+    const t = T ? T.info(id) : { tier: 'proven', label: 'Proven', weight: 1 };
+    const shortsOk = tiers === false ? true : market != null ? market === false : (T ? T.shortsAllowed() : false);
+    const blocked = side === 'short' && !shortsOk;
+    return { tier: t.tier, tierLabel: t.label, tierWeight: blocked ? 0 : t.weight, shortBlocked: blocked && t.weight > 0 };
+  }
+
+  function run({ md, ks, strategies, check, account, riskPercent, learned, tiers, market }) {
     const c = md.priceHistory || [];
     const a = atr(c) || md.price * 0.02;
     const results = (strategies || []).map(s => {
@@ -257,10 +267,13 @@
       try { plan = builder ? builder({ md, ks, c, a }) : null; } catch (e) { plan = null; }
       const trend = ks && ks.trends && ks.trends.htf ? ks.trends.htf.trend : null;
       const lr = learnedFor(learned, s.id, trend, plan ? plan.ksScore : null, md.symbol);
+      const side = plan ? plan.side : (SIDE[s.id] || 'long');
+      const tr = tierFor(s.id, side, tiers, market);
+      const mg = lr ? lr.weight : 1;
       return {
-        id: s.id, name: s.name, isBuiltIn: !!s.isBuiltIn, side: plan ? plan.side : (SIDE[s.id] || 'long'),
+        id: s.id, name: s.name, isBuiltIn: !!s.isBuiltIn, side,
         status, met, total: checkable.length, unchecked: conds.length - checkable.length, conditions: conds, plan,
-        learned: lr, weight: lr ? lr.weight : 1,
+        learned: lr, mgWeight: mg, ...tr, counted: tr.tierWeight > 0, weight: tr.tierWeight * mg,
       };
     });
     const conclusion = conclude({ md, ks, results, a, account, riskPercent });
@@ -285,16 +298,25 @@
   function conclude({ md, ks, results, a, account, riskPercent }) {
     const price = md.price;
     const withPlan = results.filter(r => r.plan);
-    const activeLong = withPlan.filter(r => r.status === 'Active' && r.plan.side === 'long');
-    const activeShort = withPlan.filter(r => r.status === 'Active' && r.plan.side === 'short');
+    // Only counted strategies (Proven / Watch; shorts only in a falling market) vote
+    const activeLong = withPlan.filter(r => r.status === 'Active' && r.plan.side === 'long' && r.counted !== false);
+    const activeShort = withPlan.filter(r => r.status === 'Active' && r.plan.side === 'short' && r.counted !== false);
+    const ignored = withPlan.filter(r => r.status === 'Active' && r.counted === false);
+    const ignoredLong = ignored.filter(r => r.plan.side === 'long');
+    const tag = r => `${r.name} (${r.tierLabel || 'Proven'})`;
     const settingUp = results.filter(r => r.status === 'Setting up');
     const strategyCount = results.length;
     const size = (entry, stop) => (root.KS001 && account > 0 && riskPercent > 0 ? root.KS001.positionSize({ account, riskPercent, entry, stop }) : null);
     const bias = ks && ks.bias;
     // Votes weighted by MindGuru (1 each when nothing has been learned yet)
-    const wLong = activeLong.reduce((x, r) => x + (r.weight || 1), 0);
-    const wShort = activeShort.reduce((x, r) => x + (r.weight || 1), 0);
-    const distrusted = activeLong.length && wLong < 0.6;
+    const wLong = activeLong.reduce((x, r) => x + (r.weight ?? 1), 0);
+    const wShort = activeShort.reduce((x, r) => x + (r.weight ?? 1), 0);
+    // A buy needs a counted vote of at least 0.4 (one Watch strategy, or a Proven one MindGuru hasn't marked down)
+    const distrusted = activeLong.length && wLong < 0.4;
+    const base = { score: Math.round(wLong * 100) / 100, scoreShort: Math.round(wShort * 100) / 100,
+      notCounted: ignored.map(r => r.name), backing: activeLong.some(r => r.tier === 'proven') ? 'proven' : activeLong.length ? 'watch' : 'none' };
+    const ignoredNote = ignoredLong.length
+      ? ` Not counted (not proven in the back-test): ${ignoredLong.slice(0, 4).map(r => r.name).join(', ')}${ignoredLong.length > 4 ? '…' : ''}.` : '';
 
     const pickLong = (list) => {
       const entries = list.map(r => r.plan.entry);
@@ -312,12 +334,12 @@
       const L = pickLong(activeLong);
       const nowInZone = price >= L.buyLow * 0.995 && price <= L.buyHigh * 1.005;
       return {
-        verdict: nowInZone ? 'Buy' : 'Buy on dip', tone: 'long', ...L,
+        verdict: nowInZone ? 'Buy' : 'Buy on dip', tone: 'long', ...L, ...base,
         agree: activeLong.length, of: strategyCount,
         supporting: activeLong.map(r => r.name), against: activeShort.map(r => r.name),
-        summary: `${activeLong.length} of ${strategyCount} strategies give a buy signal now. ` +
+        summary: `Buy signal backed by ${activeLong.map(tag).join(', ')}. ` +
           (nowInZone ? `Price ₹${price.toFixed(2)} is inside the buy zone.` : (L.buyLow === L.buyHigh ? `Best entry is ₹${L.buyLow.toFixed(2)}` : `Best entries are ₹${L.buyLow.toFixed(2)}–${L.buyHigh.toFixed(2)}`) + `; current price is ₹${price.toFixed(2)}, so wait for a dip.`) +
-          ` First selling level ₹${L.sell1.toFixed(2)}${L.sell2 ? `, second ₹${L.sell2.toFixed(2)}` : ''}. Exit if price closes below ₹${L.stop.toFixed(2)}.`,
+          ` First selling level ₹${L.sell1.toFixed(2)}${L.sell2 ? `, second ₹${L.sell2.toFixed(2)}` : ''}. Exit if price closes below ₹${L.stop.toFixed(2)}.` + ignoredNote,
       };
     }
 
@@ -325,7 +347,7 @@
     if (activeShort.length && (wShort > wLong || bias === 'Short')) {
       const p = activeShort[0].plan;
       return {
-        verdict: 'Sell / avoid buying', tone: 'short', sellAt: p.entry, stop: p.stop, coverAt: p.target, rr: p.rr,
+        verdict: 'Sell / avoid buying', tone: 'short', sellAt: p.entry, stop: p.stop, coverAt: p.target, rr: p.rr, ...base,
         agree: activeShort.length, of: strategyCount, supporting: activeShort.map(r => r.name), against: activeLong.map(r => r.name),
         summary: `${activeShort.length} of ${strategyCount} strategies point down and the higher-timeframe trend is ${ks ? ks.trends.htf.trend.toLowerCase() : 'unclear'}. ` +
           `Selling level ₹${p.entry.toFixed(2)} (supply zone); it is invalid above ₹${p.stop.toFixed(2)}; downside target ₹${p.target.toFixed(2)}. Holders may consider selling near the supply zone.`,
@@ -341,13 +363,15 @@
     const sellLevel = supply ? supply.proximal : resistance != null ? resistance : null;
     const rr = buyLevel != null && stop != null && sellLevel != null && buyLevel > stop ? (sellLevel - buyLevel) / (buyLevel - stop) : null;
     return {
-      verdict: 'Wait', tone: 'neutral',
+      verdict: 'Wait', tone: 'neutral', ...base,
       buyLow: r2(buyLevel), buyHigh: r2(buyLevel), stop: r2(stop), sell1: r2(sellLevel), sell2: null, rr,
       buySource: demand ? `${demand.pattern} demand zone (${demand.score.total}/10)` : 'nearest support',
       sellSource: supply ? `${supply.pattern} supply zone` : 'nearest resistance',
       sizing: buyLevel != null && stop != null && buyLevel > stop ? size(buyLevel, stop) : null,
       agree: 0, of: strategyCount, supporting: [], against: [], settingUp: settingUp.map(r => r.name),
-      summary: (distrusted && bias !== 'Short'
+      summary: (ignoredLong.length && !activeLong.length
+          ? `${ignoredLong.slice(0, 3).map(r => r.name).join(', ')}${ignoredLong.length > 3 ? '…' : ''} ${ignoredLong.length > 1 ? 'give' : 'gives'} a buy signal, but ${ignoredLong.length > 1 ? 'they are' : 'it is'} not proven in the back-test, so ${ignoredLong.length > 1 ? 'they are' : 'it is'} not counted. ` : '') +
+        (distrusted && bias !== 'Short'
           ? `${activeLong.map(r => r.name).join(', ')} ${activeLong.length > 1 ? 'give' : 'gives'} a buy signal, but MindGuru has seen ${activeLong.length > 1 ? 'these strategies' : 'this strategy'} lose more than win, so it is not treated as a buy. `
           : '') + (activeLong.length && bias === 'Short'
           ? `${activeLong.length} buy signal${activeLong.length > 1 ? 's' : ''} (${activeLong.map(r => r.name).join(', ')}) but the higher-timeframe trend is bearish, so ${activeLong.length > 1 ? 'they are' : 'it is'} counter-trend. `
@@ -358,5 +382,5 @@
     };
   }
 
-  root.Consensus = { run, atr, LEVELS, learnedFor };
+  root.Consensus = { run, atr, LEVELS, learnedFor, tierFor };
 })(typeof window !== 'undefined' ? window : globalThis);

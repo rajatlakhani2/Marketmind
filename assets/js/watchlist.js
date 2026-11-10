@@ -195,9 +195,12 @@
 
     // Which call
     let action, tone;
-    const strongStrategies = c.verdict === 'Buy' && c.agree >= 2;
+    // A BUY needs a counted strategy behind it (Proven, or Watch at half weight). A zone on its own is not proven
+    // (demand-zone buys were −0.15R in the 5-year back-test), so a zone-only setup is at most BUY ON DIP.
+    const strongStrategies = c.verdict === 'Buy' && root.Tiers && Tiers.isStrong(c);
+    const counted = c.tone === 'long' && (c.score || 0) >= 0.4;
     if (c.tone === 'short' || atSupply) { action = 'SELL'; tone = 'sell'; }
-    else if (htf !== 'Bearish' && (strongStrategies || (inDemand && D.qualifies && c.agree >= 1))) { action = 'BUY'; tone = 'buy'; }
+    else if (htf !== 'Bearish' && (strongStrategies || (inDemand && D.qualifies && counted))) { action = 'BUY'; tone = 'buy'; }
     else if (c.tone === 'long' || (D && htf === 'Bullish')) { action = 'BUY ON DIP'; tone = 'dip'; }
     else { action = 'WAIT'; tone = 'wait'; }
 
@@ -256,7 +259,10 @@
     if (c.against && c.against.length) strategies.push(`Against: ${c.against.join(', ')}.`);
 
     const zone = z => z && { proximal: z.proximal, distal: z.distal, stop: stopOf(z) };
-    return { action, tone, say, price: p, entry, entryZone, stop, t1, t2, rr: rrOut, agree: c.agree, of: c.of, strategies, concepts, zones,
+    // Who backs this call: a Proven strategy, a Watch one, or only the zones
+    const backing = action === 'SELL' ? (c.tone === 'short' ? 'counted' : 'zone') : c.tone === 'long' && c.backing && c.backing !== 'none' ? c.backing : 'zone';
+    if (backing === 'zone' && action !== 'WAIT' && c.notCounted && c.notCounted.length) strategies.push(`Not counted (not proven in the back-test): ${c.notCounted.slice(0, 4).join(', ')}.`);
+    return { action, tone, say, price: p, entry, entryZone, stop, t1, t2, rr: rrOut, agree: c.agree, of: c.of, score: c.score, backing, strategies, concepts, zones,
       demand: zone(D), supply: zone(S), at: Date.now() };
   }
 
@@ -335,7 +341,7 @@
     const entryTxt = c.entryZone ? `${rs(c.entryZone[0])} – ${rs(c.entryZone[1])}` : rs(c.entry);
     return `<div class="wl-col">
       <div class="wl-col-title">${title}${kind === 'intra' && !marketOpen() ? ' <span class="muted">(for the next session)</span>' : ''}</div>
-      <div class="wl-call-row"><span class="wl-call ${c.tone}">${c.action}</span><span class="muted">${c.agree}/${c.of} strategies</span></div>
+      <div class="wl-call-row"><span class="wl-call ${c.tone}">${c.action}</span>${backingTag(c)}</div>
       <p class="wl-say">${esc(c.say)}</p>
       <div class="wl-levels">
         ${lv(c.action === 'SELL' ? 'Buy again near' : 'Entry (demand)', entryTxt)}
@@ -350,6 +356,15 @@
     </div>`;
   }
 
+  // Proven / Watch / zone-only tag for a call
+  function backingTag(c) {
+    if (!c || c.action === 'WAIT') return `<span class="muted">${c ? `${c.agree}/${c.of} strategies` : ''}</span>`;
+    if (c.backing === 'proven') return '<span class="tier tier-proven" title="Backed by a strategy that is proven in the 5-year back-test">Proven</span>';
+    if (c.backing === 'watch') return '<span class="tier tier-watch" title="Backed only by Watch strategies (small positive back-test, half weight)">Watch</span>';
+    if (c.backing === 'counted') return '<span class="tier tier-watch">Strategies</span>';
+    return root.Tiers ? Tiers.zoneBadge() : '';
+  }
+
   // Compact one-line summary of a call, for the collapsed row
   function callLine(c) {
     if (!c) return '<span class="muted">Checking…</span>';
@@ -360,7 +375,8 @@
       ? [`Book profit ~<b>${r0(c.price)}</b>`, c.entry || c.entryZone ? `re-buy ${e}` : '']
       : [c.entry || c.entryZone ? `Entry ${e}` : '', c.stop ? `SL <b class="text-red">${r0(c.stop)}</b>` : '', c.t1 ? `T1 <b class="text-green">${r0(c.t1)}</b>` : '', c.rr != null && c.action !== 'WAIT' ? `R:R ${c.rr.toFixed(1)}` : ''];
     const filtered = bits.filter(Boolean);
-    return `<span class="wl-call ${c.tone}">${c.action}</span><span class="wl-line">${filtered.join(' · ') || esc(c.say).slice(0, 60)}</span>`;
+    const mini = c.action === 'WAIT' ? '' : c.backing === 'proven' ? '<span class="tier tier-proven sm">P</span>' : c.backing === 'watch' || c.backing === 'counted' ? '<span class="tier tier-watch sm">W</span>' : '<span class="tier tier-unproven sm" title="Zone only · not proven">Z</span>';
+    return `<span class="wl-call ${c.tone}">${c.action}</span>${mini}<span class="wl-line">${filtered.join(' · ') || esc(c.say).slice(0, 60)}</span>`;
   }
   let view = 'pos';
   try { view = localStorage.getItem('mm-wl-view') === 'intra' ? 'intra' : 'pos'; } catch { /* default */ }

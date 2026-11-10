@@ -93,7 +93,7 @@
     try {
       const s = await getJSON('api/scan.php?action=latest');
       if (!s.date) return fill('home-opps', empty('No scan yet. It runs by itself after 3:40 pm on trading days.'));
-      const strong = s.rows.filter(r => r.verdict === 'Buy' && r.agree >= 2 && r.rr >= 1.5 && r.trend && r.trend[0] !== 'Bearish')
+      const strong = s.rows.filter(r => r.verdict === 'Buy' && (window.Tiers ? Tiers.isStrong(r) : r.agree >= 2) && r.rr >= 1.5 && r.trend && r.trend[0] !== 'Bearish')
         .sort((a, b) => b.rr - a.rr).slice(0, 5);
       const near = s.rows.filter(r => r.verdict === 'Buy on dip' && r.dist != null && r.dist <= 3).length;
       fill('home-opps', `${strong.length ? `<ul class="q-list">${strong.map(r => `

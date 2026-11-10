@@ -48,10 +48,11 @@
     return { md, ks, cs };
   }
 
-  // A buy counts as strong only with 2+ strategies agreeing, gain at least 1.5× the risk,
+  // A buy counts as strong only when backed by a Proven strategy (or two Watch ones), gain at least 1.5× the risk,
   // and the monthly trend not falling. Applied when showing, so older scans regroup too.
+  const strong = r => (root.Tiers ? Tiers.isStrong(r) : r.agree >= 2);
   function categorize(r) {
-    if (r.verdict === 'Buy') return r.agree >= 2 && r.rr >= 1.5 && r.trend[0] !== 'Bearish' ? 'buy' : 'weak';
+    if (r.verdict === 'Buy') return strong(r) && r.rr >= 1.5 && r.trend[0] !== 'Bearish' ? 'buy' : 'weak';
     if (r.tone === 'short') return 'avoid';
     if (r.verdict === 'Buy on dip') return r.dist != null && r.dist <= 3 ? 'near' : 'dip';
     return 'wait';
@@ -63,7 +64,7 @@
     const dist = buy && md.price ? (md.price - buy) / md.price * 100 : null;   // how far price must fall to reach the buy zone
     return {
       symbol, name: name || md.name, price: md.price, change: md.changePercent, verdict: c.verdict, tone: c.tone,
-      agree: c.agree, of: c.of, buyLow: c.buyLow, buyHigh: c.buyHigh, stop: c.stop, target: c.sell1 ?? c.coverAt ?? null, sellAt: c.sellAt ?? null,
+      agree: c.agree, of: c.of, score: c.score ?? null, backing: c.backing || null, buyLow: c.buyLow, buyHigh: c.buyHigh, stop: c.stop, target: c.sell1 ?? c.coverAt ?? null, sellAt: c.sellAt ?? null,
       rr: c.rr != null && isFinite(c.rr) ? +c.rr.toFixed(2) : null, dist: dist != null ? +dist.toFixed(2) : null,
       setting: (c.settingUp || []).length,
       trend: [ks.trends.htf.trend, ks.trends.itf.trend, ks.trends.ltf.trend],
@@ -71,6 +72,10 @@
     };
   }
   const withCat = r => ({ ...r, cat: categorize(r) });
+  // Who backs the call: Proven / Watch strategies, or nothing counted
+  const backTag = r => r.tone !== 'long' ? `${r.agree}/${r.of} agree` : r.backing === 'proven' ? '<span class="tier tier-proven">Proven</span>'
+    : r.backing === 'watch' ? '<span class="tier tier-watch">Watch</span>'
+    : r.backing === 'none' ? '<span class="tier tier-unproven">Not proven</span>' : `${r.agree}/${r.of} agree`;
 
   // ---------- results calendar (for "results soon" flags) ----------
   let calendar = null;
@@ -156,8 +161,8 @@
   // ---------- Opportunities page ----------
   const oppState = { tab: 'buy', filter: '' };
   const CAT = {
-    buy: ['Strong buy', 'In a buy zone now, 2+ strategies agree, gain at least 1.5× the risk, monthly trend not falling.'],
-    weak: ['Weak buy', 'In a buy zone, but only one strategy agrees, the gain is small for the risk, or the monthly trend is falling.'],
+    buy: ['Strong buy', 'In a buy zone now, backed by a Proven strategy (or two Watch ones), gain at least 1.5× the risk, monthly trend not falling.'],
+    weak: ['Weak buy', 'In a buy zone, but backed only by one Watch strategy, the gain is small for the risk, or the monthly trend is falling.'],
     near: ['Near a buy', 'A buy zone is within 3% below the price: set a limit order or watch it.'],
     dip: ['Buy on dip', 'Bullish, but the buy zone is more than 3% below.'],
     avoid: ['Avoid / sell', 'Strategies point down: avoid buying; holders may consider selling.'],
@@ -180,7 +185,7 @@
     const cal = calendar || {};
     const f = oppState.filter.toLowerCase();
     const list = rows.filter(r => r.cat === oppState.tab && (!f || (r.symbol + ' ' + r.name).toLowerCase().includes(f)));
-    const sorters = { buy: (a, b) => b.agree - a.agree || (b.rr || 0) - (a.rr || 0), weak: (a, b) => b.agree - a.agree || (b.rr || 0) - (a.rr || 0), near: (a, b) => a.dist - b.dist, dip: (a, b) => a.dist - b.dist, avoid: (a, b) => b.agree - a.agree, wait: (a, b) => b.setting - a.setting };
+    const sorters = { buy: (a, b) => (b.score ?? b.agree) - (a.score ?? a.agree) || (b.rr || 0) - (a.rr || 0), weak: (a, b) => (b.score ?? b.agree) - (a.score ?? a.agree) || (b.rr || 0) - (a.rr || 0), near: (a, b) => a.dist - b.dist, dip: (a, b) => a.dist - b.dist, avoid: (a, b) => b.agree - a.agree, wait: (a, b) => b.setting - a.setting };
     list.sort(sorters[oppState.tab]);
     const counts = Object.fromEntries(Object.keys(CAT).map(k => [k, rows.filter(r => r.cat === k).length]));
     const head = scan.running
@@ -194,7 +199,7 @@
         const zone = oppState.tab === 'avoid' ? rs(r.sellAt) : r.buyLow == null ? '—' : r.buyLow === r.buyHigh ? rs(r.buyLow) : `${rs(r.buyLow)} – ${rs(r.buyHigh)}`;
         return `<tr><td><b>${esc(r.symbol)}</b><br><span class="muted">${esc(String(r.name).slice(0, 28))}</span>${res}</td>
           <td>${rs(r.price)}<br><span class="${r.change > 0 ? 'text-green' : r.change < 0 ? 'text-red' : ''}">${pct(r.change)}</span></td>
-          <td>${esc(r.verdict)}<br><span class="muted">${r.agree}/${r.of} agree${r.dist != null && r.cat !== 'buy' && r.cat !== 'avoid' ? ` · ${r.dist.toFixed(1)}% away` : ''}</span></td>
+          <td>${esc(r.verdict)}<br><span class="muted">${backTag(r)}${r.dist != null && r.cat !== 'buy' && r.cat !== 'avoid' ? ` · ${r.dist.toFixed(1)}% away` : ''}</span></td>
           <td>${zone}</td><td>${rs(r.stop)}</td><td>${rs(r.target)}</td><td>${r.rr != null ? '1 : ' + r.rr.toFixed(1) : '—'}</td>
           <td>${r.trend.map(trendWord).join(' / ')}</td>
           <td class="opp-actions"><button type="button" class="link-btn" data-analyze="${esc(r.symbol)}">Analyze</button>${isAdmin() && r.tone !== 'short' ? `<button type="button" class="link-btn" data-watch="${esc(r.symbol)}" data-name="${esc(r.name)}">+ Trading watchlist</button>` : ''}</td></tr>`;

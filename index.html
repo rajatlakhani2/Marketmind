@@ -22,7 +22,8 @@
   <script src="js/ks001.js?v=14"></script>
   <script src="js/conditions.js?v=14"></script>
   <script src="js/library.js?v=14"></script>
-  <script src="js/consensus.js?v=16"></script>
+  <script src="js/tiers.js?v=1"></script>
+  <script src="js/consensus.js?v=17"></script>
   <script src="js/account.js?v=14"></script>
   <script src="js/stockpicker.js?v=14"></script>
   <script src="js/mindguru.js?v=16"></script>
@@ -30,15 +31,15 @@
   <script src="js/optbuilder.js?v=16"></script>
   <script src="js/fno.js?v=16"></script>
   <script src="js/events.js?v=14"></script>
-  <script src="js/trading.js?v=14"></script>
-  <script src="js/scan.js?v=14"></script>
-  <script src="js/watchlist.js?v=20"></script>
+  <script src="js/trading.js?v=15"></script>
+  <script src="js/scan.js?v=15"></script>
+  <script src="js/watchlist.js?v=21"></script>
   <script src="js/candlechart.js?v=21"></script>
-  <script src="js/stock.js?v=21"></script>
+  <script src="js/stock.js?v=22"></script>
   <script src="js/live.js?v=22"></script>
-  <script src="js/backtest.js?v=25"></script>
+  <script src="js/backtest.js?v=26"></script>
   <script src="js/nav.js?v=23"></script>
-  <script src="js/home.js?v=20"></script>
+  <script src="js/home.js?v=21"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -633,6 +634,15 @@ input, select, textarea { color-scheme: light; }
 .sp-exch b { font-size: 0.64rem; font-weight: 600; color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin-left: 3px; }
 .stock-picker-empty { padding: 12px; font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5; }
 /* Strategy trust weight next to each strategy in the verdict */
+.tier { display: inline-block; font-size: 0.68rem; font-weight: 700; margin-left: 6px; padding: 1px 7px; border-radius: 6px; letter-spacing: 0.02em; vertical-align: middle; white-space: nowrap; }
+.tier.sm { font-size: 0.62rem; padding: 0 5px; margin: 0 4px; }
+.tier-proven { background: #dcf1e6; color: var(--green); }
+.tier-watch { background: #fbefd5; color: #9a6400; }
+.tier-unproven { background: var(--bg-hover); color: var(--text-muted); }
+.st-tested { list-style: none; padding: 0; margin: 8px 0; font-size: 0.86rem; }
+.st-tested li { padding: 3px 0; }
+.st-tested .tier { margin: 0 6px 0 0; }
+.bt-tiers select { font-size: 0.8rem; padding: 2px 4px; }
 .s-trust { font-size: 0.7rem; font-weight: 600; margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: var(--bg-hover); color: var(--text-secondary); }
 .s-trust.up { background: #dcf1e6; color: var(--green); }
 .s-trust.down { background: #f8e0dd; color: var(--red); }
@@ -2328,7 +2338,7 @@ class UIRenderer {
     list.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><h3 style="font-size:0.95rem;">Strategies (${strategies.length})</h3></div>` +
       strategies.map(s => `
         <div class="strategy-card ${this.currentStrategy?.id === s.id ? 'active' : ''}" data-id="${s.id}">
-          <div class="flex-between"><h4>${this._esc(s.name)} ${this._originTag(s)}</h4></div>
+          <div class="flex-between"><h4>${this._esc(s.name)} ${this._originTag(s)}${window.Tiers && window.Consensus && Consensus.LEVELS[s.id] ? Tiers.badge(s.id) : ''}</h4></div>
           <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">${this._esc(s.category)}</p>
           <p style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;">${s.conditions.length} conditions</p>
           ${s.isUserCreated ? `<button class="btn-danger btn-small" style="margin-top:6px;" onclick="app.deleteStrat('${s.id}')">Delete</button>` : ''}
@@ -2343,11 +2353,20 @@ class UIRenderer {
     });
   }
 
+  _tierLine(id) {
+    const t = Tiers.info(id), bt = t.bt;
+    const res = bt && bt.avg != null ? ` Back-test: ${bt.avg >= 0 ? '+' : ''}${Number(bt.avg).toFixed(2)}R per trade after costs${bt.years ? `, positive in ${bt.yearsPos} of ${bt.years} years` : ''}${bt.n ? `, ${bt.n} trades` : ''}.` : '';
+    const live = t.live && t.live.n ? ` Live calls: ${t.live.avg >= 0 ? '+' : ''}${Number(t.live.avg).toFixed(2)}R over ${t.live.n}.` : '';
+    const what = t.tier === 'proven' ? 'Its vote counts in full.' : t.tier === 'watch' ? 'Its vote counts half.' : 'It is shown but its vote is not counted.';
+    return `${t.label}: ${what}${res}${live}${t.override ? ' Tier set by hand.' : ''}`;
+  }
+
   _renderStrategyDetail(strategy) {
     const detail = document.getElementById('strategy-detail');
     if (!strategy) { detail.innerHTML = ''; return; }
     detail.innerHTML = `
-      <h3 style="font-size:1.1rem;margin-bottom:12px;">${this._esc(strategy.name)} ${this._originTag(strategy)}</h3>
+      <h3 style="font-size:1.1rem;margin-bottom:12px;">${this._esc(strategy.name)} ${this._originTag(strategy)}${window.Tiers && window.Consensus && Consensus.LEVELS[strategy.id] ? Tiers.badge(strategy.id) : ''}</h3>
+      ${window.Tiers && window.Consensus && Consensus.LEVELS[strategy.id] ? `<p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:10px;">${this._esc(this._tierLine(strategy.id))}</p>` : ''}
       <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Category: ${this._esc(strategy.category)} | Source: ${this._esc(strategy.sourceName)}</p>
       <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Description</h4>
       <p style="font-size:0.85rem;color:var(--text-secondary);line-height:1.6;">${this._esc(strategy.description?.slice(0,300) || 'No description.')}</p>
@@ -2687,7 +2706,7 @@ class UIRenderer {
         ? `${active} of ${c.of} strategies show a signal, but MarketMind sets ${active === 1 ? 'it' : 'them'} aside (the reason is in the verdict below)${soon}.`
         : `None of the ${c.of} strategies gives a signal yet${soon}.`);
     } else if (c.agree) {
-      lines.push(`${c.agree} of ${c.of} strategies agree with this.`);
+      lines.push(`Backed by ${c.supporting.join(', ')} (${c.backing === 'proven' ? 'includes a Proven strategy' : 'Watch strategies only, half weight'}).`);
     }
     // Soon is about "the next few days" for daily charts, but "later today" for intraday ones
     const intraday = ['5m', '15m', '30m', '1h'].includes(md.timeframe);
@@ -2739,20 +2758,20 @@ class UIRenderer {
         ? `<span class="s-trust ${r.weight >= 1.05 ? 'up' : r.weight <= 0.95 ? 'down' : ''}" title="MindGuru: ${Math.round(r.learned.winRate * 100)}% winners, ${r.learned.avgR >= 0 ? '+' : ''}${r.learned.avgR.toFixed(2)}R average over ${r.learned.trades} trades (${this._esc(r.learned.scope)})">×${r.weight.toFixed(2)}</span>`
         : '';
       return `<details class="s-row">
-        <summary><span class="s-name">${this._esc(r.name)}${trust}</span><span class="chip ${chip}">${label}</span><span class="s-count">${r.met}/${r.total}${r.unchecked ? ` +${r.unchecked}?` : ''}</span></summary>
+        <summary><span class="s-name">${this._esc(r.name)}${window.Tiers ? Tiers.badge(r.id) : ''}${trust}</span><span class="chip ${chip}">${label}</span><span class="s-count">${r.met}/${r.total}${r.unchecked ? ` +${r.unchecked}?` : ''}</span></summary>
         <div class="s-levels">${lv}</div>
         ${p && p.how ? `<p class="s-how">${this._esc(p.how)}${p.targetWhy ? ` · sell target = ${this._esc(p.targetWhy)}` : ''}</p>` : ''}
         <ul class="s-conds">${r.conditions.map(x => `<li><span class="${x.unknown ? 'condition-warn' : x.met ? 'condition-check' : 'condition-cross'}">${x.unknown ? '?' : x.met ? '✓' : '✗'}</span> ${this._esc(x.condition)} <span class="cond-detail">${this._esc(x.detail)}</span></li>`).join('')}</ul>
       </details>`;
     }).join('');
     return this._renderSection('All-Strategy Verdict', `
-      <div class="verdict ${toneCls}"><span class="v-badge">${this._esc(c.verdict)}</span><span class="v-agree">${c.agree} of ${c.of} strategies agree</span></div>
+      <div class="verdict ${toneCls}"><span class="v-badge">${this._esc(c.verdict)}</span>${c.tone === 'long' ? `<span class="tier ${c.backing === 'proven' ? 'tier-proven' : 'tier-watch'}">${c.backing === 'proven' ? 'Proven' : 'Watch only'}</span>` : ''}<span class="v-agree">${c.agree} counted · score ${c.score != null ? c.score.toFixed(2) : '—'}${(c.notCounted || []).length ? ` · ${c.notCounted.length} not counted` : ''}</span></div>
       <div class="v-tiles">${tiles}</div>
       <p class="v-summary">${live ? this._esc(c.summary) : 'Price levels are hidden because live data could not be loaded. The strategy statuses below are from simulated prices.'}</p>
       ${sizing}
       ${this._renderMindGuruNote(c.mindguru, cs.brain, c.tone)}
       <details class="s-all"><summary>All ${cs.results.length} strategies <span class="muted">· ${statusCount('Active')} signal${statusCount('Active') === 1 ? '' : 's'}, ${statusCount('Setting up')} setting up · tap to open</span></summary>
-        <p class="muted" style="margin:6px 0 2px;">Tap a strategy for its conditions. × is MindGuru's trust in it: above 1 has worked well, below 1 hasn't.</p>
+        <p class="muted" style="margin:6px 0 2px;">Tap a strategy for its conditions. Proven strategies count in full, Watch half, Not proven are shown but not counted; short signals count only while NIFTY is below its 200-day average. × is MindGuru's trust: above 1 has worked well, below 1 hasn't.</p>
         <div class="s-list">${rows}</div>
       </details>
       <p class="citation">${this._tfName(md.timeframe, true)} chart${md.lastCandleLive ? " (today's candle built from the live price)" : ''}. Levels come from each strategy's own rules; the verdict combines the strategies that are active now. Not a recommendation — check the chart and your own plan before trading.</p>`);
@@ -3446,6 +3465,8 @@ const app = new App();
 window.app = app; // used by fno.js
 
 window.addEventListener('error', (e) => {
+  // Harmless browser notice when a chart resizes while the page is laying out: not an app error
+  if (/ResizeObserver loop/.test(e.message || '')) { e.stopImmediatePropagation(); return; }
   document.getElementById('app').innerHTML = `<div style="padding:40px;color:var(--red);"><h2>Runtime Error</h2><pre style="white-space:pre-wrap;font-size:0.85rem;">${e.message}\n${e.filename}:${e.lineno}</pre></div>`;
 });
 
