@@ -18,6 +18,13 @@
     'TATASTEEL', 'JSWSTEEL', 'ADANIPORTS', 'ONGC', 'COALINDIA', 'BAJAJFINSV', 'TECHM', 'GRASIM', 'HINDALCO', 'CIPLA', 'DRREDDY', 'EICHERMOT',
     'HEROMOTOCO', 'BRITANNIA', 'APOLLOHOSP', 'DIVISLAB', 'INDUSINDBK', 'SBILIFE', 'HDFCLIFE', 'BAJAJ-AUTO', 'TRENT', 'BEL', 'SHRIRAMFIN',
     'ADANIENT', 'TATACONSUM', 'DLF'];
+  const MID = ['PIDILITIND', 'SIEMENS', 'HAVELLS', 'DABUR', 'GODREJCP', 'AMBUJACEM', 'SHREECEM', 'BERGEPAINT', 'MARICO', 'COLPAL',
+    'ICICIGI', 'ICICIPRULI', 'BANKBARODA', 'PNB', 'CANBK', 'IOC', 'BPCL', 'GAIL', 'TATAPOWER', 'VEDL', 'JINDALSTEL', 'LUPIN',
+    'AUROPHARMA', 'TORNTPHARM', 'ZYDUSLIFE', 'BOSCHLTD', 'MOTHERSON', 'TVSMOTOR', 'ASHOKLEY', 'BHARATFORG', 'MUTHOOTFIN', 'CHOLAFIN',
+    'PAGEIND', 'NAUKRI', 'PERSISTENT', 'LTIM', 'MPHASIS', 'COFORGE', 'INDIGO', 'IRCTC', 'HAL', 'DMART', 'POLYCAB', 'ABB',
+    'CUMMINSIND', 'VOLTAS', 'MRF', 'PETRONET', 'HINDPETRO', 'NMDC'];
+  // Background tabs slow setTimeout to once a second; a MessageChannel hop is not throttled
+  const yieldNow = (() => { const ch = new MessageChannel(); const q = []; ch.port1.onmessage = () => { const f = q.shift(); if (f) f(); }; return () => new Promise(r => { q.push(r); ch.port2.postMessage(0); }); })();
 
   // Round-trip costs as % of trade value: brokerage, STT, exchange, stamp, GST and slippage
   const COST = { swing: 0.25, intraday: 0.10 };
@@ -128,7 +135,7 @@
         busy.set(p.strategyId, tr.exitIdx);
         push({ s: p.strategyId, name: p.strategyName, sym, side: p.side, r: tr.r, why: tr.why, at: tr.exitAt, year: day.slice(0, 4), up: p.side === 'short' ? !up : up });
       }
-      if (t % 20 === 0) await new Promise(r => setTimeout(r, 0));
+      if (t % 20 === 0) await yieldNow();
       if (S.cancel) return;
     }
   }
@@ -166,7 +173,7 @@
           push({ s: p.strategyId, name: p.strategyName, sym, side: p.side, r: tr.r, why: tr.why, at: tr.exitAt, year: dy.d.slice(0, 7), up: p.side === 'short' ? !up : up });
         }
       }
-      await new Promise(r => setTimeout(r, 0));
+      await yieldNow();
       if (S.cancel) return;
     }
   }
@@ -241,6 +248,7 @@
           <label>Stocks<select id="bt-universe">
             <option value="quick"${cfg.universe === 'quick' ? ' selected' : ''}>Quick test: 10 large caps</option>
             <option value="large"${cfg.universe === 'large' ? ' selected' : ''}>50 large caps</option>
+            <option value="hundred"${cfg.universe === 'hundred' ? ' selected' : ''}>100 large &amp; mid caps</option>
             <option value="watch"${cfg.universe === 'watch' ? ' selected' : ''}>My Watchlist (${wl.length})</option>
           </select></label>
           <label>Capital (₹)<input type="number" id="bt-capital" value="${cfg.capital}" min="10000" step="10000"></label>
@@ -258,7 +266,7 @@
       if (S.running) return;
       cfg.years = +$('#bt-years').value; cfg.universe = $('#bt-universe').value; cfg.capital = +$('#bt-capital').value || 100000; cfg.risk = +$('#bt-risk').value || 1;
       S.cfg = cfg;
-      const symbols = cfg.universe === 'watch' ? wl : cfg.universe === 'large' ? LARGE : LARGE.slice(0, 10);
+      const symbols = cfg.universe === 'watch' ? wl : cfg.universe === 'hundred' ? LARGE.concat(MID) : cfg.universe === 'large' ? LARGE : LARGE.slice(0, 10);
       if (!symbols.length) { $('#bt-progress').innerHTML = '<p class="auth-error">Your Watchlist is empty.</p>'; return; }
       renderPage(container);
       S.running = true;
