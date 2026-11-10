@@ -73,6 +73,32 @@
     return null;
   }
 
+  // ---------- combined swing system from the 3 Proven strategies ----------
+  // Rules fixed in advance (10 Nov 2026), judged on 2021–24 (train) and 2025–26 (test, untouched):
+  //   entry  : Golden Cross, ADX Pullback to 20 EMA or Supertrend Flip gives a buy signal
+  //   filter : stock above its 200-day average and NIFTY above its 200-day average
+  //   stop   : 2 × ATR(14) below the entry
+  //   exits  : half at +1R (stop on the rest moves to the entry), rest at +3R or after 30 days
+  // A second version without the partial (all at +2R) is run alongside for comparison.
+  const PROVEN = ['lib_s_golden_cross', 'lib_s_adx_ema_pullback', 'lib_s_supertrend_flip'];
+  function comboPlans(cs, md, candles, niftyUp) {
+    if (!niftyUp || md.ma200 == null || !(md.price > md.ma200)) return [];
+    const hit = cs.results.find(r => PROVEN.includes(r.id) && r.status === 'Active' && r.plan && r.plan.side === 'long');
+    if (!hit) return [];
+    const a = Consensus.atr(candles); if (!(a > 0)) return [];
+    const entry = md.price, stop = entry - 2 * a, R = entry - stop;
+    return [
+      { strategyId: '__combo', strategyName: 'Combined Proven system (half at +1R)', side: 'long', entry, stop, target: entry + 3 * R, partial: 1, market: true },
+      { strategyId: '__combo_np', strategyName: 'Combined Proven system (all at +2R)', side: 'long', entry, stop, target: entry + 2 * R, market: true },
+    ];
+  }
+  // Average R over a set of years, weighted by trade count
+  function yearsAvg(s, pick) {
+    let n = 0, sum = 0;
+    for (const [y, v] of Object.entries(s.years || {})) if (pick(+y.slice(0, 4))) { n += v.n; sum += v.avg * v.n; }
+    return n ? { avg: sum / n, n } : null;
+  }
+
   // ---------- trade simulation ----------
   function simulate(p, bars, from, opts) {
     const long = p.side !== 'short';
@@ -90,11 +116,19 @@
     if (!(risk > 0) || (long ? fill <= p.stop : fill >= p.stop)) return null;
     const end = opts.exitIdx(fi);
     let exit = null, ei = end, why = 'time';
+    // Partial profit: book half at +p.partial R, then move the stop on the rest to the entry price
+    let stop = p.stop, half = null;
+    const halfAt = p.partial ? (long ? fill + p.partial * risk : fill - p.partial * risk) : null;
     for (let j = fi; j <= end && j < bars.length; j++) {
       const b = bars[j];
       const open = j === fi ? fill : b.open;
+      if (long && halfAt != null && half == null) {
+        if (b.low <= stop) { exit = Math.min(open, stop); ei = j; why = 'stop'; break; }
+        if (b.high >= halfAt) { half = Math.max(open, halfAt); stop = fill; if (b.high >= p.target) { exit = Math.max(open, p.target); ei = j; why = 'target'; break; } continue; }
+        continue;
+      }
       if (long) {
-        if (b.low <= p.stop) { exit = Math.min(open, p.stop); ei = j; why = 'stop'; break; }
+        if (b.low <= stop) { exit = Math.min(open, stop); ei = j; why = half != null ? 'breakeven' : 'stop'; break; }
         if (b.high >= p.target) { exit = Math.max(open, p.target); ei = j; why = 'target'; break; }
       } else {
         if (b.high >= p.stop) { exit = Math.max(open, p.stop); ei = j; why = 'stop'; break; }
@@ -105,7 +139,8 @@
     // A jump of 25%+ between two bars of a large cap is almost always an unadjusted split or bonus in the
     // price data, not a real move: drop the trade instead of booking a fake profit or loss.
     for (let j = Math.max(1, from - 1); j <= ei; j++) if (Math.abs(bars[j].open / bars[j - 1].close - 1) > 0.25) return null;
-    const gross = (long ? exit - fill : fill - exit) / risk;
+    const full = (long ? exit - fill : fill - exit) / risk;
+    const gross = half != null ? 0.5 * (half - fill) / risk + 0.5 * full : full;
     const cost = (opts.costPct / 100) * fill / risk;
     return { r: gross - cost, why, entryAt: bars[fi].time, exitAt: bars[ei].time, fillIdx: fi, exitIdx: ei };
   }
@@ -130,6 +165,7 @@
       const cs = Consensus.run({ md, ks, strategies, check, market: up });
       const plans = MindGuru.projections(cs, md, ks, day);
       const b = demandBounce(ks, window); if (b) plans.push(b);
+      plans.push(...comboPlans(cs, md, window, up));
       for (const p of plans) {
         if ((busy.get(p.strategyId) || -1) >= t) continue;
         const tr = simulate(p, daily, t + 1, { lastEntryIdx: f => f + RULES.swing.entryBars - 1, exitIdx: fi => fi + RULES.swing.holdBars, costPct: COST.swing });
@@ -259,7 +295,7 @@
           <button type="button" class="btn-primary" id="bt-run">${S.running ? 'Running…' : 'Run back-test'}</button>
           ${S.running ? '<button type="button" class="btn-secondary" id="bt-stop">Stop</button>' : ''}
         </div>
-        <p class="citation">Replays the real engine on past prices: every strategy, the All-Strategy Verdict, and the new "demand zone + bounce" rule. Signals fill on the next bar (gaps included), the stop is checked before the target, swing trades exit after 30 days at most, intraday trades by 15:15. Costs are taken off every trade (${COST.swing}% swing, ${COST.intraday}% intraday, round trip). Only one open trade per strategy per stock at a time. Intraday history is only about 60 days (Yahoo's limit), so intraday results are a rough first look. Past results do not guarantee future ones.</p>
+        <p class="citation">Replays the real engine on past prices: every strategy, the All-Strategy Verdict, the "demand zone + bounce" rule, and the Combined Proven system (a Proven buy signal, stock and NIFTY above their 200-day averages, stop 2× ATR, half booked at +1R with the rest at break-even, then +3R or 30 days). Its rules were fixed before the test: 2025–26 is the untouched out-of-sample check. Signals fill on the next bar (gaps included), the stop is checked before the target, swing trades exit after 30 days at most, intraday trades by 15:15. Costs are taken off every trade (${COST.swing}% swing, ${COST.intraday}% intraday, round trip). Only one open trade per strategy per stock at a time. Intraday history is only about 60 days (Yahoo's limit), so intraday results are a rough first look. Past results do not guarantee future ones.</p>
         <div id="bt-progress"></div>
       </div>
       <div id="bt-results"></div>
@@ -343,16 +379,18 @@
         <ul class="bt-find">
           ${verdict ? `<li>The <b>All-Strategy Verdict</b> (what Analyze shows): ${verdict.n} trades, ${Math.round(verdict.win * 100)}% right, <b class="${verdict.avg >= 0 ? 'up' : 'down'}">${fmtR(verdict.avg)}</b> per trade.</li>` : ''}
           ${bounce ? `<li><b>New demand rule</b> (wait for the bounce): ${bounce.n} trades, ${Math.round(bounce.win * 100)}% right, <b class="${bounce.avg >= 0 ? 'up' : 'down'}">${fmtR(bounce.avg)}</b>${oldDemand ? ` vs the old demand rule ${fmtR(oldDemand.avg)}` : ''}.${bounce.avgUp != null ? ` With the NIFTY-above-200-day filter: ${fmtR(bounce.avgUp)}.` : ''}</li>` : ''}
+          ${['__combo', '__combo_np'].map(id => res.stats.find(s => s.id === id)).filter(Boolean).map(s => { const tr = yearsAvg(s, y => y <= 2024), te = yearsAvg(s, y => y >= 2025); return `<li><b>${esc(s.name)}</b>: ${s.n} trades, ${Math.round(s.win * 100)}% right, <b class="${s.avg >= 0 ? 'up' : 'down'}">${fmtR(s.avg)}</b> per trade, deepest drop ${s.dd.toFixed(1)}R. Train 2021–24: ${tr ? `${fmtR(tr.avg)} (${tr.n})` : '—'} · <b>Test 2025–26: ${te ? `${fmtR(te.avg)} (${te.n})` : '—'}</b>${te && te.n >= 30 ? (te.avg >= 0.1 ? ' — holds up out of sample.' : te.avg > 0 ? ' — positive out of sample, but below +0.10R.' : ' — does not hold up out of sample.') : ''}</li>`; }).join('')}
           <li><b>${keep.length}</b> strateg${keep.length === 1 ? 'y makes' : 'ies make'} at least +0.1R per trade after costs${keep.length ? `: ${keep.slice(0, 4).map(s => esc(s.name)).join(', ')}` : ''}.</li>
         </ul>
-        ${chart(res.stats.filter(s => s.n >= 30).slice(0, 4).concat(verdict && verdict.n >= 30 && !res.stats.slice(0, 4).includes(verdict) ? [verdict] : []))}
+        ${chart([res.stats.find(s => s.id === '__combo')].filter(s => s && s.n >= 30).concat(res.stats.filter(s => s.n >= 30 && s.id !== '__combo').slice(0, 3)).concat(verdict && verdict.n >= 30 && !res.stats.slice(0, 4).includes(verdict) ? [verdict] : []))}
       </div>
       <div class="card"><div class="tbl-wrap"><table class="st-table bt-table">
-        <thead><tr><th>Strategy</th><th>Tier now</th><th>Result</th><th>Trades</th><th>Right</th><th>Avg / trade</th><th class="hide-sm">Profit factor</th><th class="hide-sm">Worst losing run</th><th class="hide-sm">Deepest drop</th><th>Total at ${cfg.risk}%</th><th class="hide-sm">With market filter</th>${years.length <= 6 ? years.map(y => `<th class="hide-sm">${y}</th>`).join('') : ''}</tr></thead>
+        <thead><tr><th>Strategy</th><th>Tier now</th><th>Result</th><th>Trades</th><th>Right</th><th>Avg / trade</th><th class="hide-sm">Profit factor</th><th class="hide-sm">Worst losing run</th><th class="hide-sm">Deepest drop</th><th>Total at ${cfg.risk}%</th><th class="hide-sm">With market filter</th><th class="hide-sm">Train 2021–24</th><th class="hide-sm">Test 2025–26</th>${years.length <= 6 ? years.map(y => `<th class="hide-sm">${y}</th>`).join('') : ''}</tr></thead>
         <tbody>${res.stats.map(s => `<tr>
           <td><b>${esc(s.name)}</b></td><td>${root.Tiers && s.id[0] !== '_' ? Tiers.badge(s.id) : ''}</td><td><span class="wl-call ${V[s.verdict][1]}">${V[s.verdict][0]}</span></td><td>${s.n}</td><td>${Math.round(s.win * 100)}%</td>
           <td class="${s.avg >= 0 ? 'up' : 'down'}"><b>${fmtR(s.avg)}</b></td><td class="hide-sm">${s.pf != null ? s.pf.toFixed(2) : '—'}</td><td class="hide-sm">${s.worst}</td><td class="hide-sm">${s.dd.toFixed(1)}R</td>
           <td class="${s.total >= 0 ? 'up' : 'down'}">${inr(money(s.total))}</td><td class="hide-sm">${s.avgUp != null && s.nUp >= 10 ? fmtR(s.avgUp) : '—'}</td>
+          ${c.style === 'swing' ? [yearsAvg(s, y => y <= 2024), yearsAvg(s, y => y >= 2025)].map(v => `<td class="hide-sm ${v ? (v.avg >= 0 ? 'up' : 'down') : ''}">${v ? fmtR(v.avg) : '—'}</td>`).join('') : '<td class="hide-sm">—</td><td class="hide-sm">—</td>'}
           ${years.length <= 6 ? years.map(y => `<td class="hide-sm ${s.years[y] ? (s.years[y].avg >= 0 ? 'up' : 'down') : ''}">${s.years[y] ? fmtR(s.years[y].avg) : ''}</td>`).join('') : ''}</tr>`).join('')}</tbody></table></div>
         <p class="citation">Keep = makes at least +0.1R per trade after costs with 30+ trades. Profit factor = money won ÷ money lost (above 1.3 is good). Worst losing run = most losses in a row; deepest drop = the biggest fall from a high, in R. "With market filter" counts only buys taken while NIFTY was above its 200-day average (and sells while below). A strategy that is positive in most years is more trustworthy than one with one lucky year.</p>
         ${res.failed.length ? `<p class="muted small">Skipped: ${res.failed.map(esc).join(' · ')}</p>` : ''}
