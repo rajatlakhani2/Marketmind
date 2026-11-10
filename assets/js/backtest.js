@@ -102,6 +102,9 @@
       }
     }
     if (exit == null) { ei = Math.min(end, bars.length - 1); exit = bars[ei].close; }
+    // A jump of 25%+ between two bars of a large cap is almost always an unadjusted split or bonus in the
+    // price data, not a real move: drop the trade instead of booking a fake profit or loss.
+    for (let j = Math.max(1, from - 1); j <= ei; j++) if (Math.abs(bars[j].open / bars[j - 1].close - 1) > 0.25) return null;
     const gross = (long ? exit - fill : fill - exit) / risk;
     const cost = (opts.costPct / 100) * fill / risk;
     return { r: gross - cost, why, entryAt: bars[fi].time, exitAt: bars[ei].time, fillIdx: fi, exitIdx: ei };
