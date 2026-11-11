@@ -23,7 +23,7 @@ $range    = isset($_GET['range'])    ? $_GET['range']    : '1y';
 $intervals = ['1m', '5m', '15m', '30m', '60m', '1d', '1wk', '1mo'];
 $ranges    = ['5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'max'];
 
-if (!preg_match('/^\^?[A-Z0-9&\-]{1,20}(\.(NS|BO))?$/', $symbol)) fail(400, 'Invalid symbol');
+if (!preg_match('/^\^?[A-Z0-9&_\-]{1,24}(\.(NS|BO))?$/', $symbol)) fail(400, 'Invalid symbol');
 if (!in_array($interval, $intervals, true)) fail(400, 'Invalid interval');
 if (!in_array($range, $ranges, true)) fail(400, 'Invalid range');
 

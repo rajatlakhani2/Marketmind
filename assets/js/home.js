@@ -1,4 +1,4 @@
-// MarketMind AI — Home: market at a glance, your Watchlist, today's best setups,
+// MarketMind AI — Home: full market overview (overview.js), market at a glance, your Watchlist, today's best setups,
 // orders waiting for approval, results dates and MindGuru's record. Every block loads on its own.
 (function (root) {
   'use strict';
@@ -53,7 +53,7 @@
         <p>${istNow().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}</p></div>
         <span class="mkt-pill ${open ? 'open' : ''}"><i></i>${open ? 'Market open' : 'Market closed'}</span>
       </div>
-      <div class="idx-row" id="home-idx">${INDICES.map(([n]) => `<div class="idx"><span>${n}</span><b class="skeleton-text">—</b><small>&nbsp;</small></div>`).join('')}</div>
+      ${root.Overview ? '<div id="home-overview"></div>' : `<div class="idx-row" id="home-idx">${INDICES.map(([n]) => `<div class="idx"><span>${n}</span><b class="skeleton-text">—</b><small>&nbsp;</small></div>`).join('')}</div>`}
       <div class="home-grid">
         ${card('home-watch', 'Your Watchlist', openBtn('watchlist', 'Calls'))}
         ${card('home-opps', "Today's best setups", openBtn('opps', 'All'))}
@@ -63,7 +63,7 @@
       </div>`;
     container.querySelectorAll('[data-go]').forEach(b => { b.onclick = () => root.Nav && Nav.go(b.dataset.go); });
 
-    indices(container);
+    if (root.Overview) Overview.render(container.querySelector('#home-overview')); else indices(container);
     let list = [];
     try { list = (await getJSON('api/watchlist.php?action=list')).items || []; } catch { /* shown below */ }
     watch(list);
