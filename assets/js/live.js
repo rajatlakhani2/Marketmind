@@ -86,23 +86,27 @@
   }
 
   async function refresh(container) {
-    if (S.busy) return;
-    S.busy = true; S.err = null;
+    if (S.busy) { S.again = true; return; }
+    S.busy = true; S.err = null; S.again = false;
     try {
-      S.list = await symbols();
+      const set = S.set, list = await symbols();
+      if (set !== S.set) { S.busy = false; return refresh(container); }
+      S.list = list;
       draw(container);
       let i = 0;
       const worker = async () => {
-        while (i < S.list.length) {
-          const sym = S.list[i++];
-          try { S.rows[sym] = await analyse(sym); } catch (e) { S.rows[sym] = { sym, error: e.message }; }
-          draw(container);
+        while (i < list.length && S.list === list) {
+          const sym = list[i++];
+          let row;
+          try { row = await analyse(sym); } catch (e) { row = { sym, error: e.message }; }
+          if (S.list === list) { S.rows[sym] = row; draw(container); }
         }
       };
       await Promise.all([worker(), worker(), worker(), worker()]);
-      S.at = Date.now();
+      if (S.list === list) S.at = Date.now();
     } catch (e) { S.err = e.message; }
     S.busy = false;
+    if (S.again) return refresh(container);
     draw(container);
   }
 
