@@ -38,8 +38,9 @@
   <script src="js/candlechart.js?v=21"></script>
   <script src="js/stock.js?v=22"></script>
   <script src="js/live.js?v=24"></script>
+  <script src="js/optcalls.js?v=1"></script>
   <script src="js/backtest.js?v=30"></script>
-  <script src="js/nav.js?v=23"></script>
+  <script src="js/nav.js?v=24"></script>
   <script src="js/overview.js?v=1"></script>
   <script src="js/home.js?v=22"></script>
   <style>
@@ -895,6 +896,11 @@ input, select, textarea { border-radius: 10px !important; }
 .tr-gloss { font-size: 0.84rem; margin-left: 18px; } .tr-gloss li { margin: 4px 0; }
 .live-help { padding: 12px 14px; margin-top: 12px; } .live-help h4 { font-size: 0.86rem; margin-bottom: 4px; } .live-help ul { font-size: 0.82rem; margin: 0 0 6px 18px; } .live-help li { margin: 3px 0; }
 .tr-radio { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; font-size: 0.88rem; } .tr-radio input { margin-top: 3px; }
+.oc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-top: 8px; }
+.oc-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; border-left-width: 4px; }
+.oc-card.call { border-left-color: var(--green); } .oc-card.put { border-left-color: var(--red); } .oc-card.wait { opacity: 0.85; }
+.oc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .oc-head .muted { margin-left: auto; }
+@media (max-width: 600px) { .oc-grid { grid-template-columns: 1fr; } }
 .pl-name { border-bottom: 1px dotted var(--text-muted); cursor: help; }
 @media (max-width: 700px) { .tr-dash { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tr-chips { margin-left: 0; } }
 @media (max-width: 600px) { .hide-xs { display: none; } .ov-table td, .ov-table th { padding: 7px 4px; } .ov-bar { display: none; } .ov-table { font-size: 0.8rem; } .ov-detail td { max-width: calc(100vw - 48px); } .ov-heat { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); } }
@@ -1180,6 +1186,7 @@ table.ob .r { text-align: right; }
         <li><a href="#" data-page="backtest"><span class="nav-icon">&#x1F9EA;</span> Back-test</a></li>
         <li><a href="#" data-page="stock"><span class="nav-icon">&#x1F50E;</span> Stock</a></li>
         <li><a href="#" data-page="live"><span class="nav-icon">&#x1F4CA;</span> Live buyers</a></li>
+        <li><a href="#" data-page="optcalls"><span class="nav-icon">&#x1F3AF;</span> Option calls</a></li>
         <li><a href="#" data-page="mindguru"><span class="nav-icon">&#x1F9E0;</span> MindGuru</a></li>
         <li><a href="#" data-page="fno"><span class="nav-icon">&#x1F4C8;</span> Futures &amp; Options</a></li>
         <li><a href="#" data-page="events"><span class="nav-icon">&#x1F4C5;</span> Events &amp; News</a></li>
@@ -1352,6 +1359,10 @@ table.ob .r { text-align: right; }
       </div>
       <div id="page-stock" class="page">
         <div id="stock-container"></div>
+      </div>
+      <div id="page-optcalls" class="page">
+        <header class="page-header"><h2>Option calls · live</h2></header>
+        <div id="optcalls-container"></div>
       </div>
       <div id="page-live" class="page">
         <header class="page-header"><h2>Live buyers &amp; sellers</h2></header>
@@ -3485,6 +3496,7 @@ class App {
       case 'stock': await Stock.renderPage(document.getElementById('stock-container')); break;
       case 'backtest': await Backtest.renderPage(document.getElementById('backtest-container')); break;
       case 'live': await LivePage.renderPage(document.getElementById('live-container')); break;
+      case 'optcalls': await OptCalls.renderPage(document.getElementById('optcalls-container')); break;
       case 'holdings': await Holdings.renderPage(document.getElementById('holdings-container')); break;
       case 'mindguru': await MindGuru.renderPage(document.getElementById('mindguru-container')); break;
       case 'theory': this.ui.renderTheory(); break;

@@ -16,7 +16,7 @@
   const GROUPS = [
     { id: 'home', label: 'Home', pages: [['dashboard', 'Overview']] },
     { id: 'watch', label: 'Watchlist', pages: [['watchlist', 'Watchlist']] },
-    { id: 'markets', label: 'Markets', pages: [['stock', 'Stock'], ['live', 'Live buyers'], ['opps', 'Opportunities'], ['fno', 'F&O'], ['analyze', 'Analyze'], ['events', 'Events & News'], ['screener', 'Screener']] },
+    { id: 'markets', label: 'Markets', pages: [['stock', 'Stock'], ['live', 'Live buyers'], ['opps', 'Opportunities'], ['fno', 'F&O'], ['optcalls', 'Option calls'], ['analyze', 'Analyze'], ['events', 'Events & News'], ['screener', 'Screener']] },
     { id: 'trade', label: 'Trade', pages: [['trading', 'Orders'], ['holdings', 'Holdings']] },
     { id: 'learn', label: 'Learn', pages: [['mindguru', 'MindGuru'], ['backtest', 'Back-test'], ['strategies', 'Strategies'], ['concepts', 'Concepts'], ['knowledge', 'Library'], ['theory', 'Theory'], ['methodology', 'Methodology']] },
   ];
