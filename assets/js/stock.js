@@ -130,6 +130,10 @@
           <section class="card st-card st-o3" id="st-events-card" hidden>
             <div class="st-card-head"><h3>Coming up</h3></div><div id="st-events"></div>
           </section>
+          <section class="card st-card st-o3">
+            <div class="st-card-head"><h3>News</h3><span class="muted small" id="st-news-sum"></span></div>
+            <div id="st-news"><div class="skeleton"></div><div class="skeleton short"></div></div>
+          </section>
         </aside>
       </div>`;
     wire(container);
@@ -139,6 +143,7 @@
     matrix(token);
     tested(token);
     events(token);
+    news(token);
     watchState();
     S.timer = setInterval(() => {
       const page = document.getElementById('page-stock');
@@ -373,6 +378,26 @@
       card.hidden = false;
       document.getElementById('st-events').innerHTML = w.map(x => `<p class="st-ev">${x}</p>`).join('');
     } catch { /* optional */ }
+  }
+
+  // ---------- latest news (Google News, last 14 days) ----------
+  const POS = /\b(surge|surges|soar|soars|rally|rallies|jump|jumps|gain|gains|rise|rises|record high|upgrade|upgrades|outperform|beats|strong|robust|growth|boost|order win|bags order|wins order|expansion|profit rises|profit jumps|buy rating|bullish|rebound|approval|approves|acquire|acquires)\b/i;
+  const NEG = /\b(fall|falls|fell|slump|slumps|plunge|plunges|crash|tumble|tumbles|drop|drops|decline|declines|slide|slides|downgrade|downgrades|underperform|misses|weak|loss|losses|profit falls|concern|concerns|pressure|selloff|sell-off|bearish|probe|penalty|ban|slowdown|default|fraud|raid|resigns|sell rating|warning|pledge)\b/i;
+  const newsTone = t => { const p = POS.test(t), n = NEG.test(t); return p && !n ? 1 : n && !p ? -1 : 0; };
+  async function news(token) {
+    const box = () => document.getElementById('st-news');
+    try {
+      const j = await getJSON(`api/events.php?action=news&symbol=${encodeURIComponent(S.symbol)}`);
+      if (token !== S.token || !box()) return;
+      const items = (j.items || []).slice(0, 8).map(n => ({ ...n, s: newsTone(n.title) }));
+      if (!items.length) { box().innerHTML = '<p class="muted small">No news in the last 14 days.</p>'; return; }
+      const pos = items.filter(n => n.s > 0).length, neg = items.filter(n => n.s < 0).length;
+      const sum = document.getElementById('st-news-sum');
+      if (sum) sum.innerHTML = `<span class="up">${pos} positive</span> · <span class="down">${neg} negative</span>`;
+      const ago = t => { const h = Math.round((Date.now() / 1000 - t) / 3600); return h < 1 ? 'just now' : h < 24 ? `${h} h ago` : `${Math.round(h / 24)} d ago`; };
+      box().innerHTML = `<ul class="ov-news">${items.map(n => `<li><span class="${n.s > 0 ? 'up' : n.s < 0 ? 'down' : 'muted'}">${n.s > 0 ? '▲' : n.s < 0 ? '▼' : '•'}</span> <a href="${esc(n.link)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a> <small class="muted">${esc(n.source || '')} · ${ago(n.at)}</small></li>`).join('')}</ul>
+        <p class="citation">Headlines from Google News. ▲ / ▼ is a simple word check of the headline, for context only: it does not change the buy or sell calls.</p>`;
+    } catch (e) { if (token === S.token && box()) box().innerHTML = `<p class="muted small">News not available: ${esc(e.message)}</p>`; }
   }
 
   let wlItems = null;
