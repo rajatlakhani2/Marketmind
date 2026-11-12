@@ -115,7 +115,7 @@ try {
             $row = ['name' => substr((string) ($s['name'] ?? $id), 0, 120), 'n' => (int) ($s['n'] ?? 0), 'avg' => round((float) ($s['avg'] ?? 0), 3), 'yearsPos' => $pos, 'years' => $years];
             $prev = $meta['bt'][$id]['tier'] ?? null;
             $row['tier'] = tier_from_backtest($row, $prev);
-            if ($prev !== $row['tier']) $changes[] = ['id' => $id, 'name' => $row['name'], 'from' => $prev ?? 'unproven', 'to' => $row['tier']];
+            if (($prev ?? 'unproven') !== $row['tier']) $changes[] = ['id' => $id, 'name' => $row['name'], 'from' => $prev ?? 'unproven', 'to' => $row['tier']];
             $bt[$id] = $row;
         }
         $meta['bt'] = $bt;
