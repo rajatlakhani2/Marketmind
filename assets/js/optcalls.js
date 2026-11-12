@@ -97,23 +97,31 @@
     }
     const row = { u, expiry, days: Math.ceil(daysTo(expiry)), spot, lot, atm, verdict: c ? c.verdict : '—', side, tag, why, D, Z, live: !!res.marketData.live, at: Date.now() };
     if (!side) {
-      row.wait = [D ? `Calls become interesting near ${rs(D.proximal, 0)} (demand zone${D.proximal < spot ? `, ${((D.proximal / spot - 1) * 100).toFixed(1)}%` : ''})` : null,
-        Z ? `puts near ${rs(Z.proximal, 0)} (supply zone, +${((Z.proximal / spot - 1) * 100).toFixed(1)}%)` : null].filter(Boolean).join('; ') || 'No nearby zones.';
+      const away = v => { const p = (v / spot - 1) * 100; return `${p > 0 ? '+' : ''}${p.toFixed(1)}%`; };
+      row.wait = [D ? `Calls become interesting near ${rs(D.proximal, 0)} (demand zone, ${away(D.proximal)})` : null,
+        Z ? (Z.proximal >= spot ? `puts near ${rs(Z.proximal, 0)} (supply zone, ${away(Z.proximal)})` : `price is above the supply zone at ${rs(Z.proximal, 0)}`) : null].filter(Boolean).join('; ') || 'No nearby zones.';
       return row;
     }
     // Contract and premiums
     const isCall = side === 'call';
-    const chainRow = (isCall ? calls.rows : puts.rows).find(r => r.strike === atm);
-    if (!chainRow || !(chainRow.ltp > 0)) { row.side = null; row.wait = `No traded ${atm} ${isCall ? 'call' : 'put'} right now.`; return row; }
+    // At-the-money, or the nearest strike that is actually trading
+    const traded = (isCall ? calls.rows : puts.rows).filter(r => r.ltp > 0).sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot));
+    const chainRow = traded[0];
+    if (!chainRow || Math.abs(chainRow.strike - spot) / spot > 0.05) { row.side = null; row.wait = `No traded ${isCall ? 'call' : 'put'} near ${num(atm, 0)} right now.`; return row; }
+    row.atm = chainRow.strike;
     const entry = chainRow.ask > 0 ? chainRow.ask : chainRow.ltp;
-    const vol = iv(chainRow.ltp, spot, atm, T, isCall) || 0.2;
-    let stop = stopU ? bs(stopU, atm, Math.max(T - 3 / 365, 1 / 365), vol, isCall) : entry * 0.6;
-    let target = targetU ? bs(targetU, atm, Math.max(T - 10 / 365, 1 / 365), vol, isCall) : entry * 1.8;
+    const K = chainRow.strike;
+    const vol = iv(chainRow.ltp, spot, K, T, isCall) || 0.2;
+    let stop = stopU ? bs(stopU, K, Math.max(T - 3 / 365, 1 / 365), vol, isCall) : entry * 0.6;
+    let target = targetU ? bs(targetU, K, Math.max(T - 10 / 365, 1 / 365), vol, isCall) : entry * 1.8;
+    // Premium stop between 50% and 80% of what you pay: tighter gets hit by normal noise, wider risks too much
     if (!(stop < entry)) stop = entry * 0.6;
-    stop = Math.max(stop, entry * 0.5);               // never risk more than half the premium
-    if (!(target > entry * 1.2)) target = entry * 1.8;
+    stop = Math.min(Math.max(stop, entry * 0.5), entry * 0.8);
+    // Target at least +30% and at most 3× the premium (the far zone may take longer than the option lasts)
+    if (!(target > entry * 1.3)) target = entry * 1.8;
+    target = Math.min(target, entry * 3);
     Object.assign(row, {
-      name: `${u.symbol} ${num(atm, 0)} ${isCall ? 'CE' : 'PE'} ${expiry}`, strike: atm, right: isCall ? 'call' : 'put',
+      name: `${u.symbol} ${num(K, 0)} ${isCall ? 'CE' : 'PE'} ${expiry}`, strike: K, right: isCall ? 'call' : 'put',
       entry: r05(entry), stop: r05(stop), target: r05(target), ltp: chainRow.ltp, oi: chainRow.oi, ivPct: vol * 100,
       stopU, targetU, costLot: entry * lot, riskLot: (entry - stop) * lot, rewardLot: (target - entry) * lot,
     });
