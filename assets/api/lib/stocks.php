@@ -225,7 +225,19 @@ function mm_search_stocks(PDO $pdo, string $q, int $limit = 20): array {
             ORDER BY (UPPER(symbol) LIKE ?) DESC, LENGTH(name), symbol LIMIT 60");
         $st2->execute([$loose, $loose, strtoupper(substr($letters, 0, 1)) . '%']);
         $seen = array_flip(array_map(fn($r) => $r['exchange'] . $r['symbol'], $rows));
-        foreach ($st2->fetchAll() as $r) if (!isset($seen[$r['exchange'] . $r['symbol']])) $rows[] = $r;
+        // Closest spelling first: compare with the start of the symbol and the first word(s) of the name
+        $Q = strtoupper($letters);
+        $dist = function (array $r) use ($Q): int {
+            $name = preg_replace('/[^A-Z0-9& ]/', '', strtoupper($r['name']));
+            $words = preg_split('/\s+/', trim($name));
+            $first = $words[0] ?? '';
+            $two = str_replace(' ', '', implode(' ', array_slice($words, 0, 2)));
+            // Best of symbol / name, then the name's own closeness breaks ties (WAAREEINDO is Indosolar)
+            return 100 * min(levenshtein($Q, substr(strtoupper($r['symbol']), 0, strlen($Q) + 1)), levenshtein($Q, $first), levenshtein($Q, substr($two, 0, strlen($Q) + 1))) + min(99, levenshtein($Q, $first));
+        };
+        $more = array_values(array_filter($st2->fetchAll(), fn($r) => !isset($seen[$r['exchange'] . $r['symbol']])));
+        usort($more, fn($x, $y) => [$dist($x), $x['exchange'] !== 'NSE', strlen($x['name'])] <=> [$dist($y), $y['exchange'] !== 'NSE', strlen($y['name'])]);
+        foreach ($more as $r) $rows[] = $r;
     }
 
     // Pair NSE and BSE listings of the same company (same ISIN)
