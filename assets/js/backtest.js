@@ -92,6 +92,9 @@
       { strategyId: '__combo_np', strategyName: 'Combined Proven system (all at +2R)', side: 'long', entry, stop, target: entry + 2 * R, market: true },
     ];
   }
+  // Financial-year results: FY 2025-26 (Apr 2025–Mar 2026) and FY 2026-27 to date
+  const FY_SHOW = ['2025-26', '2026-27'];
+  const fyLine = s => !s.fys ? '' : ' · ' + FY_SHOW.map(f => { const v = s.fys[f]; return `FY ${f}${f === '2026-27' ? ' (to date)' : ''}: ${v ? `<b class="${v.avg >= 0 ? 'up' : 'down'}">${fmtR(v.avg)}</b> over ${v.n} trades, ${Math.round(v.win * 100)}% right` : 'no trades'}`; }).join(' · ');
   // Average R over a set of years, weighted by trade count
   function yearsAvg(s, pick) {
     let n = 0, sum = 0;
@@ -172,7 +175,7 @@
         if (!tr) continue;
         if (tr.noEntry) { push({ s: p.strategyId, name: p.strategyName, noEntry: true }); continue; }
         busy.set(p.strategyId, tr.exitIdx);
-        push({ s: p.strategyId, name: p.strategyName, sym, side: p.side, r: tr.r, why: tr.why, at: tr.exitAt, year: day.slice(0, 4), up: p.side === 'short' ? !up : up });
+        push({ s: p.strategyId, name: p.strategyName, sym, side: p.side, r: tr.r, why: tr.why, at: tr.exitAt, year: day.slice(0, 4), fy: fyOf(day), up: p.side === 'short' ? !up : up });
       }
       if (t % 20 === 0) await yieldNow();
       if (S.cancel) return;
@@ -209,7 +212,7 @@
           if (!tr) continue;
           if (tr.noEntry) { push({ s: p.strategyId, name: p.strategyName, noEntry: true }); continue; }
           busy.set(p.strategyId, tr.exitIdx);
-          push({ s: p.strategyId, name: p.strategyName, sym, side: p.side, r: tr.r, why: tr.why, at: tr.exitAt, year: dy.d.slice(0, 7), up: p.side === 'short' ? !up : up });
+          push({ s: p.strategyId, name: p.strategyName, sym, side: p.side, r: tr.r, why: tr.why, at: tr.exitAt, year: dy.d.slice(0, 7), fy: fyOf(dy.d), up: p.side === 'short' ? !up : up });
         }
       }
       await yieldNow();
@@ -217,15 +220,19 @@
     }
   }
 
+  // Indian financial year of a signal date: Apr 2025–Mar 2026 = "2025-26"
+  const fyOf = d => { const y = +d.slice(0, 4), m = +d.slice(5, 7); const s = m >= 4 ? y : y - 1; return `${s}-${String(s + 1).slice(2)}`; };
+
   // ---------- statistics ----------
   function summarise(trades) {
     const by = new Map();
     for (const t of trades) {
-      const o = by.get(t.s) || { id: t.s, name: t.name, n: 0, wins: 0, sumR: 0, gw: 0, gl: 0, noEntry: 0, rs: [], years: {}, nUp: 0, sumUp: 0, longs: 0 };
+      const o = by.get(t.s) || { id: t.s, name: t.name, n: 0, wins: 0, sumR: 0, gw: 0, gl: 0, noEntry: 0, rs: [], years: {}, fys: {}, nUp: 0, sumUp: 0, longs: 0 };
       if (t.noEntry) { o.noEntry++; by.set(t.s, o); continue; }
       o.n++; o.sumR += t.r; if (t.r > 0) { o.wins++; o.gw += t.r; } else o.gl -= t.r;
       o.rs.push([t.at, t.r]);
       (o.years[t.year] = o.years[t.year] || [0, 0])[0] += t.r; o.years[t.year][1]++;
+      if (t.fy) { const f = (o.fys[t.fy] = o.fys[t.fy] || [0, 0, 0]); f[0] += t.r; f[1]++; if (t.r > 0) f[2]++; }
       if (t.side !== 'short') o.longs++;
       if (t.up) { o.nUp++; o.sumUp += t.r; }
       by.set(t.s, o);
@@ -242,6 +249,7 @@
         id: o.id, name: o.name, n: o.n, win: o.wins / o.n, avg, total: o.sumR, pf: o.gl ? o.gw / o.gl : null, dd, worst, noEntry: o.noEntry,
         avgUp: o.nUp ? o.sumUp / o.nUp : null, nUp: o.nUp,
         years: Object.fromEntries(Object.entries(o.years).map(([y, [s, c]]) => [y, { avg: s / c, n: c }])),
+        fys: Object.fromEntries(Object.entries(o.fys).map(([y, [s, c, w]]) => [y, { avg: s / c, n: c, win: w / c, total: s }])),
         curve: curve.filter((_, i) => i % Math.max(1, Math.floor(curve.length / 160)) === 0 || i === curve.length - 1),
         verdict: o.n < 30 ? 'few' : avg >= 0.1 ? 'keep' : avg >= 0 ? 'weak' : 'drop',
       });
@@ -379,18 +387,19 @@
         <ul class="bt-find">
           ${verdict ? `<li>The <b>All-Strategy Verdict</b> (what Analyze shows): ${verdict.n} trades, ${Math.round(verdict.win * 100)}% right, <b class="${verdict.avg >= 0 ? 'up' : 'down'}">${fmtR(verdict.avg)}</b> per trade.</li>` : ''}
           ${bounce ? `<li><b>New demand rule</b> (wait for the bounce): ${bounce.n} trades, ${Math.round(bounce.win * 100)}% right, <b class="${bounce.avg >= 0 ? 'up' : 'down'}">${fmtR(bounce.avg)}</b>${oldDemand ? ` vs the old demand rule ${fmtR(oldDemand.avg)}` : ''}.${bounce.avgUp != null ? ` With the NIFTY-above-200-day filter: ${fmtR(bounce.avgUp)}.` : ''}</li>` : ''}
-          ${['__combo', '__combo_np'].map(id => res.stats.find(s => s.id === id)).filter(Boolean).map(s => { const tr = yearsAvg(s, y => y <= 2024), te = yearsAvg(s, y => y >= 2025); return `<li><b>${esc(s.name)}</b>: ${s.n} trades, ${Math.round(s.win * 100)}% right, <b class="${s.avg >= 0 ? 'up' : 'down'}">${fmtR(s.avg)}</b> per trade, deepest drop ${s.dd.toFixed(1)}R. Train 2021–24: ${tr ? `${fmtR(tr.avg)} (${tr.n})` : '—'} · <b>Test 2025–26: ${te ? `${fmtR(te.avg)} (${te.n})` : '—'}</b>${te && te.n >= 30 ? (te.avg >= 0.1 ? ' — holds up out of sample.' : te.avg > 0 ? ' — positive out of sample, but below +0.10R.' : ' — does not hold up out of sample.') : ''}</li>`; }).join('')}
+          ${['__combo', '__combo_np'].map(id => res.stats.find(s => s.id === id)).filter(Boolean).map(s => { const tr = yearsAvg(s, y => y <= 2024), te = yearsAvg(s, y => y >= 2025); return `<li><b>${esc(s.name)}</b>: ${s.n} trades, ${Math.round(s.win * 100)}% right, <b class="${s.avg >= 0 ? 'up' : 'down'}">${fmtR(s.avg)}</b> per trade, deepest drop ${s.dd.toFixed(1)}R. Train 2021–24: ${tr ? `${fmtR(tr.avg)} (${tr.n})` : '—'} · <b>Test 2025–26: ${te ? `${fmtR(te.avg)} (${te.n})` : '—'}</b>${fyLine(s)}${te && te.n >= 30 ? (te.avg >= 0.1 ? ' — holds up out of sample.' : te.avg > 0 ? ' — positive out of sample, but below +0.10R.' : ' — does not hold up out of sample.') : ''}</li>`; }).join('')}
           <li><b>${keep.length}</b> strateg${keep.length === 1 ? 'y makes' : 'ies make'} at least +0.1R per trade after costs${keep.length ? `: ${keep.slice(0, 4).map(s => esc(s.name)).join(', ')}` : ''}.</li>
         </ul>
         ${chart([res.stats.find(s => s.id === '__combo')].filter(s => s && s.n >= 30).concat(res.stats.filter(s => s.n >= 30 && s.id !== '__combo').slice(0, 3)).concat(verdict && verdict.n >= 30 && !res.stats.slice(0, 4).includes(verdict) ? [verdict] : []))}
       </div>
       <div class="card"><div class="tbl-wrap"><table class="st-table bt-table">
-        <thead><tr><th>Strategy</th><th>Tier now</th><th>Result</th><th>Trades</th><th>Right</th><th>Avg / trade</th><th class="hide-sm">Profit factor</th><th class="hide-sm">Worst losing run</th><th class="hide-sm">Deepest drop</th><th>Total at ${cfg.risk}%</th><th class="hide-sm">With market filter</th><th class="hide-sm">Train 2021–24</th><th class="hide-sm">Test 2025–26</th>${years.length <= 6 ? years.map(y => `<th class="hide-sm">${y}</th>`).join('') : ''}</tr></thead>
+        <thead><tr><th>Strategy</th><th>Tier now</th><th>Result</th><th>Trades</th><th>Right</th><th>Avg / trade</th><th class="hide-sm">Profit factor</th><th class="hide-sm">Worst losing run</th><th class="hide-sm">Deepest drop</th><th>Total at ${cfg.risk}%</th><th class="hide-sm">With market filter</th><th class="hide-sm">Train 2021–24</th><th class="hide-sm">Test 2025–26</th><th>FY 25-26</th><th>FY 26-27 (to date)</th>${years.length <= 6 ? years.map(y => `<th class="hide-sm">${y}</th>`).join('') : ''}</tr></thead>
         <tbody>${res.stats.map(s => `<tr>
           <td><b>${esc(s.name)}</b></td><td>${root.Tiers && s.id[0] !== '_' ? Tiers.badge(s.id) : ''}</td><td><span class="wl-call ${V[s.verdict][1]}">${V[s.verdict][0]}</span></td><td>${s.n}</td><td>${Math.round(s.win * 100)}%</td>
           <td class="${s.avg >= 0 ? 'up' : 'down'}"><b>${fmtR(s.avg)}</b></td><td class="hide-sm">${s.pf != null ? s.pf.toFixed(2) : '—'}</td><td class="hide-sm">${s.worst}</td><td class="hide-sm">${s.dd.toFixed(1)}R</td>
           <td class="${s.total >= 0 ? 'up' : 'down'}">${inr(money(s.total))}</td><td class="hide-sm">${s.avgUp != null && s.nUp >= 10 ? fmtR(s.avgUp) : '—'}</td>
           ${c.style === 'swing' ? [yearsAvg(s, y => y <= 2024), yearsAvg(s, y => y >= 2025)].map(v => `<td class="hide-sm ${v ? (v.avg >= 0 ? 'up' : 'down') : ''}">${v ? fmtR(v.avg) : '—'}</td>`).join('') : '<td class="hide-sm">—</td><td class="hide-sm">—</td>'}
+          ${FY_SHOW.map(f => { const v = s.fys && s.fys[f]; return `<td class="${v ? (v.avg >= 0 ? 'up' : 'down') : ''}">${v ? `${fmtR(v.avg)} <small class="muted">${v.n}</small>` : '—'}</td>`; }).join('')}
           ${years.length <= 6 ? years.map(y => `<td class="hide-sm ${s.years[y] ? (s.years[y].avg >= 0 ? 'up' : 'down') : ''}">${s.years[y] ? fmtR(s.years[y].avg) : ''}</td>`).join('') : ''}</tr>`).join('')}</tbody></table></div>
         <p class="citation">Keep = makes at least +0.1R per trade after costs with 30+ trades. Profit factor = money won ÷ money lost (above 1.3 is good). Worst losing run = most losses in a row; deepest drop = the biggest fall from a high, in R. "With market filter" counts only buys taken while NIFTY was above its 200-day average (and sells while below). A strategy that is positive in most years is more trustworthy than one with one lucky year.</p>
         ${res.failed.length ? `<p class="muted small">Skipped: ${res.failed.map(esc).join(' · ')}</p>` : ''}
