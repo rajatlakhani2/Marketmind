@@ -75,12 +75,13 @@
 
   // ---------- combined swing system from the 3 Proven strategies ----------
   // Rules fixed in advance (10 Nov 2026), judged on 2021–24 (train) and 2025–26 (test, untouched):
-  //   entry  : Golden Cross, ADX Pullback to 20 EMA or Supertrend Flip gives a buy signal
+  //   entry  : Golden Cross or Supertrend Flip gives a buy signal (ADX Pullback removed 12 Nov 2026)
   //   filter : stock above its 200-day average and NIFTY above its 200-day average
   //   stop   : 2 × ATR(14) below the entry
   //   exits  : half at +1R (stop on the rest moves to the entry), rest at +3R or after 30 days
   // A second version without the partial (all at +2R) is run alongside for comparison.
-  const PROVEN = ['lib_s_golden_cross', 'lib_s_adx_ema_pullback', 'lib_s_supertrend_flip'];
+  // 12 Nov 2026: ADX Pullback dropped (lost money in FY 25-26 and FY 26-27 to date); Golden Cross + Supertrend only
+  const PROVEN = ['lib_s_golden_cross', 'lib_s_supertrend_flip'];
   function comboPlans(cs, md, candles, niftyUp) {
     if (!niftyUp || md.ma200 == null || !(md.price > md.ma200)) return [];
     const hit = cs.results.find(r => PROVEN.includes(r.id) && r.status === 'Active' && r.plan && r.plan.side === 'long');
@@ -303,7 +304,7 @@
           <button type="button" class="btn-primary" id="bt-run">${S.running ? 'Running…' : 'Run back-test'}</button>
           ${S.running ? '<button type="button" class="btn-secondary" id="bt-stop">Stop</button>' : ''}
         </div>
-        <p class="citation">Replays the real engine on past prices: every strategy, the All-Strategy Verdict, the "demand zone + bounce" rule, and the Combined Proven system (a Proven buy signal, stock and NIFTY above their 200-day averages, stop 2× ATR, half booked at +1R with the rest at break-even, then +3R or 30 days). Its rules were fixed before the test: 2025–26 is the untouched out-of-sample check. Signals fill on the next bar (gaps included), the stop is checked before the target, swing trades exit after 30 days at most, intraday trades by 15:15. Costs are taken off every trade (${COST.swing}% swing, ${COST.intraday}% intraday, round trip). Only one open trade per strategy per stock at a time. Intraday history is only about 60 days (Yahoo's limit), so intraday results are a rough first look. Past results do not guarantee future ones.</p>
+        <p class="citation">Replays the real engine on past prices: every strategy, the All-Strategy Verdict, the "demand zone + bounce" rule, and the Combined Proven system (a "New long-term uptrend" or "Trend turned up" buy signal, stock and NIFTY above their 200-day averages, stop 2× ATR, half booked at +1R with the rest at break-even, then +3R or 30 days). Its rules were fixed before the test: 2025–26 is the untouched out-of-sample check. Signals fill on the next bar (gaps included), the stop is checked before the target, swing trades exit after 30 days at most, intraday trades by 15:15. Costs are taken off every trade (${COST.swing}% swing, ${COST.intraday}% intraday, round trip). Only one open trade per strategy per stock at a time. Intraday history is only about 60 days (Yahoo's limit), so intraday results are a rough first look. Past results do not guarantee future ones.</p>
         <div id="bt-progress"></div>
       </div>
       <div id="bt-results"></div>
@@ -363,7 +364,7 @@
         <td class="hide-sm">${t.live && t.live.n ? `${f(t.live.avg)} · ${t.live.n}` : '—'}</td><td class="hide-sm muted small">${esc(t.why || t.note || '')}</td>
         ${admin ? `<td><select data-ov="${esc(s.id)}"><option value="">Automatic</option>${Object.entries(TL).map(([k, l]) => `<option value="${k}"${t.override === k ? ' selected' : ''}>${l}</option>`).join('')}</select></td>` : ''}</tr>`).join('')}
       </tbody></table></div>
-      <p class="citation">Rules: Proven = 100+ trades, at least +0.10R per trade after costs, positive in at least half the years. Watch = 30+ trades and above 0. A buffer stops tiers flipping every month (Proven holds down to +0.05R, Watch down to −0.03R). Live MindGuru results move a strategy one tier: down after 30+ trades at −0.10R or worse, up after 50+ trades at +0.15R or better. A tier set by hand always wins.</p>
+      <p class="citation">Rules: Proven = 100+ trades, at least +0.10R per trade after costs, positive in at least half the years. Watch = 30+ trades and at least +0.05R. A buffer stops tiers flipping every month (Proven holds down to +0.05R, Watch down to +0.04R). Live MindGuru results move a strategy one tier: down after 30+ trades at −0.10R or worse, up after 50+ trades at +0.15R or better. A tier set by hand always wins.</p>
     </div>`;
     el.querySelectorAll('[data-ov]').forEach(sel => {
       sel.onchange = async () => {

@@ -31,8 +31,8 @@
     lib_s_breakdown20: ['20-day low breakdown (short)', 'Price closed below its lowest level of the last 20 days, in a long-term downtrend.'],
     __verdict: ['All strategies combined', 'The overall verdict when the strategies vote together.'],
     __ks_bounce: ['Buy zone + bounce', 'Price touched a demand zone and the next candle bounced.'],
-    __combo: ['Best-trend system (half at +1R)', 'New long-term uptrend, trend turned up or dip in a strong trend, with filters; books half at +1R.'],
-    __combo_np: ['Best-trend system', 'New long-term uptrend, trend turned up or dip in a strong trend, with filters; exits at +2R.'],
+    __combo: ['Best-trend system (half at +1R)', 'New long-term uptrend or trend turned up, with market and stock above their 200-day averages; books half at +1R.'],
+    __combo_np: ['Best-trend system', 'New long-term uptrend or trend turned up, with market and stock above their 200-day averages; exits at +2R.'],
     __watch_pos: ['Watchlist call', 'The daily BUY / SELL call on your Watchlist.'],
   };
 

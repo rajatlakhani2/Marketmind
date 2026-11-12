@@ -54,8 +54,10 @@
     const c = await breeze({ action: 'option_chain', isec, expiry, right });
     return c.rows.find(r => Number(r.strike) === Number(strike)) || null;
   }
+  async function futRow(isec, expiry) { return breeze({ action: 'futures', isec, expiry }); }
   async function priceOf(o) {
     if (o.product === 'option') { const r = await optionRow(o.opt_isec, o.opt_expiry, o.opt_right, o.opt_strike); return r && r.ltp; }
+    if (o.product === 'future') { const f = await futRow(o.opt_isec, o.opt_expiry); return f && f.ltp; }
     return stockLtp(o.symbol);
   }
 
@@ -68,14 +70,18 @@
   }
 
   // ---------- proposals ----------
+  const regimeUp = () => { const m = root.Tiers && Tiers.market(); return !m || m.above200 !== false; };
+  const provenLong = c => c && c.tone === 'long' && c.backing === 'proven' && regimeUp();
+  const daysTo = d => (Date.parse(d + 'T10:00:00Z') - Date.now()) / 864e5;
   async function stockIdea(w, product) {
     const tf = product === 'mis' ? '15m' : '1d';
     const res = await root.app.analysis.analyzeStock(w.symbol, '__all', tf, null, {});
     const md = res.marketData, c = res.consensus && res.consensus.conclusion;
     if (!md.live || !c || c.tone !== 'long') return null;
     if (product === 'mis' && c.verdict !== 'Buy') return null;              // intraday: only when price is in the zone now
-    // Only strong setups: backed by a Proven strategy (or two Watch ones) and the gain is at least 1.5× the risk
-    if (!Tiers.isStrong(c) || !(c.rr >= 1.5)) return null;
+    // Live rules (12 Nov 2026): only ideas backed by a Proven strategy, gain at least 1.5× the risk,
+    // and new buys only while NIFTY is above its 200-day average (market regime filter)
+    if (!provenLong(c) || !(c.rr >= 1.5)) return null;
     if (product === 'cnc' && res.ks001 && res.ks001.trends.htf.trend === 'Bearish') return null;  // no delivery buys against a falling monthly trend
     const entry = c.verdict === 'Buy' ? Math.min(md.price, c.buyHigh || md.price) : c.buyHigh;
     if (!(entry > 0) || c.stop == null || c.sell1 == null) return null;
@@ -98,9 +104,10 @@
     const res = await root.app.analysis.analyzeStock(w.symbol, '__all', '1d', null, {});
     const c = res.consensus && res.consensus.conclusion;
     if (!res.marketData.live || !c || (c.tone !== 'long' && c.tone !== 'short') || (c.tone === 'long' && c.verdict !== 'Buy')) return null;
-    if (!Tiers.isStrong(c)) return null;  // only when backed by a Proven strategy (or two Watch ones)
+    // Calls: Proven buy signal in a rising market. Puts: a counted short signal (shorts count only when NIFTY is below its 200-day)
+    if (c.tone === 'long' ? !provenLong(c) : !(Tiers.isStrong({ score: c.scoreShort }))) return null;
     const right = c.tone === 'long' ? 'call' : 'put';
-    const expiry = u.options.find(d => (Date.parse(d + 'T10:00:00Z') - Date.now()) / 864e5 >= 5);
+    const expiry = u.options.find(d => daysTo(d) >= 15);   // 15+ days left, so time decay is slow
     if (!expiry) return null;
     const chain = await breeze({ action: 'option_chain', isec: u.isec, expiry, right });
     const spot = (chain.rows.find(r => r.spot > 0) || {}).spot || res.marketData.price;
@@ -109,14 +116,42 @@
     const S = st.settings, lot = u.lot || 1;
     const prem = atm.ask > 0 ? atm.ask : atm.ltp;
     const stop = prem * (1 - S.optionStopPct / 100), target = prem * (1 + S.optionTargetPct / 100);
-    const lots = Math.min(Math.floor(S.account * S.riskPct / 100 / ((prem - stop) * lot)), Math.floor(S.maxPerTrade / (prem * lot)));
-    if (lots < 1) return null;
+    // Option buying may risk up to optionRiskPct of capital per trade (premium × stop %), within the per-trade value cap
+    const lots = Math.min(Math.floor(S.account * (S.optionRiskPct || 5) / 100 / ((prem - stop) * lot)), Math.floor(S.maxPerTrade / (prem * lot)));
+    if (lots < 1) { scanNote = `${w.symbol} option: one lot (${rs(prem * lot, 0)}) needs more than your option risk limit of ${S.optionRiskPct || 5}% of capital, so it was skipped.`; return null; }
     return {
       purpose: 'entry', product: 'option', symbol: w.symbol, name: `${w.symbol} ${atm.strike} ${right === 'call' ? 'CE' : 'PE'} ${expiry}`,
       qty: lots * lot, lot, limit: +prem.toFixed(2), stop: +stop.toFixed(2), target: +target.toFixed(2), timeframe: '1d', verdict: c.verdict,
       option: { isec: u.isec, expiry, strike: atm.strike, right },
       reason: `Options: ${w.symbol}'s daily verdict is "${c.verdict}", so buy the at-the-money ${right} (${atm.strike} ${right === 'call' ? 'CE' : 'PE'}, expiry ${expiry}) at about ${rs(prem)}. ` +
         `${lots} lot${lots > 1 ? 's' : ''} × ${lot} = ${rs(prem * lots * lot, 0)} premium, the most you can lose. Stop if the premium falls to ${rs(stop)} (−${S.optionStopPct}%), target ${rs(target)} (+${S.optionTargetPct}%).`,
+    };
+  }
+
+  // Futures: long only, on a Proven buy signal. Paper (simulated) until futures are switched on with enough margin.
+  async function futureIdea(w) {
+    if (!foMeta) foMeta = (await breeze({ action: 'fo_meta' })).underlyings;
+    const u = foMeta.find(x => x.symbol === w.symbol || x.isec === w.symbol);
+    if (!u || !u.futures || !u.futures.length) return null;
+    const res = await root.app.analysis.analyzeStock(w.symbol, '__all', '1d', null, {});
+    const md = res.marketData, c = res.consensus && res.consensus.conclusion;
+    if (!md.live || !c || c.verdict !== 'Buy' || !provenLong(c) || !(c.rr >= 1.5) || c.stop == null || c.sell1 == null) return null;
+    const expiry = u.futures.find(d => daysTo(d) >= 7) || u.futures[u.futures.length - 1];
+    const f = await futRow(u.isec, expiry);
+    const fp = f.ask > 0 ? f.ask : f.ltp;
+    if (!(fp > 0)) return null;
+    // Futures trade at a premium to spot: keep the same distances to stop and target
+    const spot = f.spot || md.price, stop = fp - (spot - c.stop), target = fp + (c.sell1 - spot);
+    if (!(stop < fp && target > fp)) return null;
+    const S = st.settings, lot = u.lot || f.lot || 1;
+    const perLot = (fp - stop) * lot, cap = S.account * (S.futuresRiskPct || 2) / 100;
+    const lots = Math.max(1, Math.floor(cap / perLot));
+    const fits = perLot <= cap;
+    return {
+      purpose: 'entry', product: 'future', symbol: w.symbol, name: `${w.symbol} FUT ${expiry}`, qty: lots * lot, lot, limit: +fp.toFixed(2),
+      stop: +stop.toFixed(2), target: +target.toFixed(2), timeframe: '1d', verdict: c.verdict, option: { isec: u.isec, expiry },
+      reason: `Futures${S.futuresLive ? '' : ' (paper trade, simulated)'}: buy backed by ${c.supporting.join(', ')}. ${lots} lot × ${lot} at about ${rs(fp)} (exposure ${rs(fp * lot * lots, 0)}). ` +
+        `Stop ${rs(stop)}, target ${rs(target)}. Risk at the stop ${rs(perLot * lots, 0)}${fits ? '' : ` — more than your futures limit of ${S.futuresRiskPct || 2}% (${rs(cap, 0)}); live futures need capital of about ${rs(perLot / ((S.futuresRiskPct || 2) / 100), 0)}`}.`,
     };
   }
 
@@ -134,10 +169,10 @@
       const p = await priceOf(o).catch(() => null);
       if (!p) continue;
       const base = { parentId: o.id, product: o.product, symbol: o.symbol, name: o.name, qty: Number(o.qty), lot: Number(o.lot), timeframe: o.timeframe,
-        option: o.product === 'option' ? { isec: o.opt_isec, expiry: o.opt_expiry, strike: o.opt_strike, right: o.opt_right } : undefined };
-      const expiryDay = o.product === 'option' && o.opt_expiry === istToday();
+        option: ['option', 'future'].includes(o.product) ? { isec: o.opt_isec, expiry: o.opt_expiry, strike: o.opt_strike, right: o.opt_right } : undefined };
+      const expiryDay = ['option', 'future'].includes(o.product) && o.opt_expiry === istToday();
       if ((o.product === 'mis' && now >= 15 * 60 + 10) || (expiryDay && now >= 14 * 60 + 30)) {
-        proposals.push({ ...base, purpose: 'squareoff', limit: +(p * 0.998).toFixed(2), reason: `${o.product === 'mis' ? 'Intraday positions must be closed before 3:20 pm' : 'The option expires today'}: sell at about ${rs(p)}.` });
+        proposals.push({ ...base, purpose: 'squareoff', limit: +(p * 0.998).toFixed(2), reason: `${o.product === 'mis' ? 'Intraday positions must be closed before 3:20 pm' : `The ${o.product === 'future' ? 'futures contract' : 'option'} expires today`}: sell at about ${rs(p)}.` });
       } else if (o.target != null && p >= Number(o.target)) {
         proposals.push({ ...base, purpose: 'target', limit: +p.toFixed(2), reason: `Target ${rs(Number(o.target))} reached (now ${rs(p)}): book the profit, about ${rs((p - Number(o.fill_price)) * Number(o.qty), 0)}.` });
       }
@@ -160,16 +195,24 @@
           if (Number(w.delivery)) tries.push(() => stockIdea(w, 'cnc'));
           if (Number(w.intraday) && !later) tries.push(() => stockIdea(w, 'mis'));
           if (Number(w.options)) tries.push(() => optionIdea(w));
+          if (Number(w.futures)) tries.push(() => futureIdea(w));
           for (const t of tries) {
             try { const idea = await t(); if (idea) proposals.push(idea); } catch (e) { console.warn('Scanner:', w.symbol, e.message); }
           }
         }
       }
       if (proposals.length) {
-        const before = st.orders.filter(o => o.status === 'pending').length;
+        const before = st.orders.filter(o => o.status === 'pending' && o.purpose === 'entry').length;
         st = await call('propose', { orders: proposals });
-        const added = st.orders.filter(o => o.status === 'pending').length - before;
-        if (added > 0) toast(`MarketMind has ${added} new order${added > 1 ? 's' : ''} waiting for your approval (Trading page).`, 'success');
+        const added = st.orders.filter(o => o.status === 'pending' && o.purpose === 'entry').length - before;
+        if (added > 0) toast(`MarketMind has ${added} new trade idea${added > 1 ? 's' : ''} waiting for your approval (Trade page).`, 'success');
+      }
+      // Semi-automatic: stop-loss, target, square-off and exit orders are approved without waiting for you
+      if (st.settings.automation === 'semi') {
+        for (const o of st.orders.filter(x => x.status === 'pending' && x.purpose !== 'entry')) {
+          try { st = await call('approve', { id: Number(o.id) }); toast(`Done automatically: ${PURPOSE[o.purpose] || o.purpose} ${o.product === 'option' || o.product === 'future' ? o.name : o.symbol}.`, 'info'); }
+          catch (e) { console.warn('Auto-approve:', e.message); }
+        }
       }
       scanNote = '';
     } catch (e) {
@@ -193,7 +236,7 @@
   }
 
   // ---------- rendering ----------
-  const PRODUCT = { cnc: 'Delivery', mis: 'Intraday', option: 'Option' };
+  const PRODUCT = { cnc: 'Delivery', mis: 'Intraday', option: 'Option', future: 'Futures' };
   const PURPOSE = { entry: 'Buy', stoploss: 'Stop-loss', target: 'Sell at target', squareoff: 'Square off', exit: 'Exit' };
   const STATUS = { pending: 'Waiting for you', open: 'Sent, not filled', filled: 'Filled', closed: 'Closed', rejected: 'Rejected', expired: 'Expired', cancelled: 'Cancelled', failed: 'Failed' };
 
@@ -207,7 +250,7 @@
       <div class="tr-rr-lab"><span class="down">Stop ${rs(stop)}</span><span>Entry ${rs(entry)}</span><span class="up">Target ${rs(target)}</span></div></div>`;
   }
 
-  const productHelp = { cnc: 'Delivery (CNC): shares go to your demat and can be held for days or weeks.', mis: 'Intraday (MIS): must be closed today; MarketMind squares off by 3:15 pm.', option: 'Option buy (NRML): you pay the premium; the most you can lose is what you pay.' };
+  const productHelp = { cnc: 'Delivery (CNC): shares go to your demat and can be held for days or weeks.', mis: 'Intraday (MIS): must be closed today; MarketMind squares off by 3:15 pm.', option: 'Option buy (NRML): you pay the premium; the most you can lose is what you pay.', future: 'Futures (NRML): one lot controls a large amount (₹5–20 lakh), so profit and loss move fast. Paper trades only until you switch futures on.' };
 
   function orderCard(o) {
     const value = Number(o.limit_price) * Number(o.qty);
@@ -215,7 +258,7 @@
     const entry = Number(o.limit_price), stop = o.stop != null ? Number(o.stop) : null, target = o.target != null ? Number(o.target) : null;
     const units = Number(o.qty);
     const risk = stop != null ? Math.abs(entry - stop) * units : null, reward = target != null ? Math.abs(target - entry) * units : null;
-    const what = o.product === 'option' ? esc(o.name) : `${n0(units)} shares of ${esc(o.symbol)}`;
+    const what = o.product === 'option' || o.product === 'future' ? `${n0(units)} × ${esc(o.name)}` : `${n0(units)} shares of ${esc(o.symbol)}`;
     const isEntry = o.purpose === 'entry';
     return `<div class="tr-card tr-idea ${o.side}">
       <div class="tr-card-head">
@@ -242,11 +285,11 @@
 
   // Open position with live price, P&L and where it sits between stop and target
   function positionCard(o) {
-    const q = o.product === 'option' ? null : quotes[o.symbol];
+    const q = ['option', 'future'].includes(o.product) ? quotes['o' + o.id] : quotes[o.symbol];
     const now = q && q.ltp ? q.ltp : null, buy = Number(o.fill_price), qty = Number(o.qty);
     const pnl = now ? (now - buy) * qty : null, r = now && o.stop ? (now - buy) / Math.abs(buy - Number(o.stop)) : null;
     return `<div class="tr-card tr-pos">
-      <div class="tr-card-head"><strong>${esc(o.product === 'option' ? o.name : o.symbol)}</strong><span class="tag" title="${esc(productHelp[o.product] || '')}">${esc(PRODUCT[o.product])}</span><span class="muted">${o.mode === 'live' ? 'Live' : o.mode === 'man' ? 'Manual' : 'Test'} · ${n0(qty)} @ ${rs(buy)}</span></div>
+      <div class="tr-card-head"><strong>${esc(o.product === 'option' || o.product === 'future' ? o.name : o.symbol)}</strong><span class="tag" title="${esc(productHelp[o.product] || '')}">${esc(PRODUCT[o.product])}</span><span class="muted">${o.mode === 'live' ? 'Live' : o.mode === 'man' ? 'Manual' : 'Test'} · ${n0(qty)} @ ${rs(buy)}</span></div>
       <div class="tr-facts">
         <div><span>Now</span><b>${now ? rs(now) : '—'}</b></div>
         <div><span>Profit / loss</span><b class="${pnl > 0 ? 'up' : pnl < 0 ? 'down' : ''}">${pnl != null ? (pnl > 0 ? '+' : '') + rs(pnl, 0) : '—'}</b></div>
@@ -259,14 +302,15 @@
 
   // What to enter in the ICICI Direct app's order screen
   function ticket(o) {
-    const opt = o.product === 'option';
+    const fut = o.product === 'future';
+    const opt = o.product === 'option' || fut;
     const right = o.opt_right === 'put' ? 'Put (PE)' : 'Call (CE)';
     const expiry = o.opt_expiry ? new Date(o.opt_expiry + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
     const rows = [
       ['Stock', opt ? `${esc(o.symbol)}${o.icici_code && o.icici_code !== o.symbol ? ` (ICICI code ${esc(o.icici_code)})` : ''}` : `${esc(o.symbol)}${o.icici_code && o.icici_code !== o.symbol ? ` (ICICI code ${esc(o.icici_code)})` : ''}`],
       ['Segment', opt ? 'Derivatives (F&amp;O) · NSE' : 'Equity · NSE'],
-      ...(opt ? [['Contract', `Options · ${right} · strike ${esc(Number(o.opt_strike))} · expiry ${esc(expiry)}`]] : []),
-      ['Product', opt ? 'Options (NRML)' : o.product === 'mis' ? 'Margin / Intraday' : 'Cash / Delivery (CNC)'],
+      ...(fut ? [['Contract', `Futures · expiry ${esc(expiry)}`]] : opt ? [['Contract', `Options · ${right} · strike ${esc(Number(o.opt_strike))} · expiry ${esc(expiry)}`]] : []),
+      ['Product', fut ? 'Futures (NRML)' : opt ? 'Options (NRML)' : o.product === 'mis' ? 'Margin / Intraday' : 'Cash / Delivery (CNC)'],
       ['Action', o.side === 'buy' ? '<b class="text-green">BUY</b>' : '<b class="text-red">SELL</b>'],
       ['Order type', o.order_type === 'stoploss' ? '<b>Stop loss (SL)</b>' : 'Limit'],
       ['Quantity', `<b>${n0(Number(o.qty))}</b>${opt ? ` (${Number(o.qty) / Number(o.lot)} lot of ${n0(Number(o.lot))})` : ''}`],
@@ -301,7 +345,7 @@
     const wins = closed.filter(o => Number(o.pnl) > 0).length;
     const toPlace = st.orders.filter(o => o.status === 'open' && o.mode === 'man');
     const today = st.orders.filter(o => o.purpose === 'entry' && String(o.created_at).slice(0, 10) === istToday() && ['open', 'filled', 'closed'].includes(o.status)).length;
-    const openPnl = positions.reduce((a, o) => { const q = quotes[o.symbol]; return a + (q && q.ltp && o.product !== 'option' ? (q.ltp - Number(o.fill_price)) * Number(o.qty) : 0); }, 0);
+    const openPnl = positions.reduce((a, o) => { const q = ['option', 'future'].includes(o.product) ? quotes['o' + o.id] : quotes[o.symbol]; return a + (q && q.ltp ? (q.ltp - Number(o.fill_price)) * Number(o.qty) : 0); }, 0);
     const modeTxt = { test: 'Approved orders are simulated against live prices. No real money.', man: 'You place approved orders yourself in the ICICI Direct app (real money).', live: 'Approved orders go to your ICICI account through the order relay.' };
     const TABS = [['ideas', `To approve${pending.length ? ` (${pending.length})` : ''}`], ['open', `Open${positions.length ? ` (${positions.length})` : ''}`], ['history', 'History'], ['setup', 'Setup']];
     const total = realised + openPnl;
@@ -354,12 +398,21 @@
             <label class="ev-check" title="${esc(productHelp.cnc)}"><input type="checkbox" id="tr-add-cnc" checked/> Delivery</label>
             <label class="ev-check" title="${esc(productHelp.mis)}"><input type="checkbox" id="tr-add-mis"/> Intraday</label>
             <label class="ev-check" title="${esc(productHelp.option)}"><input type="checkbox" id="tr-add-opt"/> Option buying</label>
+            <label class="ev-check" title="${esc(productHelp.future)}"><input type="checkbox" id="tr-add-fut"/> Futures</label>
             <button type="button" class="btn-primary" id="tr-add">Add</button></div>
-          ${st.watchlist.length ? `<div class="fno-tablewrap"><table class="screener-table fno-table"><thead><tr><th>Stock</th><th>Delivery</th><th>Intraday</th><th>Options</th><th></th></tr></thead><tbody>
+          <p class="small">Quick add: ${['NIFTY', 'BANKNIFTY'].filter(x => !st.watchlist.some(w => w.symbol === x)).map(x => `<button type="button" class="link-btn" data-quick="${x}">${x === 'NIFTY' ? 'NIFTY 50' : 'Bank NIFTY'} (options + futures)</button>`).join(' · ') || '<span class="muted">NIFTY and Bank NIFTY are in your list.</span>'}</p>
+          ${st.watchlist.length ? `<div class="fno-tablewrap"><table class="screener-table fno-table"><thead><tr><th>Stock / index</th><th>Delivery</th><th>Intraday</th><th>Options</th><th>Futures</th><th></th></tr></thead><tbody>
             ${st.watchlist.map(w => `<tr data-w="${w.id}"><td><b>${esc(w.symbol)}</b> <span class="muted">${esc(w.name)}</span></td>
-              ${['delivery', 'intraday', 'options'].map(k => `<td><input type="checkbox" data-wk="${k}" ${Number(w[k]) ? 'checked' : ''}/></td>`).join('')}
+              ${['delivery', 'intraday', 'options', 'futures'].map(k => `<td><input type="checkbox" data-wk="${k}" ${Number(w[k]) ? 'checked' : ''}/></td>`).join('')}
               <td><button type="button" class="link-btn" data-wrm="${w.id}">Remove</button></td></tr>`).join('')}</tbody></table></div>`
             : '<p class="muted">Add the stocks MarketMind should watch. Options only work for F&amp;O stocks and indices.</p>'}
+        </div>
+        <div class="analysis-section"><h3>How automatic</h3>
+          <div>
+            <label class="tr-radio"><input type="radio" name="tr-auto" value="onetap" ${S.automation !== 'semi' ? 'checked' : ''}/><span><b>One-tap</b>: you approve every order, including stop-losses and exits.</span></label>
+            <label class="tr-radio"><input type="radio" name="tr-auto" value="semi" ${S.automation === 'semi' ? 'checked' : ''}/><span><b>Semi-automatic</b>: you approve every new trade; stop-loss, target, square-off and exit orders go by themselves so a losing trade is always closed.</span></label>
+          </div>
+          <p class="citation">New trades always need your tap. Ideas come only from Proven strategies, with a reward at least 1.5× the risk, and new buys only while NIFTY is above its 200-day average.</p>
         </div>
         <div class="analysis-section"><h3>Limits</h3>
           <form id="tr-settings" class="tr-settings">
@@ -370,6 +423,9 @@
             <label>Max positions open at once<input name="maxOpen" type="number" min="1" max="20" value="${S.maxOpen}"/></label>
             <label>Option stop (% of premium)<input name="optionStopPct" type="number" min="10" max="90" value="${S.optionStopPct}"/></label>
             <label>Option target (% of premium)<input name="optionTargetPct" type="number" min="10" max="500" value="${S.optionTargetPct}"/></label>
+            <label>Option risk per trade (% of capital)<input name="optionRiskPct" type="number" min="0.5" max="10" step="0.5" value="${S.optionRiskPct ?? 5}"/></label>
+            <label>Futures risk per trade (% of capital)<input name="futuresRiskPct" type="number" min="0.5" max="10" step="0.5" value="${S.futuresRiskPct ?? 2}"/></label>
+            <label class="ev-check"><input type="checkbox" name="futuresLive" value="1" ${S.futuresLive ? 'checked' : ''} disabled/> Real futures orders <span class="muted">(off: paper only until you add margin)</span></label>
             <div><button type="submit" class="btn-primary">Save limits</button></div>
           </form>
           <p class="citation">The server checks every approval against these: money per trade, trades per day, open positions, market hours, and no new intraday trades after 2:45 pm.</p>
@@ -378,7 +434,8 @@
           <li><b>Stop</b>: the price where the trade is closed to limit the loss. <b>Target</b>: the price where profit is booked.</li>
           <li><b>R</b>: the amount you risk on a trade. +2R = you made twice what you risked; −1R = the stop was hit.</li>
           <li><b>Reward : risk</b>: how much the target can make for each ₹1 the stop can lose. MarketMind wants at least 1.5 : 1.</li>
-          <li>${esc(productHelp.cnc)}</li><li>${esc(productHelp.mis)}</li><li>${esc(productHelp.option)}</li>
+          <li>${esc(productHelp.cnc)}</li><li>${esc(productHelp.mis)}</li><li>${esc(productHelp.option)}</li><li>${esc(productHelp.future)}</li>
+          <li><b>Lot</b>: F&amp;O trades in fixed lots (NIFTY 65 units, Bank NIFTY 30). MarketMind sizes in whole lots and skips a trade when one lot is more than your risk limit.</li>
           <li><b>Proven / Watch</b>: how well the strategy behind an idea did in the 5-year back-test (Learn → Back-test).</li>
         </ul></div>
       </div>` : ''}`;
@@ -389,9 +446,11 @@
   let quoting = false;
   async function refreshQuotes(container, positions) {
     if (quoting) return;
-    const syms = [...new Set(positions.filter(o => o.product !== 'option').map(o => o.symbol))].filter(s => !quotes[s] || Date.now() - quotes[s].at > 30e3);
-    if (!syms.length) return;
+    const syms = [...new Set(positions.filter(o => !['option', 'future'].includes(o.product)).map(o => o.symbol))].filter(s => !quotes[s] || Date.now() - quotes[s].at > 30e3);
+    const fo = positions.filter(o => ['option', 'future'].includes(o.product) && (!quotes['o' + o.id] || Date.now() - quotes['o' + o.id].at > 30e3));
+    if (!syms.length && !fo.length) return;
     quoting = true;
+    await Promise.all(fo.map(o => priceOf(o).then(p => { if (p) quotes['o' + o.id] = { ltp: p, at: Date.now() }; }).catch(() => {})));
     // ICICI live quote first, Yahoo (about 15 min delayed) when ICICI is not logged in
     const yahoo = async s => { const p = MarketData.parseYahooChart(await (await fetch(`api/chart.php?symbol=${encodeURIComponent(MarketData.toYahooSymbol(s))}&interval=1d&range=5d`)).json()); const c = p.candles.filter(x => x && isFinite(x.close)); return c.length ? { ltp: (p.meta && p.meta.regularMarketPrice) || c[c.length - 1].close, delayed: true } : null; };
     await Promise.all(syms.map(s => MarketData.getQuote(s).then(q => q && q.ltp ? q : yahoo(s)).catch(() => yahoo(s).catch(() => null)).then(q => { if (q) quotes[s] = { ...q, at: Date.now() }; })));
@@ -425,6 +484,8 @@
         act(() => call('settings', { manual: v === 'man' }), v === 'man' ? 'Manual mode on' : 'Test mode on');
       };
     });
+    container.querySelectorAll('input[name="tr-auto"]').forEach(r => { r.onchange = () => act(() => call('settings', { automation: r.value }), r.value === 'semi' ? 'Semi-automatic: protective orders will go by themselves' : 'One-tap: you approve every order'); });
+    container.querySelectorAll('[data-quick]').forEach(b => { b.onclick = () => act(() => call('watch_add', { symbol: b.dataset.quick, name: b.dataset.quick === 'NIFTY' ? 'NIFTY 50 index' : 'Bank NIFTY index', delivery: false, intraday: false, options: true, futures: true })); });
     container.querySelectorAll('[data-tab]').forEach(b => { b.onclick = () => { tab = b.dataset.tab; try { localStorage.setItem('mm-tr-tab', tab); } catch { /* ok */ } render(container); }; });
     container.querySelectorAll('[data-fill]').forEach(b => {
       b.onclick = () => {
@@ -449,11 +510,11 @@
     if (addBtn) addBtn.onclick = () => {
       const s = (sym.value || '').trim().toUpperCase().split(/\s|—/)[0];
       if (!s) return;
-      act(() => call('watch_add', { symbol: s, name: '', delivery: container.querySelector('#tr-add-cnc').checked, intraday: container.querySelector('#tr-add-mis').checked, options: container.querySelector('#tr-add-opt').checked }));
+      act(() => call('watch_add', { symbol: s, name: '', delivery: container.querySelector('#tr-add-cnc').checked, intraday: container.querySelector('#tr-add-mis').checked, options: container.querySelector('#tr-add-opt').checked, futures: container.querySelector('#tr-add-fut').checked }));
     };
     container.querySelectorAll('tr[data-w]').forEach(tr => {
       tr.querySelectorAll('[data-wk]').forEach(cb => {
-        cb.onchange = () => { const v = k => tr.querySelector(`[data-wk="${k}"]`).checked; act(() => call('watch_update', { id: Number(tr.dataset.w), delivery: v('delivery'), intraday: v('intraday'), options: v('options') })); };
+        cb.onchange = () => { const v = k => tr.querySelector(`[data-wk="${k}"]`).checked; act(() => call('watch_update', { id: Number(tr.dataset.w), delivery: v('delivery'), intraday: v('intraday'), options: v('options'), futures: v('futures') })); };
       });
     });
     container.querySelectorAll('[data-wrm]').forEach(b => { b.onclick = () => act(() => call('watch_remove', { id: Number(b.dataset.wrm) })); });

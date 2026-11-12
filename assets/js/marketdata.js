@@ -30,6 +30,8 @@
     const s = String(symbol || '').trim().toUpperCase();
     if (!s) return s;
     if (s.startsWith('^') || s.includes('.')) return s; // index or already suffixed
+    const IDX = { NIFTY: '^NSEI', 'NIFTY 50': '^NSEI', BANKNIFTY: '^NSEBANK', CNXBAN: '^NSEBANK', FINNIFTY: 'NIFTY_FIN_SERVICE.NS', MIDCPNIFTY: '^NSEMDCP50', NIFTYNXT50: '^NSMIDCP' };
+    if (IDX[s]) return IDX[s];
     if (/^\d{6}$/.test(s)) return s + '.BO';           // BSE scrip code
     return s + '.NS';
   }

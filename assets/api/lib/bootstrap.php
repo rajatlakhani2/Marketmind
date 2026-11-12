@@ -292,6 +292,10 @@ function mm_migrations(): array {
             )$t",
             "CREATE UNIQUE INDEX ux_user_watchlist ON user_watchlist (user_id, symbol)",
         ],
+        // Futures as a fourth way to trade a watchlist stock or index
+        8 => [
+            "ALTER TABLE trade_watchlist ADD COLUMN futures TINYINT NOT NULL DEFAULT 0",
+        ],
     ];
 }
 

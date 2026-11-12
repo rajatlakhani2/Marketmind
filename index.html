@@ -18,11 +18,11 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
-  <script src="js/marketdata.js?v=20"></script>
+  <script src="js/marketdata.js?v=21"></script>
   <script src="js/ks001.js?v=14"></script>
   <script src="js/conditions.js?v=14"></script>
   <script src="js/library.js?v=14"></script>
-  <script src="js/plain.js?v=1"></script>
+  <script src="js/plain.js?v=2"></script>
   <script src="js/tiers.js?v=1"></script>
   <script src="js/consensus.js?v=18"></script>
   <script src="js/account.js?v=14"></script>
@@ -32,13 +32,13 @@
   <script src="js/optbuilder.js?v=16"></script>
   <script src="js/fno.js?v=16"></script>
   <script src="js/events.js?v=14"></script>
-  <script src="js/trading.js?v=16"></script>
+  <script src="js/trading.js?v=17"></script>
   <script src="js/scan.js?v=15"></script>
   <script src="js/watchlist.js?v=21"></script>
   <script src="js/candlechart.js?v=21"></script>
   <script src="js/stock.js?v=22"></script>
   <script src="js/live.js?v=24"></script>
-  <script src="js/backtest.js?v=29"></script>
+  <script src="js/backtest.js?v=30"></script>
   <script src="js/nav.js?v=23"></script>
   <script src="js/overview.js?v=1"></script>
   <script src="js/home.js?v=22"></script>
@@ -894,6 +894,7 @@ input, select, textarea { border-radius: 10px !important; }
 .tr-rr-lab { display: flex; justify-content: space-between; font-size: 0.74rem; margin-top: 4px; }
 .tr-gloss { font-size: 0.84rem; margin-left: 18px; } .tr-gloss li { margin: 4px 0; }
 .live-help { padding: 12px 14px; margin-top: 12px; } .live-help h4 { font-size: 0.86rem; margin-bottom: 4px; } .live-help ul { font-size: 0.82rem; margin: 0 0 6px 18px; } .live-help li { margin: 3px 0; }
+.tr-radio { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; font-size: 0.88rem; } .tr-radio input { margin-top: 3px; }
 .pl-name { border-bottom: 1px dotted var(--text-muted); cursor: help; }
 @media (max-width: 700px) { .tr-dash { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tr-chips { margin-left: 0; } }
 @media (max-width: 600px) { .hide-xs { display: none; } .ov-table td, .ov-table th { padding: 7px 4px; } .ov-bar { display: none; } .ov-table { font-size: 0.8rem; } .ov-detail td { max-width: calc(100vw - 48px); } .ov-heat { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); } }

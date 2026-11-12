@@ -37,7 +37,15 @@ $DEFAULTS = [
     'optionStopPct' => 40,       // options: stop when the premium falls this much
     'optionTargetPct' => 80,     // options: target when the premium rises this much
     'manual' => false,           // without a relay: true = you place approved orders in the ICICI app yourself
+    'automation' => 'onetap',    // onetap = you approve every order; semi = new trades need you, stop-loss / target / exit orders go by themselves
+    'optionRiskPct' => 5,        // option buying: most of the capital one trade may lose (premium × stop %)
+    'futuresRiskPct' => 2,       // futures: most of the capital one trade may lose at the stop
+    'futuresLive' => false,      // futures stay simulated (paper) until you switch this on with enough margin
 ];
+
+// F&O orders go to the NFO segment
+function is_fo(array $o): bool { return in_array($o['product'], ['option', 'future'], true); }
+function exch(array $o): string { return is_fo($o) ? 'NFO' : 'NSE'; }
 
 // ---------- helpers ----------
 function ist_now(): DateTime { return new DateTime('now', new DateTimeZone('Asia/Kolkata')); }
@@ -63,7 +71,9 @@ function save_setting(PDO $pdo, string $k, $v): void {
 }
 
 // live = sent through the relay; man = you place it in the ICICI Direct app; test = simulated
-function order_mode(array $S): string {
+function order_mode(array $S, ?array $o = null): string {
+    // Futures are paper-only until switched on (they need far more margin than the current capital)
+    if ($o && $o['product'] === 'future' && empty($S['futuresLive'])) return 'test';
     if (relay_cfg()) return 'live';
     return !empty($S['manual']) ? 'man' : 'test';
 }
@@ -117,10 +127,11 @@ function order_row(PDO $pdo, int $id): array {
 // The ICICI order body for one of our orders
 function breeze_order(array $o): array {
     $isOpt = $o['product'] === 'option';
+    $isFut = $o['product'] === 'future';
     $b = [
-        'stock_code' => $isOpt ? $o['opt_isec'] : $o['symbol'],
-        'exchange_code' => $isOpt ? 'NFO' : 'NSE',
-        'product' => $isOpt ? 'options' : ($o['product'] === 'mis' ? 'margin' : 'cash'),
+        'stock_code' => is_fo($o) ? $o['opt_isec'] : $o['symbol'],
+        'exchange_code' => exch($o),
+        'product' => $isOpt ? 'options' : ($isFut ? 'futures' : ($o['product'] === 'mis' ? 'margin' : 'cash')),
         'action' => $o['side'],
         'order_type' => $o['order_type'] === 'stoploss' ? 'stoploss' : 'limit',
         'stoploss' => $o['order_type'] === 'stoploss' ? (string) $o['trigger_price'] : '',
@@ -138,6 +149,14 @@ function breeze_order(array $o): array {
             'strike_price' => (string) (0 + $o['opt_strike']),
         ];
     }
+    if ($isFut) {
+        $b += [
+            'validity_date' => ist_now()->format('Y-m-d') . 'T06:00:00.000Z',
+            'expiry_date' => $o['opt_expiry'] . 'T06:00:00.000Z',
+            'right' => 'others',
+            'strike_price' => '0',
+        ];
+    }
     return $b;
 }
 
@@ -153,7 +172,7 @@ function close_parent(PDO $pdo, array $exit, float $price): void {
     $st->execute([$p['id'], $exit['id']]);
     foreach ($st->fetchAll() as $sib) {
         if ($sib['status'] === 'open' && $sib['mode'] === 'live' && $sib['broker_order_id']) {
-            try { relay('cancel', ['exchange_code' => $sib['product'] === 'option' ? 'NFO' : 'NSE', 'order_id' => $sib['broker_order_id']]); } catch (Throwable $e) { /* reported on next sync */ }
+            try { relay('cancel', ['exchange_code' => exch($sib), 'order_id' => $sib['broker_order_id']]); } catch (Throwable $e) { /* reported on next sync */ }
         }
         $pdo->prepare("UPDATE trade_orders SET status = 'cancelled', decided_at = ? WHERE id = ?")->execute([mm_now(), $sib['id']]);
     }
@@ -190,7 +209,7 @@ function state(PDO $pdo, array $defaults): array {
         $st->execute($syms);
         foreach ($st->fetchAll() as $r) $codes[$r['symbol']] = $r['isec_code'];
     }
-    foreach ($orders as &$o) $o['icici_code'] = $o['product'] === 'option' ? $o['opt_isec'] : ($codes[$o['symbol']] ?? '');
+    foreach ($orders as &$o) $o['icici_code'] = is_fo($o) ? $o['opt_isec'] : ($codes[$o['symbol']] ?? '');
     unset($o);
     return [
         'settings' => settings($pdo, $defaults),
@@ -223,6 +242,10 @@ try {
         save_setting($pdo, 'maxOpen', (int) $num('maxOpen', 1, 20));
         save_setting($pdo, 'optionStopPct', $num('optionStopPct', 10, 90));
         save_setting($pdo, 'optionTargetPct', $num('optionTargetPct', 10, 500));
+        save_setting($pdo, 'optionRiskPct', $num('optionRiskPct', 0.5, 10));
+        save_setting($pdo, 'futuresRiskPct', $num('futuresRiskPct', 0.5, 10));
+        if (array_key_exists('automation', $body)) save_setting($pdo, 'automation', $body['automation'] === 'semi' ? 'semi' : 'onetap');
+        if (array_key_exists('futuresLive', $body)) save_setting($pdo, 'futuresLive', (bool) $body['futuresLive']);
         if (array_key_exists('enabled', $body)) save_setting($pdo, 'enabled', (bool) $body['enabled']);
         if (array_key_exists('manual', $body)) save_setting($pdo, 'manual', (bool) $body['manual']);
         mm_json(200, state($pdo, $DEFAULTS));
@@ -232,13 +255,13 @@ try {
         $sym = strtoupper(mm_str($body, 'symbol', 20));
         if (!preg_match('/^[A-Z0-9&\-]{1,20}$/', $sym) || preg_match('/^\d{6}$/', $sym)) mm_json(400, ['error' => 'Use an NSE symbol (BSE-only stocks can\'t be traded here)']);
         $sql = mm_is_sqlite($pdo) ? 'INSERT OR IGNORE' : 'INSERT IGNORE';
-        $pdo->prepare("$sql INTO trade_watchlist (symbol, name, delivery, intraday, options, added_at) VALUES (?, ?, ?, ?, ?, ?)")
-            ->execute([$sym, mm_str($body, 'name', 150), empty($body['delivery']) ? 0 : 1, empty($body['intraday']) ? 0 : 1, empty($body['options']) ? 0 : 1, mm_now()]);
+        $pdo->prepare("$sql INTO trade_watchlist (symbol, name, delivery, intraday, options, futures, added_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            ->execute([$sym, mm_str($body, 'name', 150), empty($body['delivery']) ? 0 : 1, empty($body['intraday']) ? 0 : 1, empty($body['options']) ? 0 : 1, empty($body['futures']) ? 0 : 1, mm_now()]);
         mm_json(200, state($pdo, $DEFAULTS));
     }
     if ($action === 'watch_update') {
-        $pdo->prepare('UPDATE trade_watchlist SET delivery = ?, intraday = ?, options = ? WHERE id = ?')
-            ->execute([empty($body['delivery']) ? 0 : 1, empty($body['intraday']) ? 0 : 1, empty($body['options']) ? 0 : 1, (int) ($body['id'] ?? 0)]);
+        $pdo->prepare('UPDATE trade_watchlist SET delivery = ?, intraday = ?, options = ?, futures = ? WHERE id = ?')
+            ->execute([empty($body['delivery']) ? 0 : 1, empty($body['intraday']) ? 0 : 1, empty($body['options']) ? 0 : 1, empty($body['futures']) ? 0 : 1, (int) ($body['id'] ?? 0)]);
         mm_json(200, state($pdo, $DEFAULTS));
     }
     if ($action === 'watch_remove') {
@@ -253,7 +276,7 @@ try {
         foreach (array_slice((array) ($body['orders'] ?? []), 0, 20) as $p) {
             if (!is_array($p)) continue;
             $purpose = in_array($p['purpose'] ?? '', ['entry', 'target', 'squareoff', 'exit'], true) ? $p['purpose'] : null;
-            $product = in_array($p['product'] ?? '', ['cnc', 'mis', 'option'], true) ? $p['product'] : null;
+            $product = in_array($p['product'] ?? '', ['cnc', 'mis', 'option', 'future'], true) ? $p['product'] : null;
             $sym = strtoupper((string) ($p['symbol'] ?? ''));
             $qty = (int) ($p['qty'] ?? 0);
             $limit = (float) ($p['limit'] ?? 0);
@@ -278,7 +301,7 @@ try {
                 $qty = (int) $po['qty'];
                 $side = 'sell';
             }
-            $opt = $product === 'option' ? $p['option'] ?? [] : [];
+            $opt = in_array($product, ['option', 'future'], true) ? $p['option'] ?? [] : [];
             $pdo->prepare("INSERT INTO trade_orders (parent_id, symbol, name, product, purpose, side, order_type, qty, lot, limit_price, trigger_price, stop, target, opt_isec, opt_expiry, opt_strike, opt_right, timeframe, verdict, reason, status, mode, created_at, expires_at)
                 VALUES (?, ?, ?, ?, ?, ?, 'limit', ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)")
                 ->execute([
@@ -314,7 +337,12 @@ try {
             if (!$S['enabled']) $fail('Trading is switched off in Settings.');
             if ($o['product'] === 'mis' && ist_mins() > 14 * 60 + 45) $fail('Too late in the day for a new intraday position (after 2:45 pm).');
             $value = (float) $o['limit_price'] * (int) $o['qty'];
-            if ($value > (float) $S['maxPerTrade'] * 1.001) $fail('Order value ₹' . number_format($value) . ' is above your limit of ₹' . number_format((float) $S['maxPerTrade']) . ' per trade.');
+            $risk = $o['stop'] !== null ? abs((float) $o['limit_price'] - (float) $o['stop']) * (int) $o['qty'] : null;
+            $riskCap = ['option' => 'optionRiskPct', 'future' => 'futuresRiskPct'][$o['product']] ?? 'riskPct';
+            $paperFut = $o['product'] === 'future' && empty($S['futuresLive']);
+            if ($risk !== null && !$paperFut && $risk > (float) $S['account'] * (float) $S[$riskCap] / 100 * 1.02) $fail('This trade could lose ₹' . number_format($risk) . ', above your limit of ' . $S[$riskCap] . '% of capital per trade.');
+            if ($o['product'] === 'future') { /* futures: notional is far above the per-trade value cap; the risk check above applies */ }
+            elseif ($value > (float) $S['maxPerTrade'] * 1.001) $fail('Order value ₹' . number_format($value) . ' is above your limit of ₹' . number_format((float) $S['maxPerTrade']) . ' per trade.');
             $todayStart = (new DateTime(ist_now()->format('Y-m-d') . ' 00:00:00', new DateTimeZone('Asia/Kolkata')))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
             $st = $pdo->prepare("SELECT COUNT(*) FROM trade_orders WHERE purpose = 'entry' AND decided_at >= ? AND status IN ('open','filled','closed')");
             $st->execute([$todayStart]);
@@ -323,7 +351,7 @@ try {
             if ($open >= (int) $S['maxOpen']) $fail("You already have $open open positions (limit {$S['maxOpen']}).");
         }
 
-        $mode = order_mode($S);
+        $mode = order_mode($S, $o);
         $pdo->prepare("UPDATE trade_orders SET mode = ?, decided_at = ?, decided_by = ? WHERE id = ?")->execute([$mode, mm_now(), $admin['id'], $o['id']]);
         if ($mode === 'man') {
             $pdo->prepare("UPDATE trade_orders SET status = 'open', broker_status = 'Place in ICICI app' WHERE id = ?")->execute([$o['id']]);
@@ -352,7 +380,7 @@ try {
         // Unfilled entry orders at ICICI are cancelled; filled positions and their stop-losses stay
         foreach ($pdo->query("SELECT * FROM trade_orders WHERE status = 'open' AND purpose = 'entry'")->fetchAll() as $o) {
             if ($o['mode'] === 'live' && $o['broker_order_id']) {
-                try { relay('cancel', ['exchange_code' => $o['product'] === 'option' ? 'NFO' : 'NSE', 'order_id' => $o['broker_order_id']]); } catch (Throwable $e) { continue; }
+                try { relay('cancel', ['exchange_code' => exch($o), 'order_id' => $o['broker_order_id']]); } catch (Throwable $e) { continue; }
             }
             $pdo->prepare("UPDATE trade_orders SET status = 'cancelled' WHERE id = ?")->execute([$o['id']]);
             $cancelled++;
@@ -398,7 +426,7 @@ try {
             }
             if (!$o['broker_order_id']) continue;
             try {
-                $r = relay('detail', ['exchange_code' => $o['product'] === 'option' ? 'NFO' : 'NSE', 'order_id' => $o['broker_order_id']]);
+                $r = relay('detail', ['exchange_code' => exch($o), 'order_id' => $o['broker_order_id']]);
                 $d = ($r['Success'] ?? [])[0] ?? null;
                 if (!$d) continue;
                 $status = (string) ($d['status'] ?? '');

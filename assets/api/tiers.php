@@ -7,10 +7,10 @@
 //
 // Rules (decided 10 Nov 2026):
 //   Proven     : 100+ trades, average at least +0.10R after costs, positive in at least half the years
-//   Watch      : 30+ trades, average above 0
+//   Watch      : 30+ trades, average at least +0.05R (raised from "above 0" on 12 Nov 2026)
 //   Not proven : everything else
 //   Buffer so tiers don't flip every month: a Proven strategy stays Proven while it holds +0.05R and
-//   misses at most one more year than the rule allows; a Watch strategy stays Watch down to −0.03R.
+//   misses at most one more year than the rule allows; a Watch strategy stays Watch down to +0.04R.
 //   Live MindGuru results (source "live") move a strategy one tier: down after 30+ trades at −0.10R or worse,
 //   up after 50+ trades at +0.15R or better. A tier set by hand always wins.
 
@@ -43,8 +43,8 @@ function tier_from_backtest(array $s, ?string $prev): string {
     $halfOk = $years === 0 || $pos * 2 >= $years;
     if ($n >= 100 && $avg >= 0.10 && $halfOk) return 'proven';
     if ($prev === 'proven' && $n >= 100 && $avg >= 0.05 && ($years === 0 || ($pos + 1) * 2 >= $years)) return 'proven';
-    if ($n >= 30 && $avg > 0) return 'watch';
-    if (in_array($prev, ['watch', 'proven'], true) && $n >= 30 && $avg >= -0.03) return 'watch';
+    if ($n >= 30 && $avg >= 0.05) return 'watch';
+    if (in_array($prev, ['watch', 'proven'], true) && $n >= 30 && $avg >= 0.04) return 'watch';
     return 'unproven';
 }
 
@@ -61,7 +61,8 @@ function tiers_effective(PDO $pdo, array $meta): array {
     foreach ($ids as $id) {
         if ($id === '' || $id[0] === '_') continue;          // verdict / watchlist calls are not strategies
         $bt = $meta['bt'][$id] ?? null;
-        $btTier = $bt['tier'] ?? 'unproven';
+        // Re-judged with today's rules each time, so a rule change applies without a new back-test
+        $btTier = $bt && isset($bt['n']) ? tier_from_backtest($bt, $bt['tier'] ?? null) : ($bt['tier'] ?? 'unproven');
         $live = $brain[$id]['buckets']['src:live'] ?? null;
         $tier = $btTier; $why = $bt ? 'back-test' : 'no back-test record';
         if ($live) {
