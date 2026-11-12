@@ -215,6 +215,19 @@ function mm_search_stocks(PDO $pdo, string $q, int $limit = 20): array {
     $st->execute([$like . '%', '%' . $like . '%', strtoupper($q), $like . '%', $like . '%']);
     $rows = $st->fetchAll();
 
+    // Few or no matches: forgive spelling (missing or doubled letters, spaces). "waree" finds WAAREE,
+    // "tata motor" finds TATA MOTORS: the letters only need to appear in this order.
+    $letters = preg_replace('/[^A-Za-z0-9&]/', '', $q);
+    if (count($rows) < 5 && strlen($letters) >= 3) {
+        $loose = '%' . implode('%', str_split(strtoupper($letters))) . '%';
+        $st2 = $pdo->prepare("SELECT exchange, symbol, name, isin, series FROM stocks
+            WHERE is_active = 1 AND (UPPER(symbol) LIKE ? OR UPPER(name) LIKE ?)
+            ORDER BY (UPPER(symbol) LIKE ?) DESC, LENGTH(name), symbol LIMIT 60");
+        $st2->execute([$loose, $loose, strtoupper(substr($letters, 0, 1)) . '%']);
+        $seen = array_flip(array_map(fn($r) => $r['exchange'] . $r['symbol'], $rows));
+        foreach ($st2->fetchAll() as $r) if (!isset($seen[$r['exchange'] . $r['symbol']])) $rows[] = $r;
+    }
+
     // Pair NSE and BSE listings of the same company (same ISIN)
     $isins = array_values(array_unique(array_filter(array_column($rows, 'isin'))));
     $pair = [];
