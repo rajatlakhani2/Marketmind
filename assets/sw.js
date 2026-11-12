@@ -3,10 +3,10 @@
 // api/*: never cached — market data, sign-in and MindGuru always come live from the server.
 // Fonts and the PDF library from CDNs: cached after first use.
 
-const VERSION = 'mm-v17';
+const VERSION = 'mm-v18';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
-  './js/marketdata.js', './js/ks001.js', './js/conditions.js', './js/library.js', './js/tiers.js', './js/consensus.js',
+  './js/marketdata.js', './js/ks001.js', './js/conditions.js', './js/library.js', './js/plain.js', './js/tiers.js', './js/consensus.js',
   './js/account.js', './js/stockpicker.js', './js/mindguru.js', './js/knowledgesync.js', './js/fno.js', './js/nav.js', './js/backtest.js', './js/stock.js', './js/live.js', './js/candlechart.js', './js/overview.js', './js/home.js', './js/optbuilder.js', './js/events.js', './js/trading.js', './js/scan.js', './js/watchlist.js',
   './icons/icon-192.png', './icons/icon-512.png',
 ];

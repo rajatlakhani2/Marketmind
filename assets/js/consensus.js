@@ -271,7 +271,7 @@
       const tr = tierFor(s.id, side, tiers, market);
       const mg = lr ? lr.weight : 1;
       return {
-        id: s.id, name: s.name, isBuiltIn: !!s.isBuiltIn, side,
+        id: s.id, name: root.Plain ? Plain.name(s.id, s.name) : s.name, tech: s.name, isBuiltIn: !!s.isBuiltIn, side,
         status, met, total: checkable.length, unchecked: conds.length - checkable.length, conditions: conds, plan,
         learned: lr, mgWeight: mg, ...tr, counted: tr.tierWeight > 0, weight: tr.tierWeight * mg,
       };

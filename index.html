@@ -22,22 +22,23 @@
   <script src="js/ks001.js?v=14"></script>
   <script src="js/conditions.js?v=14"></script>
   <script src="js/library.js?v=14"></script>
+  <script src="js/plain.js?v=1"></script>
   <script src="js/tiers.js?v=1"></script>
-  <script src="js/consensus.js?v=17"></script>
+  <script src="js/consensus.js?v=18"></script>
   <script src="js/account.js?v=14"></script>
   <script src="js/stockpicker.js?v=14"></script>
-  <script src="js/mindguru.js?v=16"></script>
+  <script src="js/mindguru.js?v=17"></script>
   <script src="js/knowledgesync.js?v=14"></script>
   <script src="js/optbuilder.js?v=16"></script>
   <script src="js/fno.js?v=16"></script>
   <script src="js/events.js?v=14"></script>
-  <script src="js/trading.js?v=15"></script>
+  <script src="js/trading.js?v=16"></script>
   <script src="js/scan.js?v=15"></script>
   <script src="js/watchlist.js?v=21"></script>
   <script src="js/candlechart.js?v=21"></script>
   <script src="js/stock.js?v=22"></script>
-  <script src="js/live.js?v=22"></script>
-  <script src="js/backtest.js?v=28"></script>
+  <script src="js/live.js?v=23"></script>
+  <script src="js/backtest.js?v=29"></script>
   <script src="js/nav.js?v=23"></script>
   <script src="js/overview.js?v=1"></script>
   <script src="js/home.js?v=22"></script>
@@ -871,6 +872,30 @@ input, select, textarea { border-radius: 10px !important; }
 .ov-tops { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; font-size: 0.84rem; }
 .ov-tops h4 { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 4px; } .ov-tops p { cursor: pointer; margin: 3px 0; }
 .tier-caution { background: #fde2e1; color: var(--red); }
+/* Trade tab */
+.tr-dash { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.tr-dash.sm { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tr-stat { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tr-stat > span { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; }
+.tr-stat b { font-size: 1.05rem; } .tr-stat small { font-size: 0.72rem; color: var(--text-muted); }
+.seg-sm button { padding: 4px 10px; font-size: 0.78rem; }
+.tr-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.tr-tabs { margin: 6px 0 12px; display: flex; flex-wrap: nowrap; overflow-x: auto; } .tr-tabs button { white-space: nowrap; padding: 6px 10px; }
+.tr-pane { display: flex; flex-direction: column; gap: 12px; }
+.tr-headline { font-size: 1.02rem; margin: 8px 0 6px; }
+.tr-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 6px 0; }
+.tr-facts > div { display: flex; flex-direction: column; } .tr-facts span { font-size: 0.72rem; color: var(--text-muted); } .tr-facts b { font-size: 0.95rem; }
+.tr-why { background: var(--bg-hover); border-radius: 8px; padding: 8px 10px; font-size: 0.86rem; margin: 6px 0; }
+.tr-rr { margin: 10px 0 4px; }
+.tr-rr-track { position: relative; height: 10px; border-radius: 5px; background: var(--border); }
+.tr-rr-track i { position: absolute; top: 0; bottom: 0; } .tr-rr-track i.risk { background: rgba(220,38,38,0.35); border-radius: 5px 0 0 5px; } .tr-rr-track i.reward { background: rgba(22,163,74,0.35); border-radius: 0 5px 5px 0; }
+.tr-rr-track .mk { position: absolute; top: -4px; width: 3px; height: 18px; margin-left: -1px; border-radius: 2px; background: var(--text); }
+.tr-rr-track .mk.now { background: #2563eb; width: 4px; }
+.tr-rr-lab { display: flex; justify-content: space-between; font-size: 0.74rem; margin-top: 4px; }
+.tr-gloss { font-size: 0.84rem; margin-left: 18px; } .tr-gloss li { margin: 4px 0; }
+.live-help { padding: 12px 14px; margin-top: 12px; } .live-help h4 { font-size: 0.86rem; margin-bottom: 4px; } .live-help ul { font-size: 0.82rem; margin: 0 0 6px 18px; } .live-help li { margin: 3px 0; }
+.pl-name { border-bottom: 1px dotted var(--text-muted); cursor: help; }
+@media (max-width: 700px) { .tr-dash { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tr-chips { margin-left: 0; } }
 @media (max-width: 600px) { .hide-xs { display: none; } .ov-table td, .ov-table th { padding: 7px 4px; } .ov-bar { display: none; } .ov-table { font-size: 0.8rem; } .ov-detail td { max-width: calc(100vw - 48px); } .ov-heat { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); } }
 .home-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .home-card { background: var(--bg-card); border: 1px solid var(--border); padding: 16px 18px; }
@@ -2367,7 +2392,8 @@ class UIRenderer {
     list.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><h3 style="font-size:0.95rem;">Strategies (${strategies.length})</h3></div>` +
       strategies.map(s => `
         <div class="strategy-card ${this.currentStrategy?.id === s.id ? 'active' : ''}" data-id="${s.id}">
-          <div class="flex-between"><h4>${this._esc(s.name)} ${this._originTag(s)}${window.Tiers && window.Consensus && Consensus.LEVELS[s.id] ? Tiers.badge(s.id) : ''}</h4></div>
+          <div class="flex-between"><h4>${this._esc(window.Plain ? Plain.name(s.id, s.name) : s.name)} ${this._originTag(s)}${window.Tiers && window.Consensus && Consensus.LEVELS[s.id] ? Tiers.badge(s.id) : ''}</h4></div>
+          ${window.Plain && Plain.MAP[s.id] ? `<p style="font-size:0.8rem;color:var(--text-muted);margin:2px 0 6px;">${this._esc(s.name)} · ${this._esc(Plain.what(s.id))}</p>` : ''}
           <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">${this._esc(s.category)}</p>
           <p style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;">${s.conditions.length} conditions</p>
           ${s.isUserCreated ? `<button class="btn-danger btn-small" style="margin-top:6px;" onclick="app.deleteStrat('${s.id}')">Delete</button>` : ''}
@@ -2394,7 +2420,8 @@ class UIRenderer {
     const detail = document.getElementById('strategy-detail');
     if (!strategy) { detail.innerHTML = ''; return; }
     detail.innerHTML = `
-      <h3 style="font-size:1.1rem;margin-bottom:12px;">${this._esc(strategy.name)} ${this._originTag(strategy)}${window.Tiers && window.Consensus && Consensus.LEVELS[strategy.id] ? Tiers.badge(strategy.id) : ''}</h3>
+      <h3 style="font-size:1.1rem;margin-bottom:4px;">${this._esc(window.Plain ? Plain.name(strategy.id, strategy.name) : strategy.name)} ${this._originTag(strategy)}${window.Tiers && window.Consensus && Consensus.LEVELS[strategy.id] ? Tiers.badge(strategy.id) : ''}</h3>
+      ${window.Plain && Plain.MAP[strategy.id] ? `<p style="font-size:0.86rem;margin-bottom:6px;"><b>In plain words:</b> ${this._esc(Plain.what(strategy.id))} <span style="color:var(--text-muted)">(${this._esc(strategy.name)})</span></p>` : ''}
       ${window.Tiers && window.Consensus && Consensus.LEVELS[strategy.id] ? `<p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:10px;">${this._esc(this._tierLine(strategy.id))}</p>` : ''}
       <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Category: ${this._esc(strategy.category)} | Source: ${this._esc(strategy.sourceName)}</p>
       <h4 style="font-size:0.88rem;color:var(--text-secondary);margin:14px 0 6px;">Description</h4>
@@ -2787,7 +2814,8 @@ class UIRenderer {
         ? `<span class="s-trust ${r.weight >= 1.05 ? 'up' : r.weight <= 0.95 ? 'down' : ''}" title="MindGuru: ${Math.round(r.learned.winRate * 100)}% winners, ${r.learned.avgR >= 0 ? '+' : ''}${r.learned.avgR.toFixed(2)}R average over ${r.learned.trades} trades (${this._esc(r.learned.scope)})">×${r.weight.toFixed(2)}</span>`
         : '';
       return `<details class="s-row">
-        <summary><span class="s-name">${this._esc(r.name)}${window.Tiers ? Tiers.badge(r.id) : ''}${trust}</span><span class="chip ${chip}">${label}</span><span class="s-count">${r.met}/${r.total}${r.unchecked ? ` +${r.unchecked}?` : ''}</span></summary>
+        <summary><span class="s-name" title="${this._esc(window.Plain ? Plain.what(r.id) : '')}">${this._esc(r.name)}${window.Tiers ? Tiers.badge(r.id) : ''}${trust}</span><span class="chip ${chip}">${label}</span><span class="s-count">${r.met}/${r.total}${r.unchecked ? ` +${r.unchecked}?` : ''}</span></summary>
+        ${window.Plain && Plain.MAP[r.id] ? `<p class="s-how"><b>What it means:</b> ${this._esc(Plain.what(r.id))} <span class="muted">(${this._esc(r.tech || '')})</span></p>` : ''}
         <div class="s-levels">${lv}</div>
         ${p && p.how ? `<p class="s-how">${this._esc(p.how)}${p.targetWhy ? ` · sell target = ${this._esc(p.targetWhy)}` : ''}</p>` : ''}
         <ul class="s-conds">${r.conditions.map(x => `<li><span class="${x.unknown ? 'condition-warn' : x.met ? 'condition-check' : 'condition-cross'}">${x.unknown ? '?' : x.met ? '✓' : '✗'}</span> ${this._esc(x.condition)} <span class="cond-detail">${this._esc(x.detail)}</span></li>`).join('')}</ul>

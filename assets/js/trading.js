@@ -197,27 +197,63 @@
   const PURPOSE = { entry: 'Buy', stoploss: 'Stop-loss', target: 'Sell at target', squareoff: 'Square off', exit: 'Exit' };
   const STATUS = { pending: 'Waiting for you', open: 'Sent, not filled', filled: 'Filled', closed: 'Closed', rejected: 'Rejected', expired: 'Expired', cancelled: 'Cancelled', failed: 'Failed' };
 
+  // Stop — entry — target as a bar, with the current price marked when known
+  function rrBar(entry, stop, target, now) {
+    if (!(entry > 0 && stop > 0 && target > 0) || target === stop) return '';
+    const lo = Math.min(stop, target), hi = Math.max(stop, target), at = v => Math.max(0, Math.min(100, (v - lo) / (hi - lo) * 100));
+    const long = target > stop, e = at(entry);
+    return `<div class="tr-rr"><div class="tr-rr-track"><i class="risk" style="left:${long ? 0 : e}%;width:${long ? e : 100 - e}%"></i><i class="reward" style="left:${long ? e : 0}%;width:${long ? 100 - e : e}%"></i>
+      <b class="mk entry" style="left:${e}%"></b>${now ? `<b class="mk now" style="left:${at(now)}%" title="now ${rs(now)}"></b>` : ''}</div>
+      <div class="tr-rr-lab"><span class="down">Stop ${rs(stop)}</span><span>Entry ${rs(entry)}</span><span class="up">Target ${rs(target)}</span></div></div>`;
+  }
+
+  const productHelp = { cnc: 'Delivery (CNC): shares go to your demat and can be held for days or weeks.', mis: 'Intraday (MIS): must be closed today; MarketMind squares off by 3:15 pm.', option: 'Option buy (NRML): you pay the premium; the most you can lose is what you pay.' };
+
   function orderCard(o) {
     const value = Number(o.limit_price) * Number(o.qty);
     const left = Math.max(0, Math.round((Date.parse(o.expires_at.replace(' ', 'T') + 'Z') - Date.now()) / 60e3));
-    return `<div class="tr-card ${o.side}">
+    const entry = Number(o.limit_price), stop = o.stop != null ? Number(o.stop) : null, target = o.target != null ? Number(o.target) : null;
+    const units = Number(o.qty);
+    const risk = stop != null ? Math.abs(entry - stop) * units : null, reward = target != null ? Math.abs(target - entry) * units : null;
+    const what = o.product === 'option' ? esc(o.name) : `${n0(units)} shares of ${esc(o.symbol)}`;
+    const isEntry = o.purpose === 'entry';
+    return `<div class="tr-card tr-idea ${o.side}">
       <div class="tr-card-head">
         <span class="chip ${o.side === 'buy' ? 'chip-long' : 'chip-short'}">${esc(PURPOSE[o.purpose] || o.purpose)}</span>
-        <strong>${esc(o.product === 'option' ? o.name : o.symbol)}</strong>
-        <span class="tag">${esc(PRODUCT[o.product])}</span>
-        <span class="muted">expires in ${left} min</span>
+        <span class="tag" title="${esc(productHelp[o.product] || '')}">${esc(PRODUCT[o.product])}</span>
+        <span class="muted tr-exp">${left} min left to decide</span>
       </div>
-      <div class="tr-card-grid">
-        <div><span class="label">${o.order_type === 'stoploss' ? 'Trigger / limit' : 'Limit price'}</span><b>${o.order_type === 'stoploss' ? `${rs(Number(o.trigger_price))} / ${rs(Number(o.limit_price))}` : rs(Number(o.limit_price))}</b></div>
-        <div><span class="label">Quantity</span><b>${n0(Number(o.qty))}${o.product === 'option' ? ` (${Number(o.qty) / Number(o.lot)} lot)` : ''}</b></div>
-        <div><span class="label">Value</span><b>${rs(value, 0)}</b></div>
-        ${o.stop != null ? `<div><span class="label">Stop / target</span><b>${rs(Number(o.stop))} / ${rs(Number(o.target))}</b></div>` : ''}
+      <h4 class="tr-headline">${o.side === 'buy' ? 'Buy' : 'Sell'} ${what} at ${o.order_type === 'stoploss' ? `trigger ${rs(Number(o.trigger_price))}` : rs(entry)}</h4>
+      <div class="tr-facts">
+        <div><span>Money needed</span><b>${rs(value, 0)}</b></div>
+        ${risk != null && isEntry ? `<div><span>You could lose</span><b class="down">${rs(risk, 0)}</b></div>` : ''}
+        ${reward != null && isEntry ? `<div><span>You could make</span><b class="up">${rs(reward, 0)}</b></div>` : ''}
+        ${risk && reward && isEntry ? `<div><span>Reward : risk</span><b>${(reward / risk).toFixed(1)} : 1</b></div>` : ''}
       </div>
-      <p class="tr-reason">${esc(o.reason || '')}</p>
+      ${isEntry ? rrBar(entry, stop, target) : ''}
+      <div class="tr-why"><b>Why:</b> ${esc(o.reason || '—')}</div>
+      <p class="muted small">${esc(productHelp[o.product] || '')}</p>
       <div class="tr-actions">
         <button type="button" class="btn-primary" data-approve="${o.id}">${st.mode === 'live' ? 'Approve & send to ICICI' : st.mode === 'man' ? 'Approve' : 'Approve (test)'}</button>
-        <button type="button" class="btn-secondary" data-reject="${o.id}">Reject</button>
+        <button type="button" class="btn-secondary" data-reject="${o.id}">Skip</button>
       </div>
+    </div>`;
+  }
+
+  // Open position with live price, P&L and where it sits between stop and target
+  function positionCard(o) {
+    const q = o.product === 'option' ? null : quotes[o.symbol];
+    const now = q && q.ltp ? q.ltp : null, buy = Number(o.fill_price), qty = Number(o.qty);
+    const pnl = now ? (now - buy) * qty : null, r = now && o.stop ? (now - buy) / Math.abs(buy - Number(o.stop)) : null;
+    return `<div class="tr-card tr-pos">
+      <div class="tr-card-head"><strong>${esc(o.product === 'option' ? o.name : o.symbol)}</strong><span class="tag" title="${esc(productHelp[o.product] || '')}">${esc(PRODUCT[o.product])}</span><span class="muted">${o.mode === 'live' ? 'Live' : o.mode === 'man' ? 'Manual' : 'Test'} · ${n0(qty)} @ ${rs(buy)}</span></div>
+      <div class="tr-facts">
+        <div><span>Now</span><b>${now ? rs(now) : '—'}</b></div>
+        <div><span>Profit / loss</span><b class="${pnl > 0 ? 'up' : pnl < 0 ? 'down' : ''}">${pnl != null ? (pnl > 0 ? '+' : '') + rs(pnl, 0) : '—'}</b></div>
+        <div><span>In R</span><b class="${r > 0 ? 'up' : r < 0 ? 'down' : ''}">${r != null ? (r > 0 ? '+' : '') + r.toFixed(2) + 'R' : '—'}</b></div>
+      </div>
+      ${rrBar(buy, Number(o.stop), Number(o.target), now)}
+      <div class="tr-actions"><button type="button" class="btn-secondary btn-small" data-exit="${o.id}">Exit now…</button></div>
     </div>`;
   }
 
@@ -250,88 +286,117 @@
     </div>`;
   }
 
+  let tab = 'ideas';
+  try { tab = localStorage.getItem('mm-tr-tab') || 'ideas'; } catch { /* default */ }
+  const quotes = {};
+
   function render(container) {
     if (!st) return;
     const S = st.settings;
     const pending = st.orders.filter(o => o.status === 'pending');
     const positions = st.orders.filter(o => o.purpose === 'entry' && o.status === 'filled');
     const history = st.orders.filter(o => o.status !== 'pending').slice(0, 60);
-    const realised = st.orders.filter(o => o.status === 'closed').reduce((a, o) => a + Number(o.pnl || 0), 0);
+    const closed = st.orders.filter(o => o.status === 'closed');
+    const realised = closed.reduce((a, o) => a + Number(o.pnl || 0), 0);
+    const wins = closed.filter(o => Number(o.pnl) > 0).length;
     const toPlace = st.orders.filter(o => o.status === 'open' && o.mode === 'man');
-    const modeBanner = st.mode === 'live'
-      ? '<div class="tr-mode live"><b>LIVE</b> · approved orders go to your ICICI account through the order relay.</div>'
-      : `<div class="tr-mode ${st.mode === 'man' ? 'live' : 'test'}">
-          <div class="tr-modes">
-            <label><input type="radio" name="tr-mode" value="test" ${st.mode === 'test' ? 'checked' : ''}/> <b>Test</b>: approved orders are simulated against live prices</label>
-            <label><input type="radio" name="tr-mode" value="man" ${st.mode === 'man' ? 'checked' : ''}/> <b>Manual</b>: you place approved orders in the ICICI Direct app yourself (real money)</label>
-          </div></div>`;
-    const status = [
-      st.icici ? '<span class="text-green">ICICI logged in</span>' : '<span class="text-red">ICICI not logged in today</span>',
-      marketOpen() ? '<span class="text-green">market open</span>' : 'market closed',
-      lastScan ? `last scan ${new Date(lastScan).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : 'scanner starting',
-    ].join(' · ');
+    const today = st.orders.filter(o => o.purpose === 'entry' && String(o.created_at).slice(0, 10) === istToday() && ['open', 'filled', 'closed'].includes(o.status)).length;
+    const openPnl = positions.reduce((a, o) => { const q = quotes[o.symbol]; return a + (q && q.ltp && o.product !== 'option' ? (q.ltp - Number(o.fill_price)) * Number(o.qty) : 0); }, 0);
+    const modeTxt = { test: 'Approved orders are simulated against live prices. No real money.', man: 'You place approved orders yourself in the ICICI Direct app (real money).', live: 'Approved orders go to your ICICI account through the order relay.' };
+    const TABS = [['ideas', `To approve${pending.length ? ` (${pending.length})` : ''}`], ['open', `Open${positions.length ? ` (${positions.length})` : ''}`], ['history', 'History'], ['setup', 'Setup']];
+    const total = realised + openPnl;
 
     container.innerHTML = `
-      ${modeBanner}
+      <div class="tr-dash">
+        <div class="tr-stat"><span>Mode</span>${st.mode === 'live' ? '<b class="down">LIVE</b>' : `<div class="seg seg-sm"><button type="button" data-mode="test" class="${st.mode === 'test' ? 'active' : ''}">Test</button><button type="button" data-mode="man" class="${st.mode === 'man' ? 'active' : ''}">Manual</button></div>`}<small>${esc(modeTxt[st.mode])}</small></div>
+        <div class="tr-stat"><span>Capital · risk a trade</span><b>${rs(Number(S.account), 0)}</b><small>${S.riskPct}% = ${rs(Number(S.account) * S.riskPct / 100, 0)} a trade</small></div>
+        <div class="tr-stat"><span>Today</span><b>${today} / ${S.maxOrdersDay} trades</b><small>${positions.length} / ${S.maxOpen} positions open</small></div>
+        <div class="tr-stat"><span>Profit / loss</span><b class="${total > 0 ? 'up' : total < 0 ? 'down' : ''}">${rs(total, 0)}</b><small>booked ${rs(realised, 0)} · open ${rs(openPnl, 0)}</small></div>
+      </div>
       <div class="tr-top">
-        <label class="tr-switch"><input type="checkbox" id="tr-enabled" ${S.enabled ? 'checked' : ''} ${S.killed ? 'disabled' : ''}/> <span>Propose new trades</span></label>
-        ${S.killed ? '<button type="button" class="btn-secondary" id="tr-resume">Kill switch is ON · turn trading back on</button>' : '<button type="button" class="btn-danger" id="tr-kill">Kill switch: stop everything</button>'}
-        <span class="muted tr-status">${status}</span>
+        <label class="tr-switch"><input type="checkbox" id="tr-enabled" ${S.enabled ? 'checked' : ''} ${S.killed ? 'disabled' : ''}/> <span>Find new trade ideas</span></label>
+        ${S.killed ? '<button type="button" class="btn-secondary" id="tr-resume">Kill switch is ON · turn trading back on</button>' : '<button type="button" class="btn-danger" id="tr-kill">Stop everything</button>'}
+        <span class="tr-chips">
+          <span class="chip ${st.icici ? 'chip-long' : 'chip-short'}">${st.icici ? 'ICICI connected' : 'ICICI not logged in today'}</span>
+          <span class="chip">${marketOpen() ? 'Market open' : 'Market closed'}</span>
+          <span class="chip">${lastScan ? `Checked ${new Date(lastScan).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : 'Checking…'}</span>
+        </span>
       </div>
       ${scanNote ? `<div class="data-warning">${esc(scanNote)}</div>` : ''}
-      <p class="muted" style="margin:-4px 0 12px;">MarketMind scans while this app is open (any page). The stop-loss order it proposes after each buy rests at ICICI, so it protects you even when the app is closed.</p>
-
       ${toPlace.length ? `<div class="analysis-section tr-place"><h3>Place these in the ICICI Direct app (${toPlace.length})</h3>${toPlace.map(ticket).join('')}</div>` : ''}
 
-      <div class="analysis-section"><h3>Waiting for your approval (${pending.length})</h3>
-        ${pending.length ? pending.map(orderCard).join('') : '<p class="muted">Nothing right now. New proposals appear here and as a pop-up.</p>'}
-      </div>
+      <div class="seg tr-tabs">${TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'active' : ''}">${l}</button>`).join('')}</div>
 
-      <div class="analysis-section"><h3>Open positions (${positions.length}) · booked P&amp;L ${rs(realised, 0)}</h3>
-        ${positions.length ? `<div class="fno-tablewrap"><table class="screener-table fno-table">
-          <thead><tr><th>Position</th><th>Qty</th><th>Bought at</th><th>Stop</th><th>Target</th><th>Mode</th><th></th></tr></thead>
-          <tbody>${positions.map(o => `<tr><td>${esc(o.product === 'option' ? o.name : o.symbol)} <span class="muted">${esc(PRODUCT[o.product])}</span></td><td>${n0(Number(o.qty))}</td><td>${rs(Number(o.fill_price))}</td><td>${rs(Number(o.stop))}</td><td>${rs(Number(o.target))}</td><td>${o.mode === 'live' ? 'Live' : o.mode === 'man' ? 'Manual' : 'Test'}</td>
-            <td><button type="button" class="btn-secondary btn-small" data-exit="${o.id}">Exit now…</button></td></tr>`).join('')}</tbody></table></div>`
-          : '<p class="muted">No open positions.</p>'}
-      </div>
+      ${tab === 'ideas' ? `<div class="tr-pane">
+        ${pending.length ? pending.map(orderCard).join('') : `<div class="home-empty"><p><b>No trade ideas waiting.</b></p><p>Every minute MarketMind checks the stocks in Setup. A new idea appears here (and as a pop-up) only when a tested strategy backs it and the reward is at least 1.5× the risk.${S.enabled ? '' : ' <b>Finding new ideas is switched off</b> above.'}</p></div>`}
+      </div>` : ''}
 
-      <div class="analysis-section"><h3>Watchlist</h3>
-        <div class="fno-controls"><label>Add a stock<input type="text" id="tr-add-sym" placeholder="e.g. RELIANCE" autocomplete="off" /></label>
-          <label class="ev-check"><input type="checkbox" id="tr-add-cnc" checked/> Delivery</label>
-          <label class="ev-check"><input type="checkbox" id="tr-add-mis"/> Intraday</label>
-          <label class="ev-check"><input type="checkbox" id="tr-add-opt"/> Options</label>
-          <button type="button" class="btn-primary" id="tr-add">Add</button></div>
-        ${st.watchlist.length ? `<div class="fno-tablewrap"><table class="screener-table fno-table"><thead><tr><th>Stock</th><th>Delivery</th><th>Intraday</th><th>Options</th><th></th></tr></thead><tbody>
-          ${st.watchlist.map(w => `<tr data-w="${w.id}"><td><b>${esc(w.symbol)}</b> <span class="muted">${esc(w.name)}</span></td>
-            ${['delivery', 'intraday', 'options'].map(k => `<td><input type="checkbox" data-wk="${k}" ${Number(w[k]) ? 'checked' : ''}/></td>`).join('')}
-            <td><button type="button" class="link-btn" data-wrm="${w.id}">Remove</button></td></tr>`).join('')}</tbody></table></div>`
-          : '<p class="muted">Add the stocks MarketMind should watch. Options only work for F&amp;O stocks and indices.</p>'}
-      </div>
+      ${tab === 'open' ? `<div class="tr-pane">
+        ${positions.length ? positions.map(positionCard).join('') : '<p class="home-empty">No open positions.</p>'}
+        <p class="citation">After each buy, MarketMind proposes a stop-loss order that waits at ICICI, so you are protected even when the app is closed.</p>
+      </div>` : ''}
 
-      <div class="analysis-section"><h3>Limits</h3>
-        <form id="tr-settings" class="tr-settings">
-          <label>Capital for trading (₹)<input name="account" type="number" min="1000" step="1000" value="${S.account}"/></label>
-          <label>Risk per trade (% of capital)<input name="riskPct" type="number" min="0.1" max="5" step="0.1" value="${S.riskPct}"/></label>
-          <label>Max value per trade (₹)<input name="maxPerTrade" type="number" min="500" step="500" value="${S.maxPerTrade}"/></label>
-          <label>Max new trades per day<input name="maxOrdersDay" type="number" min="1" max="20" value="${S.maxOrdersDay}"/></label>
-          <label>Max open positions<input name="maxOpen" type="number" min="1" max="20" value="${S.maxOpen}"/></label>
-          <label>Options stop (% premium loss)<input name="optionStopPct" type="number" min="10" max="90" value="${S.optionStopPct}"/></label>
-          <label>Options target (% premium gain)<input name="optionTargetPct" type="number" min="10" max="500" value="${S.optionTargetPct}"/></label>
-          <div><button type="submit" class="btn-primary">Save limits</button></div>
-        </form>
-        <p class="citation">Every approval is checked against these on the server: value per trade, trades per day, open positions, market hours, and no new intraday trades after 2:45 pm.</p>
-      </div>
-
-      <div class="analysis-section"><h3>Order history (last 7 days)</h3>
-        ${history.length ? `<div class="fno-tablewrap"><table class="screener-table fno-table"><thead><tr><th>Time</th><th>Order</th><th>Qty</th><th>Price</th><th>Status</th><th>P&amp;L</th></tr></thead><tbody>
+      ${tab === 'history' ? `<div class="tr-pane">
+        <div class="tr-dash sm"><div class="tr-stat"><span>Closed trades</span><b>${closed.length}</b></div><div class="tr-stat"><span>Winners</span><b>${closed.length ? Math.round(wins / closed.length * 100) + '%' : '—'}</b></div><div class="tr-stat"><span>Booked P&amp;L</span><b class="${realised > 0 ? 'up' : realised < 0 ? 'down' : ''}">${rs(realised, 0)}</b></div></div>
+        ${history.length ? `<div class="fno-tablewrap"><table class="screener-table fno-table"><thead><tr><th>When</th><th>Order</th><th>Qty</th><th>Price</th><th>Result</th><th>P&amp;L</th></tr></thead><tbody>
           ${history.map(o => `<tr><td>${new Date(o.created_at.replace(' ', 'T') + 'Z').toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
             <td>${esc(PURPOSE[o.purpose])} ${esc(o.product === 'option' ? o.name : o.symbol)} <span class="muted">${esc(PRODUCT[o.product])} · ${o.mode === 'live' ? 'live' : o.mode === 'man' ? 'manual' : 'test'}</span></td>
             <td>${n0(Number(o.qty))}</td><td>${rs(Number(o.fill_price || o.limit_price))}</td>
             <td>${esc(STATUS[o.status] || o.status)}${o.error ? `<br><span class="text-red">${esc(o.error)}</span>` : ''}</td>
             <td class="${Number(o.pnl) > 0 ? 'text-green' : Number(o.pnl) < 0 ? 'text-red' : ''}">${o.pnl != null ? rs(Number(o.pnl), 0) : ''}</td></tr>`).join('')}</tbody></table></div>`
-          : '<p class="muted">No orders yet.</p>'}
-      </div>`;
+          : '<p class="home-empty">No orders in the last 7 days.</p>'}
+      </div>` : ''}
+
+      ${tab === 'setup' ? `<div class="tr-pane">
+        <div class="analysis-section"><h3>Stocks to watch for trades</h3>
+          <p class="muted small">MarketMind only proposes trades on these. Tick how each one may be traded.</p>
+          <div class="fno-controls"><label>Add a stock<input type="text" id="tr-add-sym" placeholder="e.g. RELIANCE" autocomplete="off" /></label>
+            <label class="ev-check" title="${esc(productHelp.cnc)}"><input type="checkbox" id="tr-add-cnc" checked/> Delivery</label>
+            <label class="ev-check" title="${esc(productHelp.mis)}"><input type="checkbox" id="tr-add-mis"/> Intraday</label>
+            <label class="ev-check" title="${esc(productHelp.option)}"><input type="checkbox" id="tr-add-opt"/> Option buying</label>
+            <button type="button" class="btn-primary" id="tr-add">Add</button></div>
+          ${st.watchlist.length ? `<div class="fno-tablewrap"><table class="screener-table fno-table"><thead><tr><th>Stock</th><th>Delivery</th><th>Intraday</th><th>Options</th><th></th></tr></thead><tbody>
+            ${st.watchlist.map(w => `<tr data-w="${w.id}"><td><b>${esc(w.symbol)}</b> <span class="muted">${esc(w.name)}</span></td>
+              ${['delivery', 'intraday', 'options'].map(k => `<td><input type="checkbox" data-wk="${k}" ${Number(w[k]) ? 'checked' : ''}/></td>`).join('')}
+              <td><button type="button" class="link-btn" data-wrm="${w.id}">Remove</button></td></tr>`).join('')}</tbody></table></div>`
+            : '<p class="muted">Add the stocks MarketMind should watch. Options only work for F&amp;O stocks and indices.</p>'}
+        </div>
+        <div class="analysis-section"><h3>Limits</h3>
+          <form id="tr-settings" class="tr-settings">
+            <label>Capital for trading (₹)<input name="account" type="number" min="1000" step="1000" value="${S.account}"/></label>
+            <label>Risk per trade (% of capital)<input name="riskPct" type="number" min="0.1" max="5" step="0.1" value="${S.riskPct}"/></label>
+            <label>Max money in one trade (₹)<input name="maxPerTrade" type="number" min="500" step="500" value="${S.maxPerTrade}"/></label>
+            <label>Max new trades a day<input name="maxOrdersDay" type="number" min="1" max="20" value="${S.maxOrdersDay}"/></label>
+            <label>Max positions open at once<input name="maxOpen" type="number" min="1" max="20" value="${S.maxOpen}"/></label>
+            <label>Option stop (% of premium)<input name="optionStopPct" type="number" min="10" max="90" value="${S.optionStopPct}"/></label>
+            <label>Option target (% of premium)<input name="optionTargetPct" type="number" min="10" max="500" value="${S.optionTargetPct}"/></label>
+            <div><button type="submit" class="btn-primary">Save limits</button></div>
+          </form>
+          <p class="citation">The server checks every approval against these: money per trade, trades per day, open positions, market hours, and no new intraday trades after 2:45 pm.</p>
+        </div>
+        <div class="analysis-section"><h3>Words used here</h3><ul class="tr-gloss">
+          <li><b>Stop</b>: the price where the trade is closed to limit the loss. <b>Target</b>: the price where profit is booked.</li>
+          <li><b>R</b>: the amount you risk on a trade. +2R = you made twice what you risked; −1R = the stop was hit.</li>
+          <li><b>Reward : risk</b>: how much the target can make for each ₹1 the stop can lose. MarketMind wants at least 1.5 : 1.</li>
+          <li>${esc(productHelp.cnc)}</li><li>${esc(productHelp.mis)}</li><li>${esc(productHelp.option)}</li>
+          <li><b>Proven / Watch</b>: how well the strategy behind an idea did in the 5-year back-test (Learn → Back-test).</li>
+        </ul></div>
+      </div>` : ''}`;
     wire(container);
+    if (tab === 'open') refreshQuotes(container, positions);
+  }
+
+  let quoting = false;
+  async function refreshQuotes(container, positions) {
+    if (quoting) return;
+    const syms = [...new Set(positions.filter(o => o.product !== 'option').map(o => o.symbol))].filter(s => !quotes[s] || Date.now() - quotes[s].at > 30e3);
+    if (!syms.length) return;
+    quoting = true;
+    // ICICI live quote first, Yahoo (about 15 min delayed) when ICICI is not logged in
+    const yahoo = async s => { const p = MarketData.parseYahooChart(await (await fetch(`api/chart.php?symbol=${encodeURIComponent(MarketData.toYahooSymbol(s))}&interval=1d&range=5d`)).json()); const c = p.candles.filter(x => x && isFinite(x.close)); return c.length ? { ltp: (p.meta && p.meta.regularMarketPrice) || c[c.length - 1].close, delayed: true } : null; };
+    await Promise.all(syms.map(s => MarketData.getQuote(s).then(q => q && q.ltp ? q : yahoo(s)).catch(() => yahoo(s).catch(() => null)).then(q => { if (q) quotes[s] = { ...q, at: Date.now() }; })));
+    quoting = false;
+    if (container && container.isConnected) render(container);
   }
 
   function wire(container) {
@@ -349,15 +414,18 @@
         if (!p) { toast('Could not read the live price', 'warning'); return; }
         act(() => call('propose', { orders: [{ parentId: o.id, purpose: 'exit', product: o.product, symbol: o.symbol, name: o.name, qty: Number(o.qty), lot: Number(o.lot), limit: +(p * 0.998).toFixed(2), timeframe: o.timeframe,
           option: o.product === 'option' ? { isec: o.opt_isec, expiry: o.opt_expiry, strike: o.opt_strike, right: o.opt_right } : undefined,
-          reason: `You asked to exit at about ${rs(p)}.` }] }), 'Exit order prepared. Approve it above.');
+          reason: `You asked to exit at about ${rs(p)}.` }] }), 'Exit order prepared. Approve it in "To approve".');
       };
     });
-    container.querySelectorAll('input[name="tr-mode"]').forEach(r => {
-      r.onchange = () => {
-        if (r.value === 'man' && !confirm('Manual mode: approved orders are real trades that you place yourself in the ICICI Direct app. MarketMind tracks them and tells you when to exit. Switch to Manual?')) { render(container); return; }
-        act(() => call('settings', { manual: r.value === 'man' }), r.value === 'man' ? 'Manual mode on' : 'Test mode on');
+    container.querySelectorAll('[data-mode]').forEach(b => {
+      b.onclick = () => {
+        const v = b.dataset.mode;
+        if (v === st.mode) return;
+        if (v === 'man' && !confirm('Manual mode: approved orders are real trades that you place yourself in the ICICI Direct app. MarketMind tracks them and tells you when to exit. Switch to Manual?')) return;
+        act(() => call('settings', { manual: v === 'man' }), v === 'man' ? 'Manual mode on' : 'Test mode on');
       };
     });
+    container.querySelectorAll('[data-tab]').forEach(b => { b.onclick = () => { tab = b.dataset.tab; try { localStorage.setItem('mm-tr-tab', tab); } catch { /* ok */ } render(container); }; });
     container.querySelectorAll('[data-fill]').forEach(b => {
       b.onclick = () => {
         const id = Number(b.dataset.fill);
@@ -374,10 +442,11 @@
     const resume = container.querySelector('#tr-resume');
     if (resume) resume.onclick = () => act(() => call('resume', {}));
     const form = container.querySelector('#tr-settings');
-    form.onsubmit = e => { e.preventDefault(); act(() => call('settings', Object.fromEntries(new FormData(form).entries())), 'Limits saved'); };
+    if (form) form.onsubmit = e => { e.preventDefault(); act(() => call('settings', Object.fromEntries(new FormData(form).entries())), 'Limits saved'); };
     const sym = container.querySelector('#tr-add-sym');
-    if (root.StockPicker && !sym.dataset.picker) { sym.dataset.picker = '1'; root.StockPicker.attach(sym, { popular: [] }); }
-    container.querySelector('#tr-add').onclick = () => {
+    if (sym && root.StockPicker && !sym.dataset.picker) { sym.dataset.picker = '1'; root.StockPicker.attach(sym, { popular: [] }); }
+    const addBtn = container.querySelector('#tr-add');
+    if (addBtn) addBtn.onclick = () => {
       const s = (sym.value || '').trim().toUpperCase().split(/\s|—/)[0];
       if (!s) return;
       act(() => call('watch_add', { symbol: s, name: '', delivery: container.querySelector('#tr-add-cnc').checked, intraday: container.querySelector('#tr-add-mis').checked, options: container.querySelector('#tr-add-opt').checked }));

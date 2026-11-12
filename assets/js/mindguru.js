@@ -223,7 +223,7 @@
             const trends = Object.entries(s.buckets || {}).filter(([k, v]) => k.startsWith('trend:') && v.trades >= 5).sort((x, y) => y[1].avgR - x[1].avgR);
             const best = trends.length > 1 ? `${trends[0][0].slice(6)} <span class="muted">${rFmt(trends[0][1].avgR)}</span>` : '<span class="muted">—</span>';
             return `<tr>
-              <td>${esc(s.name)}</td><td>${s.trades}</td><td>${pct(s.winRate)}</td>
+              <td>${root.Plain ? Plain.label(s.strategyId, s.name) : esc(s.name)}</td><td>${s.trades}</td><td>${pct(s.winRate)}</td>
               <td class="${s.avgR >= 0 ? 'text-green' : 'text-red'}">${rFmt(s.avgR)}</td>
               <td><div class="mg-trust"><div class="mg-trust-bar"><i style="width:${Math.min(100, (s.weight / maxW) * 100)}%" class="${s.weight >= 1 ? 'up' : 'down'}"></i><em></em></div><span>${s.weight.toFixed(2)}</span></div></td>
               <td>${best}</td></tr>`;

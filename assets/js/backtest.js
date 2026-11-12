@@ -359,7 +359,7 @@
       ${days != null && days > 30 ? `<p class="auth-error">It is time for the monthly re-test: run Swing · 5 years · 100 stocks. Tiers update by themselves when it finishes.</p>` : ''}
       ${S.tierMsg ? `<p><b>${esc(S.tierMsg)}</b></p>` : ''}
       <div class="tbl-wrap"><table class="st-table"><thead><tr><th>Strategy</th><th>Back-test</th><th class="hide-sm">Years +</th><th class="hide-sm">Live</th><th class="hide-sm">Why</th>${admin ? '<th>Set by hand</th>' : ''}</tr></thead><tbody>
-      ${rows.map(({ s, t }) => `<tr><td>${esc(s.name)} ${Tiers.badge(s.id)}</td><td>${t.bt ? f(t.bt.avg) : '—'}</td><td class="hide-sm">${t.bt && t.bt.years ? `${t.bt.yearsPos}/${t.bt.years}` : '—'}</td>
+      ${rows.map(({ s, t }) => `<tr><td>${root.Plain ? Plain.label(s.id, s.name) : esc(s.name)} ${Tiers.badge(s.id)}</td><td>${t.bt ? f(t.bt.avg) : '—'}</td><td class="hide-sm">${t.bt && t.bt.years ? `${t.bt.yearsPos}/${t.bt.years}` : '—'}</td>
         <td class="hide-sm">${t.live && t.live.n ? `${f(t.live.avg)} · ${t.live.n}` : '—'}</td><td class="hide-sm muted small">${esc(t.why || t.note || '')}</td>
         ${admin ? `<td><select data-ov="${esc(s.id)}"><option value="">Automatic</option>${Object.entries(TL).map(([k, l]) => `<option value="${k}"${t.override === k ? ' selected' : ''}>${l}</option>`).join('')}</select></td>` : ''}</tr>`).join('')}
       </tbody></table></div>
@@ -387,15 +387,15 @@
         <ul class="bt-find">
           ${verdict ? `<li>The <b>All-Strategy Verdict</b> (what Analyze shows): ${verdict.n} trades, ${Math.round(verdict.win * 100)}% right, <b class="${verdict.avg >= 0 ? 'up' : 'down'}">${fmtR(verdict.avg)}</b> per trade.</li>` : ''}
           ${bounce ? `<li><b>New demand rule</b> (wait for the bounce): ${bounce.n} trades, ${Math.round(bounce.win * 100)}% right, <b class="${bounce.avg >= 0 ? 'up' : 'down'}">${fmtR(bounce.avg)}</b>${oldDemand ? ` vs the old demand rule ${fmtR(oldDemand.avg)}` : ''}.${bounce.avgUp != null ? ` With the NIFTY-above-200-day filter: ${fmtR(bounce.avgUp)}.` : ''}</li>` : ''}
-          ${['__combo', '__combo_np'].map(id => res.stats.find(s => s.id === id)).filter(Boolean).map(s => { const tr = yearsAvg(s, y => y <= 2024), te = yearsAvg(s, y => y >= 2025); return `<li><b>${esc(s.name)}</b>: ${s.n} trades, ${Math.round(s.win * 100)}% right, <b class="${s.avg >= 0 ? 'up' : 'down'}">${fmtR(s.avg)}</b> per trade, deepest drop ${s.dd.toFixed(1)}R. Train 2021–24: ${tr ? `${fmtR(tr.avg)} (${tr.n})` : '—'} · <b>Test 2025–26: ${te ? `${fmtR(te.avg)} (${te.n})` : '—'}</b>${fyLine(s)}${te && te.n >= 30 ? (te.avg >= 0.1 ? ' — holds up out of sample.' : te.avg > 0 ? ' — positive out of sample, but below +0.10R.' : ' — does not hold up out of sample.') : ''}</li>`; }).join('')}
-          <li><b>${keep.length}</b> strateg${keep.length === 1 ? 'y makes' : 'ies make'} at least +0.1R per trade after costs${keep.length ? `: ${keep.slice(0, 4).map(s => esc(s.name)).join(', ')}` : ''}.</li>
+          ${['__combo', '__combo_np'].map(id => res.stats.find(s => s.id === id)).filter(Boolean).map(s => { const tr = yearsAvg(s, y => y <= 2024), te = yearsAvg(s, y => y >= 2025); return `<li><b>${root.Plain ? Plain.label(s.id, s.name) : esc(s.name)}</b>: ${s.n} trades, ${Math.round(s.win * 100)}% right, <b class="${s.avg >= 0 ? 'up' : 'down'}">${fmtR(s.avg)}</b> per trade, deepest drop ${s.dd.toFixed(1)}R. Train 2021–24: ${tr ? `${fmtR(tr.avg)} (${tr.n})` : '—'} · <b>Test 2025–26: ${te ? `${fmtR(te.avg)} (${te.n})` : '—'}</b>${fyLine(s)}${te && te.n >= 30 ? (te.avg >= 0.1 ? ' — holds up out of sample.' : te.avg > 0 ? ' — positive out of sample, but below +0.10R.' : ' — does not hold up out of sample.') : ''}</li>`; }).join('')}
+          <li><b>${keep.length}</b> strateg${keep.length === 1 ? 'y makes' : 'ies make'} at least +0.1R per trade after costs${keep.length ? `: ${keep.slice(0, 4).map(s => root.Plain ? Plain.name(s.id, s.name) : esc(s.name)).join(', ')}` : ''}.</li>
         </ul>
         ${chart([res.stats.find(s => s.id === '__combo')].filter(s => s && s.n >= 30).concat(res.stats.filter(s => s.n >= 30 && s.id !== '__combo').slice(0, 3)).concat(verdict && verdict.n >= 30 && !res.stats.slice(0, 4).includes(verdict) ? [verdict] : []))}
       </div>
       <div class="card"><div class="tbl-wrap"><table class="st-table bt-table">
         <thead><tr><th>Strategy</th><th>Tier now</th><th>Result</th><th>Trades</th><th>Right</th><th>Avg / trade</th><th class="hide-sm">Profit factor</th><th class="hide-sm">Worst losing run</th><th class="hide-sm">Deepest drop</th><th>Total at ${cfg.risk}%</th><th class="hide-sm">With market filter</th><th class="hide-sm">Train 2021–24</th><th class="hide-sm">Test 2025–26</th><th>FY 25-26</th><th>FY 26-27 (to date)</th>${years.length <= 6 ? years.map(y => `<th class="hide-sm">${y}</th>`).join('') : ''}</tr></thead>
         <tbody>${res.stats.map(s => `<tr>
-          <td><b>${esc(s.name)}</b></td><td>${root.Tiers && s.id[0] !== '_' ? Tiers.badge(s.id) : ''}</td><td><span class="wl-call ${V[s.verdict][1]}">${V[s.verdict][0]}</span></td><td>${s.n}</td><td>${Math.round(s.win * 100)}%</td>
+          <td><b>${root.Plain ? Plain.label(s.id, s.name) : esc(s.name)}</b></td><td>${root.Tiers && s.id[0] !== '_' ? Tiers.badge(s.id) : ''}</td><td><span class="wl-call ${V[s.verdict][1]}">${V[s.verdict][0]}</span></td><td>${s.n}</td><td>${Math.round(s.win * 100)}%</td>
           <td class="${s.avg >= 0 ? 'up' : 'down'}"><b>${fmtR(s.avg)}</b></td><td class="hide-sm">${s.pf != null ? s.pf.toFixed(2) : '—'}</td><td class="hide-sm">${s.worst}</td><td class="hide-sm">${s.dd.toFixed(1)}R</td>
           <td class="${s.total >= 0 ? 'up' : 'down'}">${inr(money(s.total))}</td><td class="hide-sm">${s.avgUp != null && s.nUp >= 10 ? fmtR(s.avgUp) : '—'}</td>
           ${c.style === 'swing' ? [yearsAvg(s, y => y <= 2024), yearsAvg(s, y => y >= 2025)].map(v => `<td class="hide-sm ${v ? (v.avg >= 0 ? 'up' : 'down') : ''}">${v ? fmtR(v.avg) : '—'}</td>`).join('') : '<td class="hide-sm">—</td><td class="hide-sm">—</td>'}
@@ -423,7 +423,7 @@
       <text x="${L}" y="${H - 6}" class="cc-ax">${new Date(t0).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</text>
       <text x="${W - R}" y="${H - 6}" text-anchor="end" class="cc-ax">${new Date(t1).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</text>
       ${list.map((s, i) => `<path fill="none" stroke="${COLORS[i]}" stroke-width="${s.id === '__verdict' ? 1.5 : 2}" ${s.id === '__verdict' ? 'stroke-dasharray="5 4"' : ''} d="${s.curve.map((p, k) => `${k ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join('')}"/>`).join('')}
-    </svg><div class="bt-legend">${list.map((s, i) => `<span><i style="background:${COLORS[i]}"></i>${esc(s.name)} <b class="${s.total >= 0 ? 'up' : 'down'}">${fmtR(s.total)}</b></span>`).join('')}</div></div>`;
+    </svg><div class="bt-legend">${list.map((s, i) => `<span><i style="background:${COLORS[i]}"></i>${esc(root.Plain ? Plain.name(s.id, s.name) : s.name)} <b class="${s.total >= 0 ? 'up' : 'down'}">${fmtR(s.total)}</b></span>`).join('')}</div></div>`;
   }
 
   root.Backtest = { renderPage, _simulate: simulate, _summarise: summarise, _demandBounce: demandBounce };
