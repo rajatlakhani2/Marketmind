@@ -6,6 +6,10 @@
 // GET ?action=news[&symbol=TCS]        -> { items: [{ title, source, link, at }] }  stock or market news
 // GET ?action=depth&symbol=TCS          -> live order book: 5 bids / 5 offers, total buy & sell quantity, delivery %
 // GET ?action=depth_many&symbols=A,B    -> { rows: { A: {...}, B: {...} } }  for the Live board
+// GET ?action=actions_board            -> upcoming dividends / bonus / splits / rights / buybacks with amount, price, yield
+// GET ?action=action_detail&symbol=X   -> 10-year history of actions and the share's move around each ex-date
+// GET ?action=results_board            -> upcoming results dates with live price
+// GET ?action=results&symbol=X         -> quarterly results, MarketMind estimate vs actual, moves on past result days
 //
 // Sources: NSE's public event calendar and corporate-actions feeds, and Google News RSS.
 // Results are cached on the server (calendar 1 h, a stock 1 h, news 15 min).
@@ -165,6 +169,123 @@ function clean_symbol(string $s): string {
     return $s;
 }
 
+
+// ---------- amounts, prices and event studies (Corporate Actions and Results tabs) ----------
+// "Interim Dividend - Rs 5 Per Share", "Bonus 1:1", "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share"
+function action_terms(string $kind, string $subject): array {
+    $t = ['amount' => null, 'ratio' => null, 'fromFv' => null, 'toFv' => null, 'label' => null];
+    if ($kind === 'Dividend' && preg_match_all('/(?:rs|re|inr|₹)\.?\s*([\d]+(?:\.\d+)?)/i', $subject, $m)) {
+        $t['amount'] = round(array_sum(array_map('floatval', $m[1])), 2);
+        $t['label'] = '₹' . rtrim(rtrim(number_format($t['amount'], 2, '.', ''), '0'), '.') . ' a share';
+    } elseif (in_array($kind, ['Bonus', 'Rights'], true) && preg_match('/(\d+)\s*:\s*(\d+)/', $subject, $m)) {
+        $t['ratio'] = $m[1] . ':' . $m[2];
+        $t['label'] = $kind === 'Bonus' ? "{$m[1]} new for every {$m[2]} held" : "{$m[1]} for every {$m[2]} held";
+    } elseif ($kind === 'Split' && preg_match('/(?:rs|re)\.?\s*([\d.]+).*?to\s*(?:rs|re)\.?\s*([\d.]+)/i', $subject, $m)) {
+        $t['fromFv'] = (float) $m[1]; $t['toFv'] = (float) $m[2];
+        $t['label'] = 'face value ₹' . (0 + $m[1]) . ' → ₹' . (0 + $m[2]) . ($m[2] > 0 ? ' (1 share becomes ' . round($m[1] / $m[2], 2) . ')' : '');
+    }
+    return $t;
+}
+
+// Yahoo spark: last close and the day's change for many NSE symbols at once (about 15 min delayed)
+function yahoo_prices(array $syms): array {
+    $out = [];
+    foreach (array_chunk(array_values(array_unique($syms)), 20) as $chunk) {
+        $url = 'https://query1.finance.yahoo.com/v8/finance/spark?symbols=' . implode(',', array_map(fn($s) => rawurlencode($s . '.NS'), $chunk)) . '&range=5d&interval=1d';
+        [$st, $b] = ev_get($url, ['Accept: application/json']);
+        $j = $st === 200 ? json_decode($b, true) : null;
+        if (!is_array($j)) continue;
+        foreach ($j as $k => $e) {
+            $c = array_values(array_filter($e['close'] ?? [], fn($v) => $v !== null && $v > 0));
+            if (!$c) continue;
+            $n = count($c);
+            $out[preg_replace('/\.NS$/', '', $k)] = ['price' => round($c[$n - 1], 2), 'chg' => $n > 1 ? round(($c[$n - 1] / $c[$n - 2] - 1) * 100, 2) : null];
+        }
+    }
+    return $out;
+}
+
+// Yahoo daily closes for one symbol: [['d' => 'Y-m-d', 'c' => close], ...] (split-adjusted, not dividend-adjusted)
+function yahoo_daily(string $sym, string $range = '10y'): array {
+    [$st, $b] = ev_get('https://query1.finance.yahoo.com/v8/finance/chart/' . rawurlencode($sym . '.NS') . "?range=$range&interval=1d", ['Accept: application/json']);
+    $j = $st === 200 ? json_decode($b, true) : null;
+    $r = $j['chart']['result'][0] ?? null;
+    if (!$r) return [];
+    $out = [];
+    foreach ($r['timestamp'] ?? [] as $i => $ts) {
+        $c = $r['indicators']['quote'][0]['close'][$i] ?? null;
+        if ($c !== null && $c > 0) $out[] = ['d' => (new DateTime('@' . $ts))->setTimezone(new DateTimeZone('Asia/Kolkata'))->format('Y-m-d'), 'c' => (float) $c];
+    }
+    return $out;
+}
+
+// Price move around an event: buy $before trading days before the event day, sell $after trading days after it
+function around(array $px, string $date, int $before, int $after, float $cash = 0.0): ?float {
+    $i = null;
+    foreach ($px as $k => $p) if ($p['d'] >= $date) { $i = $k; break; }
+    if ($i === null || $i - $before < 0 || $i + $after >= count($px)) return null;
+    $in = $px[$i - $before]["c"]; $out = $px[$i + $after]["c"];
+    return round(($out + $cash - $in) / $in * 100, 2);
+}
+// Close-to-close move of the first trading day after a date (results are mostly announced after the market closes)
+function next_day_move(array $px, string $date, bool $duringMarket = false): ?float {
+    $i = null;
+    foreach ($px as $k => $p) if ($duringMarket ? $p['d'] >= $date : $p['d'] > $date) { $i = $k; break; }
+    if ($i === null || $i < 1) return null;
+    return round(($px[$i]['c'] / $px[$i - 1]['c'] - 1) * 100, 2);
+}
+function stats_of(array $v): ?array {
+    $v = array_values(array_filter($v, fn($x) => $x !== null));
+    if (!$v) return null;
+    sort($v);
+    $n = count($v);
+    return ['n' => $n, 'avg' => round(array_sum($v) / $n, 2), 'median' => $v[intdiv($n, 2)], 'pos' => count(array_filter($v, fn($x) => $x > 0)),
+        'absAvg' => round(array_sum(array_map('abs', $v)) / $n, 2), 'best' => max($v), 'worst' => min($v)];
+}
+
+// NSE financial results, quarter by quarter (standalone/consolidated as NSE gives them). Field names differ between
+// NSE feeds, so they are matched loosely; amounts are as NSE reports them (₹ lakh).
+function num_of(array $r, array $patterns): ?float {
+    foreach ($patterns as $p) foreach ($r as $k => $v) if (preg_match($p, (string) $k) && is_numeric(str_replace(',', '', (string) $v))) return (float) str_replace(',', '', (string) $v);
+    return null;
+}
+function results_quarters(string $sym): array {
+    $j = nse('/api/results-comparision?symbol=' . rawurlencode($sym), '/get-quotes/equity?symbol=' . rawurlencode($sym));
+    $rows = $j['resCmpData'] ?? $j['data'] ?? (array_is_list($j) ? $j : []);
+    $out = [];
+    foreach ($rows as $r) {
+        if (!is_array($r)) continue;
+        $to = ev_date($r['re_to_dt'] ?? $r['toDate'] ?? $r['to_date'] ?? null) ?? (isset($r['re_to_dt']) ? date('Y-m-d', strtotime((string) $r['re_to_dt'])) : null);
+        if (!$to) continue;
+        $out[$to] = [
+            'period' => $to,
+            'revenue' => num_of($r, ['/net_?sale/i', '/rev/i', '/tot_?inc/i', '/income/i']),
+            'profit' => num_of($r, ['/net_?profit/i', '/pro_?loss_?aft/i', '/pat/i', '/profit/i']),
+            'eps' => num_of($r, ['/dil_?eps/i', '/basic_?eps/i', '/eps/i']),
+            'audited' => isset($r['re_res_type']) ? (string) $r['re_res_type'] : null,
+        ];
+    }
+    ksort($out);
+    return ['quarters' => array_values($out), 'keys' => $rows && is_array($rows[0] ?? null) ? array_keys($rows[0]) : []];
+}
+// MarketMind estimate for quarter i: same quarter last year × (1 + median year-on-year growth of the two quarters before)
+function estimate_for(array $q, int $i, string $f): ?float {
+    $g = [];
+    foreach ([1, 2] as $k) {
+        $a = $q[$i - $k][$f] ?? null; $b = $q[$i - $k - 4][$f] ?? null;
+        if ($a !== null && $b !== null && $b > 0) $g[] = max(-0.5, min(1.0, $a / $b - 1));
+    }
+    $base = $q[$i - 4][$f] ?? null;
+    if ($base === null) {
+        $prev = $q[$i - 1][$f] ?? null;
+        return $prev;                                   // too little history: assume no change from last quarter
+    }
+    if (!$g) return $base;
+    sort($g);
+    $mid = count($g) === 2 ? ($g[0] + $g[1]) / 2 : $g[0];
+    return round($base * (1 + $mid), 2);
+}
+
 // ---------- actions ----------
 $action = (string) ($_GET['action'] ?? '');
 try {
@@ -202,6 +323,109 @@ try {
             'next' => $next, 'nextAction' => $nextAction, 'at' => time(),
         ];
         ev_cache_put("stock|$sym", $out);
+        mm_json(200, $out);
+    }
+
+    // Corporate Actions tab: every upcoming action with its amount / ratio and the live price
+    if ($action === 'actions_board') {
+        if ($hit = ev_cache_get('actions_board', 1800)) mm_json(200, $hit);
+        $today = ev_today();
+        $acts = array_values(array_filter(shape_actions(nse('/api/corporates-corporateActions?index=equities')), fn($a) => $a['exDate'] >= $today));
+        usort($acts, fn($a, $b) => [$a['exDate'], $a['symbol']] <=> [$b['exDate'], $b['symbol']]);
+        $acts = array_slice($acts, 0, 150);
+        $px = yahoo_prices(array_column($acts, 'symbol'));
+        foreach ($acts as &$a) {
+            $a += action_terms($a['kind'], $a['subject']);
+            $p = $px[$a['symbol']] ?? null;
+            $a['price'] = $p['price'] ?? null; $a['chg'] = $p['chg'] ?? null;
+            $a['yield'] = $a['amount'] && $a['price'] ? round($a['amount'] / $a['price'] * 100, 2) : null;
+        }
+        unset($a);
+        $out = ['actions' => $acts, 'at' => time(), 'delayed' => true];
+        ev_cache_put('actions_board', $out);
+        mm_json(200, $out);
+    }
+
+    // One company's full history of actions (10 years) and how the share moved around each ex-date
+    if ($action === 'action_detail') {
+        $sym = clean_symbol((string) ($_GET['symbol'] ?? ''));
+        if ($hit = ev_cache_get("action_detail|$sym", 6 * 3600)) mm_json(200, $hit);
+        $to = new DateTime('now', new DateTimeZone('Asia/Kolkata')); $from = (clone $to)->modify('-10 years');
+        $hist = shape_actions(nse('/api/corporates-corporateActions?index=equities&symbol=' . rawurlencode($sym) . '&from_date=' . $from->format('d-m-Y') . '&to_date=' . $to->format('d-m-Y'),
+            '/companies-listing/corporate-filings-actions'));
+        usort($hist, fn($a, $b) => strcmp($b['exDate'], $a['exDate']));
+        $px = yahoo_daily($sym);
+        $today = ev_today();
+        $moves = [];
+        foreach ($hist as &$h) {
+            $h += action_terms($h['kind'], $h['subject']);
+            if ($h['exDate'] < $today) {
+                $h['move5'] = around($px, $h['exDate'], 5, 5, $h['kind'] === 'Dividend' ? (float) ($h['amount'] ?? 0) : 0.0);
+                $h['moveEx'] = around($px, $h['exDate'], 1, 0, $h['kind'] === 'Dividend' ? (float) ($h['amount'] ?? 0) : 0.0);
+                $moves[$h['kind']][] = $h['move5'];
+            }
+        }
+        unset($h);
+        $divs = array_values(array_filter($hist, fn($h) => $h['kind'] === 'Dividend' && $h['amount']));
+        $byYear = [];
+        foreach ($divs as $d) { $fy = (int) substr($d['exDate'], 0, 4) - ((int) substr($d['exDate'], 5, 2) < 4 ? 1 : 0); $byYear[$fy . '-' . substr((string) ($fy + 1), 2)] = ($byYear[$fy . '-' . substr((string) ($fy + 1), 2)] ?? 0) + $d['amount']; }
+        krsort($byYear);
+        $last = $px ? end($px)['c'] : null;
+        $out = ['symbol' => $sym, 'price' => $last, 'history' => $hist, 'dividendsByFy' => $byYear,
+            'stats' => array_map('stats_of', $moves), 'at' => time()];
+        ev_cache_put("action_detail|$sym", $out);
+        mm_json(200, $out);
+    }
+
+    // Results tab: upcoming board meetings for results, with the live price
+    if ($action === 'results_board') {
+        if ($hit = ev_cache_get('results_board', 1800)) mm_json(200, $hit);
+        $today = ev_today();
+        $m = array_values(array_filter(shape_meetings(nse('/api/event-calendar')), fn($x) => $x['date'] >= $today && $x['results']));
+        usort($m, fn($a, $b) => [$a['date'], $a['symbol']] <=> [$b['date'], $b['symbol']]);
+        $m = array_slice($m, 0, 150);
+        $px = yahoo_prices(array_column($m, 'symbol'));
+        foreach ($m as &$x) { $p = $px[$x['symbol']] ?? null; $x['price'] = $p['price'] ?? null; $x['chg'] = $p['chg'] ?? null; }
+        unset($x);
+        $out = ['meetings' => $m, 'at' => time(), 'delayed' => true];
+        ev_cache_put('results_board', $out);
+        mm_json(200, $out);
+    }
+
+    // One company's quarterly results, MarketMind's estimate for each quarter and the share's move on past result days
+    if ($action === 'results') {
+        $sym = clean_symbol((string) ($_GET['symbol'] ?? ''));
+        if ($hit = ev_cache_get("results|$sym", 3 * 3600)) mm_json(200, $hit);
+        $r = results_quarters($sym);
+        $q = $r['quarters'];
+        foreach ($q as $i => &$x) {
+            foreach (['revenue', 'profit'] as $f) {
+                $x['est_' . $f] = estimate_for($q, $i, $f);
+                $x['yoy_' . $f] = isset($q[$i - 4][$f]) && $q[$i - 4][$f] > 0 && $x[$f] !== null ? round(($x[$f] / $q[$i - 4][$f] - 1) * 100, 1) : null;
+                $x['qoq_' . $f] = isset($q[$i - 1][$f]) && $q[$i - 1][$f] > 0 && $x[$f] !== null ? round(($x[$f] / $q[$i - 1][$f] - 1) * 100, 1) : null;
+                $x['vs_est_' . $f] = $x['est_' . $f] && $x[$f] !== null && $x['est_' . $f] != 0 ? round(($x[$f] / $x['est_' . $f] - 1) * 100, 1) : null;
+            }
+        }
+        unset($x);
+        // Next quarter's estimate (quarter after the last reported one)
+        $next = null;
+        if ($q) {
+            $n = count($q);
+            $q2 = $q; $q2[] = ['revenue' => null, 'profit' => null];
+            $next = ['period' => (new DateTime(end($q)['period']))->modify('last day of +3 months')->format('Y-m-d'),
+                'est_revenue' => estimate_for($q2, $n, 'revenue'), 'est_profit' => estimate_for($q2, $n, 'profit')];
+        }
+        // Past result days from NSE's board-meeting history, and the share's next-day move
+        $moves = [];
+        try {
+            $meet = array_filter(shape_meetings(nse('/api/event-calendar?index=equities&symbol=' . rawurlencode($sym))), fn($m) => $m['results'] && $m['date'] < ev_today());
+            $px = yahoo_daily($sym, '5y');
+            foreach ($meet as $m) $moves[] = ['date' => $m['date'], 'move' => next_day_move($px, $m['date'])];
+            usort($moves, fn($a, $b) => strcmp($b['date'], $a['date']));
+        } catch (Throwable $e) { /* optional */ }
+        $out = ['symbol' => $sym, 'quarters' => array_reverse($q), 'next' => $next, 'resultDays' => array_slice($moves, 0, 12),
+            'moveStats' => stats_of(array_column($moves, 'move')), 'unit' => '₹ lakh', 'keys' => $r['keys'], 'at' => time()];
+        ev_cache_put("results|$sym", $out);
         mm_json(200, $out);
     }
 
