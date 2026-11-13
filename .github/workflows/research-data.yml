@@ -1,0 +1,25 @@
+name: Research data
+
+# Downloads 10 years of daily prices (100 stocks, NIFTY, sector indices) into the research-data branch
+# so strategy back-tests can be run offline.
+
+on: workflow_dispatch
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node research/fetch-data.mjs
+      - name: Push to research-data branch
+        run: |
+          cd data
+          git init -q -b research-data
+          git config user.name "github-actions"; git config user.email "github-actions@users.noreply.github.com"
+          git add . && git commit -qm "Daily prices $(date -u +%F)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" research-data
