@@ -114,6 +114,7 @@ jobs:
         run: |
           sleep 5
           echo "sw.js version: $(curl -sS "$LIVE/sw.js" | grep -o "mm-v[0-9]*" | head -1)"
+          echo "auth status: $(curl -sS -m 30 "$LIVE/api/auth.php?action=status")"
           for q in "action=actions_board" "action=results_board" "action=results&symbol=TCS"; do
             echo "== $q"; curl -sS -m 60 "$LIVE/api/events.php?$q" | head -c 1500; echo
           done
