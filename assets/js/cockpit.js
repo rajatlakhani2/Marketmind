@@ -66,6 +66,7 @@
 
   // ---------- my money across connected accounts ----------
   const POS = new Map(); // symbol -> current value, across accounts (for the X-ray)
+  const WHERE = new Map(); // symbol -> account labels holding it
   function sumHoldings(h) {
     const src = h.holdings && h.holdings.length ? h.holdings : (h.demat || []);
     let inv = 0, val = 0, n = 0;
@@ -76,8 +77,20 @@
       if (a && l) { inv += a * q; val += l * q; }
       const sym = (h.symbols || {})[String(r.stock_code || '').toUpperCase()] || String(r.stock_code || '').toUpperCase();
       if (l) POS.set(sym, (POS.get(sym) || 0) + l * q);
+      if (h._label) { if (!WHERE.has(sym)) WHERE.set(sym, new Set()); WHERE.get(sym).add(h._label); }
     }
     return { inv, val, n };
+  }
+
+  // ---------- cash planner: free cash across accounts and how many trades it covers ----------
+  async function cash(el, accts, ctx) {
+    if (!el) return;
+    const res = await Promise.all(accts.map(async a => { try { return { label: a.label, ...(await j(a.url.replace('action=holdings', 'action=funds'))) }; } catch (e) { return { label: a.label, err: e.message }; } }));
+    const free = res.reduce((s, r) => s + (r.free != null ? r.free : (r.bank || 0)), 0);
+    const st = ctx.trade && ctx.trade.settings, per = st ? +st.maxPerTrade || 25000 : 25000, risk = st ? (+st.account || 100000) * (+st.riskPct || 1) / 100 : null;
+    el.innerHTML = `<div class="money-total"><div><span>Free cash</span><b>${rs(free)}</b></div><div><span>Trades it covers</span><b>${Math.floor(free / per)}</b></div>${risk ? `<div><span>Risk a trade</span><b>${rs(risk)}</b></div>` : ''}</div>
+      <ul class="q-list">${res.map(r => `<li><div><b>${esc(r.label)}</b><small>${r.err ? esc(r.err) : `equity ${rs(r.equity)} · F&amp;O ${rs(r.fno)}`}</small></div><div class="q-num"><span>${r.err ? '' : rs(r.free != null ? r.free : r.bank)}</span></div></li>`).join('')}</ul>
+      <p class="citation">Trades covered = free cash ÷ ${rs(per)} (your largest order size).</p>`;
   }
 
   // ---------- portfolio X-ray: sector split, biggest holdings, size mix ----------
@@ -93,7 +106,9 @@
     const size = by(s => (info.get(s) ? ((d.groups[info.get(s).g] || {}).size || 'Other') : 'Outside NIFTY 500'));
     const top = [...POS].sort((a, b) => b[1] - a[1]).slice(0, 3);
     const share = v => (v / total * 100).toFixed(0) + '%';
-    const warn = sec[0] && sec[0][1] / total > 0.35 ? `<p class="warn"><b>${share(sec[0][1])} in ${esc(sec[0][0])}</b>: more than a third in one sector.</p>` : '';
+    const dup = [...POS].filter(([s, v]) => (WHERE.get(s) || new Set()).size > 1 && v / total > 0.15);
+    const warn = (sec[0] && sec[0][1] / total > 0.35 ? `<p class="warn"><b>${share(sec[0][1])} in ${esc(sec[0][0])}</b>: more than a third in one sector.</p>` : '')
+      + dup.map(([s, v]) => `<p class="warn"><b>${esc(s)} ${share(v)}</b> held in ${[...WHERE.get(s)].map(esc).join(' and ')}: heavy in one stock across accounts.</p>`).join('');
     el.innerHTML = `${warn}<div class="xray-bar">${sec.map(([k, v], i) => `<i style="width:${v / total * 100}%;background:${PAL[i % PAL.length]}" title="${esc(k)} ${share(v)}"></i>`).join('')}</div>
       <div class="xray-legend">${sec.slice(0, 8).map(([k, v], i) => `<span><b style="background:${PAL[i % PAL.length]}"></b>${esc(k)} ${share(v)}</span>`).join('')}</div>
       <p class="muted" style="margin-top:8px">Size: ${size.map(([k, v]) => `${esc(k)} ${share(v)}`).join(' · ')}<br>Biggest: ${top.map(([s, v]) => `<a href="#" data-sym="${esc(s)}">${esc(s)}</a> ${share(v)}`).join(' · ')}</p>`;
@@ -127,18 +142,20 @@
         <p class="citation">${gain >= goalPct ? 'On track for the yearly goal.' : 'Behind the yearly goal so far.'} Money added or withdrawn is left out.</p>`;
   }
   async function money(el, ctx) {
-    POS.clear();
+    POS.clear(); WHERE.clear();
     const b = ctx.brokers || { accounts: [] };
     const accts = [...(b.main && b.main.connectedToday ? [{ label: 'ICICI · main', url: 'api/breeze.php?action=holdings' }] : []),
       ...b.accounts.filter(a => a.connectedToday).map(a => ({ label: a.label, url: `api/brokers.php?action=holdings&id=${a.id}` }))];
     if (!accts.length) {
       xray(document.querySelector('#home-xray .home-card-body')); goal(document.querySelector('#home-goal .home-card-body'), {});
+      const ce = document.querySelector('#home-cash .home-card-body'); if (ce) ce.innerHTML = '<p class="home-empty">Shows once a broker account is connected today.</p>';
       el.innerHTML = `<p class="home-empty">${b.main || b.accounts.length ? 'Log in to your broker accounts for today to see your money here.' : 'Add your broker account under <b>Broker accounts</b> (your name, top right) to see holdings and P&amp;L here.'}</p>`;
       return;
     }
     const syms = new Set();
-    const rows = await Promise.all(accts.map(async a => { try { const h = await j(a.url); [...(h.holdings || []), ...(h.demat || [])].forEach(r => r.stock_code && syms.add((h.symbols || {})[String(r.stock_code).toUpperCase()] || String(r.stock_code).toUpperCase())); return { ...a, ...sumHoldings(h) }; } catch (e) { return { ...a, err: e.message }; } }));
+    const rows = await Promise.all(accts.map(async a => { try { const h = await j(a.url); h._label = a.label; [...(h.holdings || []), ...(h.demat || [])].forEach(r => r.stock_code && syms.add((h.symbols || {})[String(r.stock_code).toUpperCase()] || String(r.stock_code).toUpperCase())); return { ...a, ...sumHoldings(h) }; } catch (e) { return { ...a, err: e.message }; } }));
     resultsDue([...syms]);
+    cash(document.querySelector('#home-cash .home-card-body'), accts, ctx);
     xray(document.querySelector('#home-xray .home-card-body'));
     const t = rows.reduce((s, r) => ({ inv: s.inv + (r.inv || 0), val: s.val + (r.val || 0) }), { inv: 0, val: 0 });
     const pl = t.val - t.inv;

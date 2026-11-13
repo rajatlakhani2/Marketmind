@@ -319,6 +319,11 @@ function mm_migrations(): array {
             )$t",
             "CREATE INDEX ix_broker_accounts_user ON broker_accounts (user_id)",
         ],
+        // Trade journal: a note and a mood tag on each trade
+        11 => [
+            "ALTER TABLE trade_orders ADD COLUMN note TEXT NULL",
+            "ALTER TABLE trade_orders ADD COLUMN note_tag VARCHAR(20) NOT NULL DEFAULT ''",
+        ],
     ];
 }
 

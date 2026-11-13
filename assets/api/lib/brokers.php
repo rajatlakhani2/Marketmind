@@ -112,6 +112,13 @@ function mm_icici_call(array $a, string $endpoint, array $body): array {
     return $data;
 }
 
+// Cash: ICICI 'funds' (bank balance and what is allocated to equity / F&O)
+function mm_icici_funds(array $a): array {
+    $f = mm_icici_call($a, 'funds', [])['Success'] ?? [];
+    $num = fn($k) => isset($f[$k]) && is_numeric($f[$k]) ? (float) $f[$k] : null;
+    return ['bank' => $num('total_bank_balance'), 'equity' => $num('allocated_equity'), 'fno' => $num('allocated_fno'), 'free' => $num('unallocated_balance'), 'blockEquity' => $num('block_by_trade_equity'), 'keys' => array_keys($f)];
+}
+
 // Holdings and today's positions of one ICICI account, in the same shape as breeze.php?action=holdings.
 function mm_icici_holdings(array $a): array {
     $tz = new DateTimeZone('Asia/Kolkata');

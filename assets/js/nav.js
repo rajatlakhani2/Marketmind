@@ -23,7 +23,7 @@
     { id: 'markets', label: 'Markets', pages: [['insights', 'Insights'], ['events', 'Events & News'], ['corpactions', 'Corporate actions'], ['results', 'Results']] },
     { id: 'stocks', label: 'Stocks', pages: [['stock', 'Stock'], ['analyze', 'Analyze'], ['screener', 'Screener'], ['opps', 'Opportunities'], ['live', 'Live buyers']] },
     { id: 'fno', label: 'F&O', pages: [['optcalls', 'Option calls'], ['fno', 'Option chain & futures']] },
-    { id: 'portfolio', label: 'Portfolio', pages: [['holdings', 'Holdings'], ['watchlist', 'Watchlist'], ['trading', 'Orders']] },
+    { id: 'portfolio', label: 'Portfolio', pages: [['holdings', 'Holdings'], ['watchlist', 'Watchlist'], ['trading', 'Orders'], ['journal', 'Journal']] },
     { id: 'research', label: 'Research', pages: [['backtest', 'Back-test'], ['strategies', 'Strategies'], ['mindguru', 'MindGuru']] },
     { id: 'learn', label: 'Learn', pages: [['concepts', 'Concepts'], ['knowledge', 'Library'], ['theory', 'Theory'], ['methodology', 'Methodology']] },
   ];
@@ -163,7 +163,7 @@
   const PAGE_WORDS = {
     dashboard: 'home overview index nifty sensex', insights: 'insights breadth sector rotation strongest relative strength movers fii dii holidays', watchlist: 'watchlist calls buy sell my stocks', stock: 'stock chart price', live: 'live buyers sellers order book depth market depth pressure',
     opps: 'opportunities scan setups ideas', fno: 'f&o fno options futures option chain calls puts strategy builder iron condor straddle', analyze: 'analyze analysis verdict',
-    events: 'events news results dividend corporate actions calendar', screener: 'screener filter', trading: 'orders trading algo approve', holdings: 'holdings portfolio',
+    events: 'events news results dividend corporate actions calendar', screener: 'screener filter', trading: 'orders trading algo approve', holdings: 'holdings portfolio', journal: 'journal notes trades scorecard tax what if patterns',
     mindguru: 'mindguru learning record accuracy', backtest: 'backtest back-test test history results accuracy', strategies: 'strategies', concepts: 'concepts', knowledge: 'library documents upload books', theory: 'theory', methodology: 'methodology sources',
   };
   const pageLabel = p => { for (const g of ALL_GROUPS) for (const [id, l] of g.pages) if (id === p) return [l, g.label]; return [p, '']; };

@@ -221,10 +221,32 @@
 
   async function openUsers() {
     const m = openModal(`<button class="modal-close" data-close>&times;</button><h3>Users</h3><div id="users-body"><p class="auth-text">Loading…</p></div>
-      <h4 class="users-sub">Stock list</h4><div id="stocks-admin"><p class="auth-text">Loading…</p></div>`);
+      <h4 class="users-sub">Stock list</h4><div id="stocks-admin"><p class="auth-text">Loading…</p></div>
+      <h4 class="users-sub">System health</h4><div id="sys-health"><p class="auth-text">Checking…</p></div>`);
     m.classList.add('modal-wide');
     renderStockAdmin();
+    health();
     await renderUsers();
+  }
+
+  // ---------- admin: system health (each data source answers, and how fast) ----------
+  async function health() {
+    const el = document.getElementById('sys-health');
+    if (!el) return;
+    const checks = [
+      ['Database and sign-in', 'api/auth.php?action=status', (x) => (x.dbOk ? `ok · sign-ups ${x.signupOpen ? 'open' : 'closed'}` : 'database not reachable')],
+      ['Prices (Yahoo)', 'api/chart.php?symbol=%5ENSEI&interval=1d&range=5d', (x) => (x.chart && x.chart.result ? 'ok' : 'no data')],
+      ['ICICI main account', 'api/breeze.php?action=status', (x) => (!x.configured ? 'not set up' : x.loggedIn ? 'logged in today' : 'not logged in today')],
+      ['NSE calendar', 'api/events.php?action=calendar', (x) => `ok · ${(x.meetings || []).length} meetings`],
+      ['Market overview', 'api/overview.php?action=market', (x) => `ok · ${(x.rows || []).length} stocks`],
+      ['Daily scan', 'api/scan.php?action=latest', (x) => (x.date ? `last run ${x.date}` : 'no scan yet')],
+    ];
+    el.innerHTML = '<ul class="users-list">' + checks.map(([n], i) => `<li class="user-row"><div class="user-main"><b>${esc(n)}</b> <span class="text-muted" id="hc-${i}">checking…</span></div></li>`).join('') + '</ul>';
+    checks.forEach(async ([, url, fmt], i) => {
+      const t0 = performance.now(), out = document.getElementById('hc-' + i);
+      try { const x = await request(url); out.innerHTML = `<span class="text-green">✓ ${esc(fmt(x))}</span> · ${Math.round(performance.now() - t0)} ms`; }
+      catch (e) { out.innerHTML = `<span class="text-red">✗ ${esc(e.message)}</span>`; }
+    });
   }
 
   // ---------- admin: NSE + BSE stock list ----------

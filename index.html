@@ -25,7 +25,7 @@
   <script src="js/plain.js?v=2"></script>
   <script src="js/tiers.js?v=1"></script>
   <script src="js/consensus.js?v=18"></script>
-  <script src="js/account.js?v=17"></script>
+  <script src="js/account.js?v=18"></script>
   <script src="js/stockpicker.js?v=14"></script>
   <script src="js/mindguru.js?v=17"></script>
   <script src="js/knowledgesync.js?v=14"></script>
@@ -41,12 +41,13 @@
   <script src="js/optcalls.js?v=2"></script>
   <script src="js/corpact.js?v=2"></script>
   <script src="js/backtest.js?v=30"></script>
-  <script src="js/nav.js?v=27"></script>
+  <script src="js/nav.js?v=28"></script>
   <script src="js/overview.js?v=1"></script>
-  <script src="js/ux.js?v=1"></script>
+  <script src="js/ux.js?v=2"></script>
   <script src="js/insights.js?v=1"></script>
-  <script src="js/cockpit.js?v=3"></script>
-  <script src="js/home.js?v=24"></script>
+  <script src="js/journal.js?v=1"></script>
+  <script src="js/cockpit.js?v=4"></script>
+  <script src="js/home.js?v=25"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1240,6 +1241,11 @@ body.is-offline #topbar::after { content: 'Offline · showing last loaded data';
 .rot text.rot-q:nth-of-type(1), .rot text.rot-q:nth-of-type(4) { text-anchor: end; } .rot-l { font-size: 11px; fill: var(--text-secondary); } .rot-t { font-size: 11px; fill: var(--text-muted); text-anchor: middle; }
 .xray-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; margin: 6px 0 10px; } .xray-bar i { display: block; height: 100%; }
 .xray-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .8rem; } .xray-legend b { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+.why { margin: 8px 0; font-size: .85rem; } .why small { display: block; } .why ul { list-style: none; padding: 0; margin: 4px 0 0; } .why li { font-size: .8rem; }
+.mini-spark { width: 60px; height: 18px; display: block; margin-top: 2px; }
+.home-lesson { font-size: .88rem; color: var(--text-secondary); } .home-rules { font-size: .82rem; padding-left: 18px; color: var(--text-secondary); }
+#page-journal textarea { width: 100%; min-width: 180px; font: inherit; font-size: .82rem; } #page-journal h4 { margin: 10px 0 4px; font-size: .85rem; }
 </style>
 </head>
 <body>
@@ -1266,6 +1272,7 @@ body.is-offline #topbar::after { content: 'Offline · showing last loaded data';
         <li><a href="#" data-page="mindguru"><span class="nav-icon">&#x1F9E0;</span> MindGuru</a></li>
         <li><a href="#" data-page="fno"><span class="nav-icon">&#x1F4C8;</span> Futures &amp; Options</a></li>
         <li><a href="#" data-page="events"><span class="nav-icon">&#x1F4C5;</span> Events &amp; News</a></li>
+        <li class="admin-only hidden"><a href="#" data-page="journal"><span class="nav-icon">&#x1F4D3;</span> Journal</a></li>
         <li class="admin-only hidden"><a href="#" data-page="trading"><span class="nav-icon">&#x26A1;</span> Trading</a></li>
         <li><a href="#" data-page="opps"><span class="nav-icon">&#x1F3AF;</span> Opportunities</a></li>
         <li><a href="#" data-page="holdings"><span class="nav-icon">&#x1F4BC;</span> My Holdings</a></li>
@@ -1435,6 +1442,10 @@ body.is-offline #topbar::after { content: 'Offline · showing last loaded data';
       </div>
       <div id="page-stock" class="page">
         <div id="stock-container"></div>
+      </div>
+      <div id="page-journal" class="page">
+        <header class="page-header"><h2>Journal</h2><p class="muted">Your trades with notes and mood, this month's scorecard, patterns, tax view and "what if I had held"</p></header>
+        <div id="journal-container"></div>
       </div>
       <div id="page-insights" class="page">
         <header class="page-header"><h2>Insights</h2><p class="muted">Market breadth, sector rotation, strongest stocks, today's movers, FII/DII flows and holidays</p></header>
@@ -3585,6 +3596,7 @@ class App {
       case 'backtest': await Backtest.renderPage(document.getElementById('backtest-container')); break;
       case 'live': await LivePage.renderPage(document.getElementById('live-container')); break;
       case 'optcalls': await OptCalls.renderPage(document.getElementById('optcalls-container')); break;
+      case 'journal': await Journal.renderPage(document.getElementById('journal-container')); break;
       case 'insights': await Insights.renderPage(document.getElementById('insights-container')); break;
       case 'corpactions': await CorpActions.renderPage(document.getElementById('corpactions-container')); break;
       case 'results': await ResultsPage.renderPage(document.getElementById('results-container')); break;

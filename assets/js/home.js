@@ -46,6 +46,8 @@
     { id: 'home-risk', title: 'Risk', btn: ['trading', 'Orders'], admin: true },
     { id: 'home-xray', title: 'Portfolio X-ray', btn: ['holdings', 'Holdings'] },
     { id: 'home-goal', title: 'Goal & benchmark', btn: null },
+    { id: 'home-cash', title: 'Cash', btn: null },
+    { id: 'home-lesson', title: "Today's lesson", btn: ['concepts', 'All concepts'] },
     { id: 'home-watch', title: 'Your Watchlist', btn: ['watchlist', 'Calls'] },
     { id: 'home-opps', title: "Today's best setups", btn: ['opps', 'All'] },
     { id: 'home-orders', title: 'Orders', btn: ['trading', 'Open'], admin: true },
@@ -115,6 +117,15 @@
     if (admin && container.querySelector('#home-orders')) orders();
     events(list);
     mindguru(list);
+    lesson();
+  }
+
+  function lesson() {
+    const L = root.MarketMindLibrary && MarketMindLibrary.CONCEPTS;
+    if (!L || !L.length) return;
+    const day = Math.floor((Date.now() + IST) / 864e5), c = L[day % L.length];
+    fill('home-lesson', `<p><b>${esc(c.name)}</b> <small class="muted">${esc(c.category)}</small></p><p class="home-lesson">${esc(String(c.description || '').slice(0, 320))}</p>
+      ${(c.rules || []).length ? `<ul class="home-rules">${c.rules.slice(0, 3).map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}`);
   }
 
   async function indices(container) {
@@ -130,6 +141,17 @@
       <li data-sym="${esc(i.symbol)}"><div><b>${esc(i.symbol)}</b><small>${esc(i.name || '')}</small></div>
       <div class="q-num"><b>${q ? num(q.ltp) : '—'}</b><small class="chg ${tone(q && q.changePct)}">${q ? pct(q.changePct) : ''}</small></div></li>`).join('')}</ul>
       ${list.length > 8 ? `<p class="home-more">+${list.length - 8} more on the Watchlist</p>` : ''}`);
+    // 1-month mini chart next to each stock
+    rows.forEach(async ([i]) => {
+      const li = document.querySelector(`#home-watch [data-sym="${i.symbol}"] > div`);
+      if (!li) return;
+      try {
+        if (!sparks.has(i.symbol)) { const x = await getJSON(`api/chart.php?symbol=${encodeURIComponent(i.symbol + '.NS')}&interval=1d&range=1mo`); sparks.set(i.symbol, (x.chart.result[0].indicators.quote[0].close || []).filter(v => v != null)); }
+        const c = sparks.get(i.symbol); if (c.length < 2) return;
+        const lo = Math.min(...c), hi = Math.max(...c);
+        li.insertAdjacentHTML('beforeend', `<svg class="mini-spark" viewBox="0 0 60 18"><polyline fill="none" stroke="${c[c.length - 1] >= c[0] ? 'var(--green)' : 'var(--red)'}" stroke-width="1.5" points="${c.map((v, k) => `${(k / (c.length - 1) * 60).toFixed(1)},${(17 - (v - lo) / (hi - lo || 1) * 16).toFixed(1)}`).join(' ')}"/></svg>`);
+      } catch { /* no chart */ }
+    });
     // Flash prices that moved since the last refresh
     rows.forEach(([i, q]) => {
       const was = lastPx.get(i.symbol);
@@ -137,7 +159,7 @@
       if (q && q.ltp) lastPx.set(i.symbol, q.ltp);
     });
   }
-  const lastPx = new Map();
+  const lastPx = new Map(), sparks = new Map();
   let liveTimer = null;
 
   async function opps() {

@@ -567,6 +567,14 @@ try {
         json_out(200, $out);
     }
 
+    // Cash in the main account (admin only)
+    if ($action === 'funds') {
+        if ((mm_current_user()['role'] ?? '') !== 'admin') json_out(403, ['error' => 'Only the admin can see the main account']);
+        $f = breeze_v1($cfg, $session, 'funds', [])['Success'] ?? [];
+        $num = fn($k) => isset($f[$k]) && is_numeric($f[$k]) ? (float) $f[$k] : null;
+        json_out(200, ['bank' => $num('total_bank_balance'), 'equity' => $num('allocated_equity'), 'fno' => $num('allocated_fno'), 'free' => $num('unallocated_balance'), 'blockEquity' => $num('block_by_trade_equity'), 'keys' => array_keys($f)]);
+    }
+
     // Spot price of an F&O underlying (index or stock).
     if ($action === 'fo_spot') {
         $u = fo_underlying($cfg, (string) ($_GET['isec'] ?? ''));

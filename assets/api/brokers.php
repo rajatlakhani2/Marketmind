@@ -8,6 +8,7 @@
 // GET  ?action=login&id=N   -> redirects to the broker's login page; the broker sends you back to breeze.php
 // POST ?action=logout   { id }   (forgets today's session)
 // GET  ?action=holdings&id=N  -> holdings and today's positions (read-only)
+// GET  ?action=funds&id=N     -> cash: bank balance, allocated to equity / F&O, free
 //
 // Every account belongs to the signed-in user; nobody else, the admin included, can use it.
 // POST requests must send the header  X-Requested-With: MarketMind
@@ -87,6 +88,11 @@ try {
         $a = mm_broker_account($uid, (int) ($body['id'] ?? 0));
         $pdo->prepare('UPDATE broker_accounts SET session_enc = NULL, session_date = NULL, updated_at = ? WHERE id = ?')->execute([mm_now(), $a['id']]);
         mm_json(200, ['ok' => true]);
+    }
+
+    if ($action === 'funds') {
+        $a = mm_broker_account($uid, (int) ($_GET['id'] ?? 0));
+        mm_json(200, mm_icici_funds($a) + ['account' => mm_broker_public($a)]);
     }
 
     if ($action === 'holdings') {

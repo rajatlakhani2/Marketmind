@@ -27,9 +27,10 @@
     d.innerHTML = `<div class="dr-head"><b>${esc(sym)}</b><button class="modal-close" data-close>&times;</button></div><p class="muted">Loading…</p>`;
     d.classList.add('open');
     d.querySelector('[data-close]').onclick = () => d.classList.remove('open');
-    let c = [], last = null, prev = null, atr = null;
+    let c = [], last = null, prev = null, atr = null, raw = null;
     try {
-      const x = await j(`api/chart.php?symbol=${encodeURIComponent(/^\d{6}$/.test(sym) ? sym + '.BO' : sym + '.NS')}&interval=1d&range=3mo`);
+      const x = await j(`api/chart.php?symbol=${encodeURIComponent(/^\d{6}$/.test(sym) ? sym + '.BO' : sym + '.NS')}&interval=1d&range=2y`);
+      raw = x;
       const r = x.chart.result[0], q = r.indicators.quote[0];
       c = (q.close || []).filter(v => v != null);
       last = r.meta.regularMarketPrice || c[c.length - 1]; prev = c[c.length - 2];
@@ -42,7 +43,8 @@
     const stop0 = last && atr ? +(last - 2 * atr).toFixed(2) : '';
     d.innerHTML = `<div class="dr-head"><b>${esc(sym)}</b><button class="modal-close" data-close>&times;</button></div>
       <div class="dr-price"><b>₹${n2(last)}</b> <span class="${ch >= 0 ? 'up' : 'down'}">${ch == null ? '' : (ch > 0 ? '+' : '') + ch.toFixed(2) + '%'}</span></div>
-      ${spark(c)}<p class="muted dr-sub">3 months · ATR(14) ₹${n2(atr)}</p>
+      ${spark(c.slice(-63))}<p class="muted dr-sub">3 months · ATR(14) ₹${n2(atr)}</p>
+      <div data-why></div>
       <div class="dr-actions"><button class="btn-primary btn-small" data-open>Open stock page</button><button class="btn-secondary btn-small" data-watch>+ Watchlist</button></div>
       <h4>Position size</h4>
       <div class="dr-calc"><label>Capital ₹<input type="number" data-cap value="${cap}"></label><label>Risk %<input type="number" step="0.1" data-rp value="${rp}"></label>
@@ -57,6 +59,24 @@
       d.querySelector('[data-out]').innerHTML = per > 0 ? `Buy <b>${q}</b> shares · value ₹${n2(q * g('en'))} · loses ₹${n2(q * per)} at the stop (${g('rp')}% of capital)` : 'Stop must be below the entry.';
     };
     d.querySelectorAll('.dr-calc input').forEach(i => (i.oninput = calc)); calc();
+    why(d.querySelector('[data-why]'), raw, sym);
+  }
+
+  // Why (or why not) a buy signal today: the Proven strategies' own conditions, checked on this stock
+  function why(el, raw, sym) {
+    if (!el || !raw || !root.MarketData || !root.Conditions || !root.MarketMindLibrary) return;
+    try {
+      const candles = MarketData.parseYahooChart(raw).candles.slice(-400);
+      const md = MarketData.buildMarketData({ symbol: sym, timeframe: '1d', candles, meta: null, source: 'History' });
+      const strats = MarketMindLibrary.STRATEGIES.filter(s => (root.Tiers ? Tiers.info(s.id).tier : '') === 'proven');
+      el.innerHTML = '<h4>Buy signal check</h4>' + strats.map(s => {
+        const res = s.conditions.map(c => [c, Conditions.check(c, md)]).filter(([, r]) => r);
+        const ok = res.length && res.every(([, r]) => r.met), t = Tiers.info(s.id);
+        const bt = t.bt ? ` · back-test ${t.bt.avg > 0 ? '+' : ''}${t.bt.avg}R a trade, ${t.bt.yearsPos} of ${t.bt.years} years positive` : '';
+        return `<div class="why"><b class="${ok ? 'up' : ''}">${ok ? '✓ Buy signal' : '✗ No signal'}: ${esc(root.Plain ? Plain.name(s.id, s.name) : s.name)}</b><small class="muted">${esc(t.label)}${bt}</small>
+          <ul>${res.map(([c, r]) => `<li class="${r.met ? 'up' : 'down'}">${r.met ? '✓' : '✗'} ${esc(c)}</li>`).join('')}</ul></div>`;
+      }).join('');
+    } catch (e) { el.innerHTML = ''; }
   }
   // Tapping a symbol anywhere (elements with data-sym) opens the drawer instead of leaving the page
   document.addEventListener('click', e => {

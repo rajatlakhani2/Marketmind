@@ -229,6 +229,11 @@ try {
     $pdo = mm_db();
 
     if ($action === 'state') mm_json(200, state($pdo, $DEFAULTS));
+    // Journal: every entry trade that was filled, newest first
+    if ($action === 'history') {
+        $rows = $pdo->query("SELECT id, symbol, name, product, side, qty, limit_price, fill_price, stop, target, exit_price, pnl, status, mode, timeframe, verdict, reason, created_at, filled_at, closed_at, note, note_tag FROM trade_orders WHERE purpose = 'entry' AND status IN ('open','filled','closed') ORDER BY COALESCE(closed_at, filled_at, created_at) DESC LIMIT 500")->fetchAll();
+        mm_json(200, ['trades' => $rows, 'settings' => settings($pdo, $DEFAULTS)]);
+    }
 
     $body = mm_require_post();
     $S = settings($pdo, $DEFAULTS);
@@ -321,6 +326,14 @@ try {
         $o = order_row($pdo, (int) ($body['id'] ?? 0));
         if ($o['status'] === 'pending') $pdo->prepare("UPDATE trade_orders SET status = 'rejected', decided_at = ?, decided_by = ? WHERE id = ?")->execute([mm_now(), $admin['id'], $o['id']]);
         mm_json(200, state($pdo, $DEFAULTS));
+    }
+
+    if ($action === 'note') {
+        $o = order_row($pdo, (int) ($body['id'] ?? 0));
+        $tag = (string) ($body['tag'] ?? '');
+        if (!in_array($tag, ['', 'calm', 'rushed', 'revenge', 'fomo', 'plan'], true)) mm_json(400, ['error' => 'Unknown mood tag']);
+        $pdo->prepare('UPDATE trade_orders SET note = ?, note_tag = ? WHERE id = ?')->execute([mb_substr((string) ($body['note'] ?? ''), 0, 2000), $tag, $o['id']]);
+        mm_json(200, ['ok' => true]);
     }
 
     if ($action === 'approve') {
