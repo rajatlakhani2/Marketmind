@@ -6,6 +6,8 @@
 // POST ?action=update          { id, displayName?, role?, isActive? }
 // POST ?action=reset_password  { id, password }   (user must choose a new one at next sign-in)
 // POST ?action=delete          { id }
+// POST ?action=approve         { id }   (a sign-up request: switches the account on)
+// POST ?action=reject          { id }   (a sign-up request: keeps it off and tells them at sign-in)
 //
 // POST requests must send the header  X-Requested-With: MarketMind
 
@@ -19,7 +21,7 @@ try {
     $pdo = mm_db();
 
     if ($action === 'list') {
-        $rows = $pdo->query('SELECT * FROM users ORDER BY role = \'admin\' DESC, username')->fetchAll();
+        $rows = $pdo->query("SELECT * FROM users ORDER BY approval_status = 'pending' DESC, role = 'admin' DESC, username")->fetchAll();
         mm_json(200, ['users' => array_map('mm_public_user', $rows)]);
     }
 
@@ -48,8 +50,18 @@ try {
         if ($self && ($role !== 'admin' || !$active)) mm_json(400, ['error' => "You can't remove your own admin access or switch off your own account"]);
         if ($u['role'] === 'admin' && ($role !== 'admin' || !$active)) mm_keep_one_admin((int) $u['id']);
         $name = array_key_exists('displayName', $body) ? mm_str($body, 'displayName', 100) : $u['display_name'];
-        $pdo->prepare('UPDATE users SET display_name = ?, role = ?, is_active = ? WHERE id = ?')->execute([$name, $role, $active, $u['id']]);
+        $approval = $active ? 'approved' : ($u['approval_status'] ?? 'approved');
+        $pdo->prepare('UPDATE users SET display_name = ?, role = ?, is_active = ?, approval_status = ? WHERE id = ?')->execute([$name, $role, $active, $approval, $u['id']]);
         if (!$active) $pdo->prepare('DELETE FROM sessions WHERE user_id = ?')->execute([$u['id']]);
+        mm_json(200, ['ok' => true, 'user' => mm_public_user(mm_find((int) $u['id']))]);
+    }
+
+    if ($action === 'approve' || $action === 'reject') {
+        $body = mm_require_post();
+        $u = mm_find((int) ($body['id'] ?? 0));
+        if (($u['approval_status'] ?? 'approved') === 'approved') mm_json(400, ['error' => 'This account is not waiting for approval']);
+        $ok = $action === 'approve';
+        $pdo->prepare("UPDATE users SET approval_status = ?, is_active = ?, role = 'user' WHERE id = ?")->execute([$ok ? 'approved' : 'rejected', $ok ? 1 : 0, $u['id']]);
         mm_json(200, ['ok' => true, 'user' => mm_public_user(mm_find((int) $u['id']))]);
     }
 

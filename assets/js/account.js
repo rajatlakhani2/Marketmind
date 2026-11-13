@@ -12,7 +12,7 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 
-  const state = { user: null, devMode: false };
+  const state = { user: null, devMode: false, signupOpen: false };
 
   async function request(url, body) {
     const opts = { headers: { Accept: 'application/json' }, credentials: 'same-origin' };
@@ -104,21 +104,50 @@
     });
   }
 
-  function showLogin(note) {
+  function showLogin(note, noteIsHtml) {
     return new Promise((resolve) => {
-      screen().innerHTML = card('Sign in', note ? esc(note) : '', `
+      screen().innerHTML = card('Sign in', note ? (noteIsHtml ? note : esc(note)) : '', `
         <form class="auth-form">
           <label>Username<input name="username" required maxlength="50" autocapitalize="none" autocomplete="username" /></label>
           <label>Password<input name="password" type="password" required autocomplete="current-password" /></label>
           <label class="auth-check"><input name="remember" type="checkbox" checked /> Keep me signed in on this device</label>
           <p class="auth-error"></p>
           <button type="submit" class="btn-primary auth-wide">Sign in</button>
-        </form>`);
+        </form>
+        ${state.signupOpen ? '<p class="auth-text auth-switch">New here? <a href="#" id="auth-to-signup">Create an account</a></p>' : ''}`);
       const form = document.querySelector('#auth-screen form');
       form.querySelector('input[name="username"]').focus();
+      const link = document.getElementById('auth-to-signup');
+      if (link) link.onclick = (e) => { e.preventDefault(); showSignup().then(resolve); };
       bindForm(form, async (v) => {
         const r = await request(`${AUTH}?action=login`, { username: v.username, password: v.password, remember: !!v.remember });
         resolve(r.user);
+      });
+    });
+  }
+
+  // Ask for an account. It works only after the admin approves it, so this goes back to the sign-in screen.
+  function showSignup() {
+    return new Promise((resolve) => {
+      screen().innerHTML = card('Create an account', 'The admin checks every new account. You can sign in once it is approved.', `
+        <form class="auth-form" autocomplete="off">
+          <label>Your name<input name="displayName" required maxlength="100" placeholder="e.g. Amit Shah" /></label>
+          <label>Mobile or email <span class="text-muted">(so the admin knows who you are)</span><input name="contact" maxlength="120" /></label>
+          <label>Username<input name="username" required maxlength="50" autocapitalize="none" autocomplete="username" placeholder="letters, numbers, . _ -" /></label>
+          <label>Password<input name="password" type="password" required minlength="8" autocomplete="new-password" /></label>
+          <label>Repeat password<input name="password2" type="password" required minlength="8" autocomplete="new-password" /></label>
+          <input name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;height:0;opacity:0" />
+          <p class="auth-error"></p>
+          <button type="submit" class="btn-primary auth-wide">Send request</button>
+        </form>
+        <p class="auth-text auth-switch">Already have an account? <a href="#" id="auth-to-login">Sign in</a></p>`);
+      document.getElementById('auth-to-login').onclick = (e) => { e.preventDefault(); showLogin().then(resolve); };
+      const form = document.querySelector('#auth-screen form');
+      form.querySelector('input[name="displayName"]').focus();
+      bindForm(form, async (v) => {
+        if (v.password !== v.password2) throw new Error("The two passwords don't match");
+        await request(`${AUTH}?action=register`, { displayName: v.displayName, contact: v.contact, username: v.username, password: v.password, website: v.website });
+        showLogin(`<span class="auth-ok">Request sent. You can sign in as <b>${esc(String(v.username).toLowerCase())}</b> once the admin approves your account.</span>`, true).then(resolve);
       });
     });
   }
@@ -229,9 +258,21 @@
     };
   }
 
+  // Admin: show how many sign-up requests are waiting, next to "Users" and as a reminder.
+  async function checkWaiting() {
+    if (state.devMode || !state.user || state.user.role !== 'admin') return;
+    try {
+      const users = (await request(`${USERS}?action=list`)).users;
+      const n = users.filter((u) => u.approvalStatus === 'pending').length;
+      if (n !== state.waiting) { state.waiting = n; renderMenu(); }
+      if (n) toast(`${n} new account request${n > 1 ? 's are' : ' is'} waiting for approval (Users)`, 'info');
+    } catch { /* not important */ }
+  }
+
   // First time an admin signs in, load the stock list in the background.
   async function ensureStockList() {
     if (state.devMode || !state.user || state.user.role !== 'admin') return;
+    checkWaiting();
     try {
       const info = await request('api/stocks.php?action=info');
       if (info.nse + info.bse > 0) return;
@@ -249,16 +290,32 @@
     let users;
     try { users = (await request(`${USERS}?action=list`)).users; } catch (e) { body.innerHTML = `<p class="auth-error">${esc(e.message)}</p>`; return; }
     const me = state.user.id;
+    const waiting = users.filter((u) => u.approvalStatus === 'pending');
+    if (waiting.length !== state.waiting) { state.waiting = waiting.length; renderMenu(); }
+    users = users.filter((u) => u.approvalStatus !== 'pending');
     body.innerHTML = `
+      ${waiting.length ? `<h4 class="users-sub">Waiting for approval (${waiting.length})</h4>
+      <div class="users-list">${waiting.map((u) => `
+        <div class="user-row pending" data-id="${u.id}">
+          <div class="user-main">
+            <div><b>${esc(u.displayName)}</b> <span class="text-muted">@${esc(u.username)}</span> <span class="user-badge warn">New request</span></div>
+            <div class="text-muted user-meta">${u.contact ? esc(u.contact) + ' · ' : ''}Asked ${esc(fmtDate(u.createdAt))}</div>
+          </div>
+          <div class="user-actions">
+            <button class="btn-primary btn-small" data-act="approve">Approve</button>
+            <button class="btn-secondary btn-small" data-act="reject">Reject</button>
+          </div>
+        </div>`).join('')}
+      </div><h4 class="users-sub">Accounts</h4>` : ''}
       <div class="users-list">${users.map((u) => `
         <div class="user-row${u.isActive ? '' : ' off'}" data-id="${u.id}">
           <div class="user-main">
             <div><b>${esc(u.displayName)}</b> <span class="text-muted">@${esc(u.username)}</span>
               ${u.role === 'admin' ? '<span class="user-badge admin">Admin</span>' : ''}
-              ${u.isActive ? '' : '<span class="user-badge">Switched off</span>'}
+              ${u.approvalStatus === 'rejected' ? '<span class="user-badge">Rejected</span>' : u.isActive ? '' : '<span class="user-badge">Switched off</span>'}
               ${u.mustChangePassword ? '<span class="user-badge warn">Temp password</span>' : ''}
               ${u.id === me ? '<span class="user-badge you">You</span>' : ''}</div>
-            <div class="text-muted user-meta">Last sign-in: ${esc(fmtDate(u.lastLoginAt))}</div>
+            <div class="text-muted user-meta">${u.contact ? esc(u.contact) + ' · ' : ''}Last sign-in: ${esc(fmtDate(u.lastLoginAt))}</div>
           </div>
           ${u.id === me ? '' : `<div class="user-actions">
             <button class="btn-secondary btn-small" data-act="reset">Reset password</button>
@@ -288,14 +345,22 @@
       await renderUsers();
     });
 
+    const everyone = users.concat(waiting);
     body.querySelectorAll('.user-row').forEach((row) => {
       const id = Number(row.dataset.id);
-      const u = users.find((x) => x.id === id);
+      const u = everyone.find((x) => x.id === id);
       row.querySelectorAll('[data-act]').forEach((btn) => {
         btn.onclick = async () => {
           try {
             const act = btn.dataset.act;
-            if (act === 'reset') {
+            if (act === 'approve') {
+              await request(`${USERS}?action=approve`, { id });
+              toast(`Approved ${u.username}. They can sign in now.`, 'success');
+            } else if (act === 'reject') {
+              if (!confirm(`Reject ${u.displayName} (@${u.username})? They won't be able to sign in. You can delete the request later.`)) return;
+              await request(`${USERS}?action=reject`, { id });
+              toast(`Rejected ${u.username}`, 'success');
+            } else if (act === 'reset') {
               const pw = prompt(`New password for ${u.username} (at least 8 characters):`, tempPassword());
               if (!pw) return;
               const mustChange = confirm(`Should ${u.username} have to choose their own password at next sign-in?\n\nOK = yes, make them change it\nCancel = no, keep "${pw}"`);
@@ -329,7 +394,7 @@
     el.innerHTML = `
       <div class="account-name" title="@${esc(u.username)}">${esc(u.displayName)}${u.role === 'admin' ? ' <span class="user-badge admin">Admin</span>' : ''}</div>
       <div class="account-links">
-        ${u.role === 'admin' ? '<a href="#" data-acc="users">Users</a>' : ''}
+        ${u.role === 'admin' ? `<a href="#" data-acc="users">Users${state.waiting ? ` <span class="user-badge warn">${state.waiting} new</span>` : ''}</a>` : ''}
         <a href="#" data-acc="password">Password</a>
         <a href="#" data-acc="logout">Sign out</a>
       </div>`;
@@ -398,6 +463,7 @@
     }
     if (!st.configured) { showNotConfigured(); return new Promise(() => {}); }
 
+    state.signupOpen = !!st.signupOpen;
     let user = st.user;
     if (st.needsSetup) user = await showSetup();
     else if (!st.loggedIn) user = await showLogin();

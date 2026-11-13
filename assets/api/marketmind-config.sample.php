@@ -24,6 +24,10 @@ return [
     // Needed once, to create the first admin account. Use any long phrase.
     'setup_key' => 'PASTE_A_LONG_SECRET_PHRASE',
 
+    // Lets people ask for an account from the sign-in screen; it stays off until an admin approves it.
+    // Set to false to close sign-ups.
+    'allow_signup' => true,
+
     // How long "Keep me signed in" lasts, in days.
     'session_days' => 30,
 ];

@@ -3,6 +3,7 @@
 //
 // GET  ?action=status           -> { configured, dbOk, needsSetup, loggedIn, user }
 // POST ?action=setup            { setupKey, username, displayName, password }  (only while no users exist)
+// POST ?action=register         { username, displayName, contact, password }  (account waits for admin approval)
 // POST ?action=login            { username, password, remember }
 // POST ?action=logout
 // POST ?action=change_password  { currentPassword, newPassword }
@@ -22,7 +23,36 @@ try {
         $pdo = mm_db();
         $needsSetup = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0;
         $u = $needsSetup ? null : mm_current_user();
-        mm_json(200, ['configured' => true, 'dbOk' => true, 'needsSetup' => $needsSetup, 'loggedIn' => (bool) $u, 'user' => $u ? mm_public_user($u) : null]);
+        mm_json(200, ['configured' => true, 'dbOk' => true, 'needsSetup' => $needsSetup, 'loggedIn' => (bool) $u, 'user' => $u ? mm_public_user($u) : null, 'signupOpen' => !$needsSetup && mm_signup_open()]);
+    }
+
+    // Anyone can ask for an account; it stays switched off until an admin approves it.
+    if ($action === 'register') {
+        $body = mm_require_post();
+        $pdo = mm_db();
+        if ((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0) mm_json(409, ['error' => 'The admin account has not been set up yet']);
+        if (!mm_signup_open()) mm_json(403, ['error' => 'New sign-ups are closed. Ask the admin for an account.']);
+        if (trim((string) ($body['website'] ?? '')) !== '') mm_json(200, ['ok' => true, 'pending' => true]); // form-filling bots
+        // At most 3 sign-ups per IP address an hour, and 30 requests waiting at once
+        $st = $pdo->prepare("SELECT COUNT(*) FROM login_attempts WHERE username = '__signup__' AND ip = ? AND attempted_at > ?");
+        $st->execute([mm_ip(), gmdate('Y-m-d H:i:s', time() - 3600)]);
+        if ((int) $st->fetchColumn() >= 3) mm_json(429, ['error' => 'Too many sign-ups from this network. Try again in an hour.']);
+        if ((int) $pdo->query("SELECT COUNT(*) FROM users WHERE approval_status = 'pending'")->fetchColumn() >= 30) {
+            mm_json(429, ['error' => 'Too many requests are waiting for the admin. Try again later.']);
+        }
+        $username = mm_check_username(mm_str($body, 'username', 50));
+        $password = (string) ($body['password'] ?? '');
+        mm_check_password($password);
+        $name = trim(mm_str($body, 'displayName', 100));
+        $contact = trim(mm_str($body, 'contact', 120));
+        if ($name === '') mm_json(400, ['error' => 'Enter your name so the admin knows who you are']);
+        $st = $pdo->prepare('SELECT COUNT(*) FROM users WHERE username = ?');
+        $st->execute([$username]);
+        if ((int) $st->fetchColumn() > 0) mm_json(409, ['error' => "Username \"$username\" is already taken. Choose another."]);
+        $pdo->prepare("INSERT INTO users (username, display_name, password_hash, role, is_active, must_change_password, created_at, password_changed_at, approval_status, contact) VALUES (?, ?, ?, 'user', 0, 0, ?, ?, 'pending', ?)")
+            ->execute([$username, $name, password_hash($password, PASSWORD_DEFAULT), mm_now(), mm_now(), $contact]);
+        $pdo->prepare('INSERT INTO login_attempts (username, ip, attempted_at, success) VALUES (?, ?, ?, 1)')->execute(['__signup__', mm_ip(), mm_now()]);
+        mm_json(200, ['ok' => true, 'pending' => true]);
     }
 
     if ($action === 'setup') {
@@ -62,6 +92,9 @@ try {
             mm_record_attempt($username, false);
             mm_json(401, ['error' => 'Wrong username or password']);
         }
+        $approval = $u['approval_status'] ?? 'approved';
+        if ($approval === 'pending') mm_json(403, ['error' => 'Your account is waiting for the admin to approve it. Try again later.', 'pendingApproval' => true]);
+        if ($approval === 'rejected') mm_json(403, ['error' => 'Your sign-up request was not approved. Ask the admin.']);
         if (!(int) $u['is_active']) {
             mm_record_attempt($username, false);
             mm_json(403, ['error' => 'This account is switched off. Ask the admin.']);
@@ -130,6 +163,11 @@ try {
 }
 
 // ---------- helpers ----------
+// Sign-up is on unless marketmind-config.php sets 'allow_signup' => false
+function mm_signup_open(): bool {
+    return (mm_config()['allow_signup'] ?? true) !== false;
+}
+
 function mm_user_by_id(int $id): array {
     $st = mm_db()->prepare('SELECT * FROM users WHERE id = ?');
     $st->execute([$id]);

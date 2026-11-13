@@ -333,6 +333,14 @@ if ($action === 'status') {
 
 if (!$cfg) json_out(503, ['error' => 'ICICI Breeze is not set up yet (breeze-config.php missing)', 'configured' => false]);
 
+// Only the admin may start, finish or end the shared daily ICICI session
+if (in_array($action, ['login', 'callback', 'logout'], true) && (mm_current_user()['role'] ?? '') !== 'admin') {
+    if ($action === 'logout') json_out(403, ['error' => 'Only the admin can log out of ICICI']);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><meta charset="utf-8"><p>Only the MarketMind admin can connect ICICI.</p><p><a href="../index.html">Back to MarketMind</a></p>';
+    exit;
+}
+
 if ($action === 'login') {
     header('Location: ' . $cfg['login_url'] . '?api_key=' . rawurlencode($cfg['api_key']));
     exit;

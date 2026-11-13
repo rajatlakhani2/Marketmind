@@ -296,6 +296,11 @@ function mm_migrations(): array {
         8 => [
             "ALTER TABLE trade_watchlist ADD COLUMN futures TINYINT NOT NULL DEFAULT 0",
         ],
+        // Self sign-up: accounts start 'pending' (switched off) until an admin approves them
+        9 => [
+            "ALTER TABLE users ADD COLUMN approval_status VARCHAR(10) NOT NULL DEFAULT 'approved'",
+            "ALTER TABLE users ADD COLUMN contact VARCHAR(120) NOT NULL DEFAULT ''",
+        ],
     ];
 }
 
@@ -308,7 +313,7 @@ function mm_migrate(PDO $pdo): void {
         foreach ($statements as $sql) {
             try { $pdo->exec(mm_ddl($pdo, $sql)); }
             catch (PDOException $e) {
-                if (!preg_match('/already exists|Duplicate key name/i', $e->getMessage())) throw $e;
+                if (!preg_match('/already exists|Duplicate key name|Duplicate column name|duplicate column/i', $e->getMessage())) throw $e;
             }
         }
         $pdo->prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)')->execute([$version, mm_now()]);
@@ -408,6 +413,7 @@ function mm_public_user(array $u): array {
         'role' => $u['role'], 'isActive' => (bool) (int) $u['is_active'],
         'mustChangePassword' => (bool) (int) $u['must_change_password'],
         'createdAt' => $u['created_at'], 'lastLoginAt' => $u['last_login_at'],
+        'approvalStatus' => $u['approval_status'] ?? 'approved', 'contact' => $u['contact'] ?? '',
     ];
 }
 
