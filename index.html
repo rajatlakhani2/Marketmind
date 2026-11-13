@@ -25,7 +25,7 @@
   <script src="js/plain.js?v=2"></script>
   <script src="js/tiers.js?v=1"></script>
   <script src="js/consensus.js?v=18"></script>
-  <script src="js/account.js?v=16"></script>
+  <script src="js/account.js?v=17"></script>
   <script src="js/stockpicker.js?v=14"></script>
   <script src="js/mindguru.js?v=17"></script>
   <script src="js/knowledgesync.js?v=14"></script>
@@ -41,9 +41,10 @@
   <script src="js/optcalls.js?v=2"></script>
   <script src="js/corpact.js?v=2"></script>
   <script src="js/backtest.js?v=30"></script>
-  <script src="js/nav.js?v=25"></script>
+  <script src="js/nav.js?v=26"></script>
   <script src="js/overview.js?v=1"></script>
-  <script src="js/home.js?v=22"></script>
+  <script src="js/cockpit.js?v=1"></script>
+  <script src="js/home.js?v=23"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1174,7 +1175,47 @@ table.ob .r { text-align: right; }
 .bt-legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
 .bt-table td, .bt-table th { white-space: nowrap; }
 
-  </style>
+  
+/* ===== Themes, market mood and Home cockpit (dashboard revamp, phase 1) ===== */
+html[data-theme="dark"] {
+  --bg-primary: #0f141b; --bg-secondary: #141a22; --bg-card: #18202a; --bg-hover: #212b37;
+  --border: #2a3542; --text-primary: #e6ebf1; --text-secondary: #b3becb; --text-muted: #8592a1;
+  --accent: #6c9cff; --accent-hover: #8bb1ff; --accent-soft: #1d2b45; --green: #3fbf7f; --red: #f0685c;
+  --green-soft: #15322a; --red-soft: #3a1f1d; --yellow: #e0a63a; --orange: #f08a4b;
+}
+html[data-theme="dark"] #topbar { background: rgba(15,20,27,0.94); }
+html[data-theme="dark"] body, html[data-theme="dark"] .modal { color: var(--text-primary); }
+html[data-theme="dark"] .modal, html[data-theme="dark"] .home-card { background: var(--bg-card); }
+/* Colour-blind safe: blue for up/buy, orange for down/sell */
+html[data-theme="cb"] { --green: #1f6fd1; --red: #d4700a; --green-soft: #e5effb; --red-soft: #fcefe2; }
+#topbar { border-bottom: 3px solid var(--border); transition: border-color .3s; }
+body[data-mood="up"] #topbar { border-bottom-color: var(--green); }
+body[data-mood="warn"] #topbar { border-bottom-color: var(--yellow); }
+body[data-mood="down"] #topbar { border-bottom-color: var(--red); }
+.up { color: var(--green); } .down { color: var(--red); } .warn { color: var(--yellow); }
+.mood { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; padding: 12px 16px; border-radius: var(--radius); margin: 4px 0 12px; border: 1px solid var(--border); background: var(--bg-card); border-left: 5px solid var(--border); }
+.mood b { font-size: 1.1rem; } .mood span { color: var(--text-secondary); } .mood small { color: var(--text-muted); width: 100%; }
+.mood-up { border-left-color: var(--green); } .mood-up b { color: var(--green); }
+.mood-warn { border-left-color: var(--yellow); } .mood-warn b { color: var(--yellow); }
+.mood-down { border-left-color: var(--red); } .mood-down b { color: var(--red); }
+.today { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.today > b { margin-right: 4px; }
+.today .act { border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .88rem; cursor: pointer; text-decoration: none; }
+.today .act:hover { background: var(--bg-hover); }
+.today .act.attn { border-color: var(--yellow); color: var(--yellow); font-weight: 600; }
+.money-total { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+.money-total span { display: block; font-size: .78rem; color: var(--text-muted); } .money-total b { font-size: 1.05rem; }
+.risk-bar { height: 10px; border-radius: 6px; background: var(--bg-hover); overflow: hidden; margin: 6px 0 8px; }
+.risk-bar i { display: block; height: 100%; background: var(--green); } .risk-bar i.warn { background: var(--yellow); } .risk-bar i.down { background: var(--red); }
+.risk-meter p { font-size: .85rem; color: var(--text-secondary); margin: 0; }
+.home-tools { text-align: right; margin: 6px 0 16px; }
+.cust-list { list-style: none; padding: 0; margin: 10px 0 14px; }
+.cust-list li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.cust-list li span { display: flex; gap: 4px; }
+.cust-pages { width: 100%; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .88rem; }
+.cust-pages .pin { border: 0; background: none; cursor: pointer; color: var(--text-muted); font-size: 1rem; padding: 0 2px; }
+.cust-pages .pin.on { color: var(--yellow); }
+</style>
 </head>
 <body>
   <div id="app">

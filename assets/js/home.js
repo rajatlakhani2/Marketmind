@@ -40,6 +40,46 @@
   const fill = (id, html) => { const el = document.querySelector(`#${id} .home-card-body`); if (el) el.innerHTML = html; };
   const empty = text => `<p class="home-empty">${text}</p>`;
 
+  // ---------- card layout: order and hidden cards, per user (synced through Account) ----------
+  const CARDS = [
+    { id: 'home-money', title: 'My money', btn: ['holdings', 'Holdings'] },
+    { id: 'home-risk', title: 'Risk', btn: ['trading', 'Orders'], admin: true },
+    { id: 'home-watch', title: 'Your Watchlist', btn: ['watchlist', 'Calls'] },
+    { id: 'home-opps', title: "Today's best setups", btn: ['opps', 'All'] },
+    { id: 'home-orders', title: 'Orders', btn: ['trading', 'Open'], admin: true },
+    { id: 'home-events', title: 'Coming up', btn: ['events', 'Calendar'] },
+    { id: 'home-mg', title: 'MindGuru record', btn: ['mindguru', 'Details'] },
+  ];
+  const LKEY = 'marketmind_home_layout';
+  function layout(admin) {
+    let saved = {}; try { saved = JSON.parse(localStorage.getItem(LKEY)) || {}; } catch { /* default */ }
+    const order = saved.order || [], hidden = new Set(saved.hidden || (admin ? [] : ['home-mg']));
+    return CARDS.filter(c => admin || !c.admin)
+      .sort((a, b) => (order.indexOf(a.id) + 1 || 99) - (order.indexOf(b.id) + 1 || 99))
+      .map(c => ({ ...c, hidden: hidden.has(c.id) }));
+  }
+  function saveLayout(list) {
+    const v = { order: list.map(c => c.id), hidden: list.filter(c => c.hidden).map(c => c.id) };
+    try { localStorage.setItem(LKEY, JSON.stringify(v)); } catch { /* ignore */ }
+    if (root.Account) Account.saveSetting(LKEY, v);
+  }
+  function customize(container, admin) {
+    const list = layout(admin);
+    const ov = document.getElementById('modal-overlay');
+    const draw = () => {
+      ov.innerHTML = `<div class="modal"><button class="modal-close" data-x>&times;</button><h3>Customize Home</h3>
+        <p class="auth-text">Move cards up or down, or hide the ones you don't use.</p>
+        <ul class="cust-list">${list.map((c, i) => `<li><label><input type="checkbox" data-i="${i}" ${c.hidden ? '' : 'checked'}> ${esc(c.title)}</label>
+          <span><button class="btn-secondary btn-small" data-up="${i}" ${i ? '' : 'disabled'}>↑</button><button class="btn-secondary btn-small" data-dn="${i}" ${i < list.length - 1 ? '' : 'disabled'}>↓</button></span></li>`).join('')}</ul>
+        <button class="btn-primary" data-x>Done</button></div>`;
+      ov.querySelectorAll('[data-i]').forEach(x => (x.onchange = () => { list[+x.dataset.i].hidden = !x.checked; }));
+      ov.querySelectorAll('[data-up],[data-dn]').forEach(x => (x.onclick = () => { const i = +(x.dataset.up ?? x.dataset.dn), k = x.dataset.up != null ? i - 1 : i + 1; [list[i], list[k]] = [list[k], list[i]]; draw(); }));
+      ov.querySelectorAll('[data-x]').forEach(x => (x.onclick = () => { ov.classList.add('hidden'); ov.innerHTML = ''; saveLayout(list); renderPage(container); }));
+    };
+    ov.classList.remove('hidden');
+    draw();
+  }
+
   async function renderPage(container) {
     const u = root.Account && Account.user;
     const h = istNow().getUTCHours();
@@ -53,22 +93,22 @@
         <p>${istNow().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}</p></div>
         <span class="mkt-pill ${open ? 'open' : ''}"><i></i>${open ? 'Market open' : 'Market closed'}</span>
       </div>
-      ${root.Overview ? '<div id="home-overview"></div>' : `<div class="idx-row" id="home-idx">${INDICES.map(([n]) => `<div class="idx"><span>${n}</span><b class="skeleton-text">—</b><small>&nbsp;</small></div>`).join('')}</div>`}
-      <div class="home-grid">
-        ${card('home-watch', 'Your Watchlist', openBtn('watchlist', 'Calls'))}
-        ${card('home-opps', "Today's best setups", openBtn('opps', 'All'))}
-        ${admin ? card('home-orders', 'Orders', openBtn('trading', 'Open')) : ''}
-        ${card('home-events', 'Coming up', openBtn('events', 'Calendar'))}
-        ${card('home-mg', 'MindGuru record', openBtn('mindguru', 'Details'))}
-      </div>`;
-    container.querySelectorAll('[data-go]').forEach(b => { b.onclick = () => root.Nav && Nav.go(b.dataset.go); });
+      <div id="home-cockpit"></div>
+      <div class="home-grid" id="home-grid">
+        ${layout(admin).filter(c => !c.hidden).map(c => card(c.id, c.title, c.btn ? openBtn(c.btn[0], c.btn[1]) : '')).join('')}
+      </div>
+      <p class="home-tools"><button type="button" class="link-btn" id="home-customize">Customize Home</button></p>
+      ${root.Overview ? '<div id="home-overview"></div>' : `<div class="idx-row" id="home-idx">${INDICES.map(([n]) => `<div class="idx"><span>${n}</span><b class="skeleton-text">—</b><small>&nbsp;</small></div>`).join('')}</div>`}`;
+    container.onclick = e => { const b = e.target.closest('[data-go]'); if (b && root.Nav) Nav.go(b.dataset.go); };
+    container.querySelector('#home-customize').onclick = () => customize(container, admin);
+    if (root.Cockpit) Cockpit.render(container.querySelector('#home-cockpit'));
 
     if (root.Overview) Overview.render(container.querySelector('#home-overview')); else indices(container);
     let list = [];
     try { list = (await getJSON('api/watchlist.php?action=list')).items || []; } catch { /* shown below */ }
     watch(list);
     opps();
-    if (admin) orders();
+    if (admin && container.querySelector('#home-orders')) orders();
     events(list);
     mindguru(list);
   }

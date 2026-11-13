@@ -9,17 +9,77 @@
     watch: '<path d="m12 3.5 2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z"/>',
     markets: '<path d="M3 17l5-5 4 4 8-8"/><path d="M15 8h5v5"/>',
     trade: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+    stocks: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
+    fno: '<path d="M4 18c3-8 5-12 8-12s5 4 8 12"/><path d="M12 6v12"/>',
+    portfolio: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>',
+    research: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
+    fav: '<path d="m12 3.5 2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z"/>',
     learn: '<path d="M12 6.5C10 5 7 4.5 3 5v13c4-.5 7 0 9 1.5 2-1.5 5-2 9-1.5V5c-4-.5-7 0-9 1.5z"/><path d="M12 6.5V19"/>',
   };
   const svg = k => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 
-  const GROUPS = [
-    { id: 'home', label: 'Home', pages: [['dashboard', 'Overview']] },
-    { id: 'watch', label: 'Watchlist', pages: [['watchlist', 'Watchlist']] },
-    { id: 'markets', label: 'Markets', pages: [['stock', 'Stock'], ['live', 'Live buyers'], ['opps', 'Opportunities'], ['fno', 'F&O'], ['optcalls', 'Option calls'], ['corpactions', 'Corporate actions'], ['results', 'Results'], ['analyze', 'Analyze'], ['events', 'Events & News'], ['screener', 'Screener']] },
-    { id: 'trade', label: 'Trade', pages: [['trading', 'Orders'], ['holdings', 'Holdings']] },
-    { id: 'learn', label: 'Learn', pages: [['mindguru', 'MindGuru'], ['backtest', 'Back-test'], ['strategies', 'Strategies'], ['concepts', 'Concepts'], ['knowledge', 'Library'], ['theory', 'Theory'], ['methodology', 'Methodology']] },
+  const ALL_GROUPS = [
+    { id: 'home', label: 'Home', pages: [['dashboard', 'Home']] },
+    { id: 'markets', label: 'Markets', pages: [['events', 'Events & News'], ['corpactions', 'Corporate actions'], ['results', 'Results']] },
+    { id: 'stocks', label: 'Stocks', pages: [['stock', 'Stock'], ['analyze', 'Analyze'], ['screener', 'Screener'], ['opps', 'Opportunities'], ['live', 'Live buyers']] },
+    { id: 'fno', label: 'F&O', pages: [['optcalls', 'Option calls'], ['fno', 'Option chain & futures']] },
+    { id: 'portfolio', label: 'Portfolio', pages: [['holdings', 'Holdings'], ['watchlist', 'Watchlist'], ['trading', 'Orders']] },
+    { id: 'research', label: 'Research', pages: [['backtest', 'Back-test'], ['strategies', 'Strategies'], ['mindguru', 'MindGuru']] },
+    { id: 'learn', label: 'Learn', pages: [['concepts', 'Concepts'], ['knowledge', 'Library'], ['theory', 'Theory'], ['methodology', 'Methodology']] },
   ];
+  // Each user's own tab order, hidden pages and pinned favourites (synced through Account)
+  const NKEY = 'marketmind_nav_layout';
+  const navPrefs = () => { try { return JSON.parse(localStorage.getItem(NKEY)) || {}; } catch { return {}; } };
+  let GROUPS = ALL_GROUPS;
+  function applyPrefs() {
+    const p = navPrefs(), order = p.order || [], hidden = new Set(p.hidden || []), pins = (p.pins || []).filter(x => !hidden.has(x));
+    const label = id => { for (const g of ALL_GROUPS) for (const [x, l] of g.pages) if (x === id) return l; return id; };
+    GROUPS = [
+      ...(pins.length ? [{ id: 'fav', label: 'Favourites', pages: pins.map(x => [x, label(x)]) }] : []),
+      ...ALL_GROUPS.map(g => ({ ...g, pages: g.pages.filter(([x]) => !hidden.has(x) || x === 'dashboard') }))
+        .sort((a, b) => (a.id === 'home' ? -1 : b.id === 'home' ? 1 : (order.indexOf(a.id) + 1 || 99) - (order.indexOf(b.id) + 1 || 99))),
+    ];
+  }
+  applyPrefs();
+  function savePrefs(p) {
+    try { localStorage.setItem(NKEY, JSON.stringify(p)); } catch { /* ignore */ }
+    if (root.Account) Account.saveSetting(NKEY, p);
+    applyPrefs(); render();
+  }
+
+  // ---------- theme: light (default), dark, colour-blind safe ----------
+  const TKEY = 'marketmind_theme';
+  function applyTheme() { let t = 'light'; try { t = JSON.parse(localStorage.getItem(TKEY)) || 'light'; } catch { /* default */ } document.documentElement.dataset.theme = t; }
+  applyTheme();
+
+  function openCustomize() {
+    const p = navPrefs(); p.order = p.order || ALL_GROUPS.map(g => g.id); p.hidden = p.hidden || []; p.pins = p.pins || [];
+    const ov = document.getElementById('modal-overlay');
+    const theme = document.documentElement.dataset.theme || 'light';
+    const draw = () => {
+      const groups = ALL_GROUPS.filter(g => g.id !== 'home').sort((a, b) => p.order.indexOf(a.id) - p.order.indexOf(b.id));
+      ov.innerHTML = `<div class="modal modal-wide"><button class="modal-close" data-x>&times;</button><h3>Tabs and theme</h3>
+        <label class="auth-text">Theme <select id="nv-theme"><option value="light">Light</option><option value="dark">Dark</option><option value="cb">Colour-blind safe</option></select></label>
+        <p class="auth-text">Move tabs up or down. Untick a page to hide it; ★ pins it to a Favourites tab at the front.</p>
+        <ul class="cust-list">${groups.map((g, i) => `<li class="cust-group"><b>${esc(g.label)}</b><span><button class="btn-secondary btn-small" data-up="${g.id}" ${i ? '' : 'disabled'}>↑</button><button class="btn-secondary btn-small" data-dn="${g.id}" ${i < groups.length - 1 ? '' : 'disabled'}>↓</button></span>
+          <div class="cust-pages">${g.pages.map(([x, l]) => `<label><input type="checkbox" data-hide="${x}" ${p.hidden.includes(x) ? '' : 'checked'}> ${esc(l)} <button type="button" class="pin ${p.pins.includes(x) ? 'on' : ''}" data-pin="${x}" title="Pin to Favourites">★</button></label>`).join('')}</div></li>`).join('')}</ul>
+        <button class="btn-secondary" data-reset>Reset to default</button> <button class="btn-primary" data-x>Done</button></div>`;
+      ov.querySelector('#nv-theme').value = theme;
+      ov.querySelector('#nv-theme').onchange = e => { try { localStorage.setItem(TKEY, JSON.stringify(e.target.value)); } catch { /* ignore */ } if (root.Account) Account.saveSetting(TKEY, e.target.value); applyTheme(); };
+      ov.querySelectorAll('[data-up],[data-dn]').forEach(b => (b.onclick = () => {
+        const id = b.dataset.up || b.dataset.dn, seq = groups.map(g => g.id), i = seq.indexOf(id), k = b.dataset.up ? i - 1 : i + 1;
+        [seq[i], seq[k]] = [seq[k], seq[i]]; p.order = ['home', ...seq]; draw();
+      }));
+      ov.querySelectorAll('[data-hide]').forEach(c => (c.onchange = () => { const x = c.dataset.hide; p.hidden = c.checked ? p.hidden.filter(y => y !== x) : [...p.hidden, x]; }));
+      ov.querySelectorAll('[data-pin]').forEach(b => (b.onclick = e => { e.preventDefault(); const x = b.dataset.pin; p.pins = p.pins.includes(x) ? p.pins.filter(y => y !== x) : [...p.pins, x].slice(-5); draw(); }));
+      ov.querySelector('[data-reset]').onclick = () => { p.order = ALL_GROUPS.map(g => g.id); p.hidden = []; p.pins = []; draw(); };
+      ov.querySelectorAll('[data-x]').forEach(b => (b.onclick = () => { ov.classList.add('hidden'); ov.innerHTML = ''; savePrefs(p); }));
+    };
+    ov.classList.remove('hidden');
+    draw();
+  }
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
   const groupOf = page => GROUPS.find(g => g.pages.some(p => p[0] === page)) || GROUPS[0];
   const lastPage = {};
   let current = 'dashboard';
@@ -106,7 +166,7 @@
     events: 'events news results dividend corporate actions calendar', screener: 'screener filter', trading: 'orders trading algo approve', holdings: 'holdings portfolio',
     mindguru: 'mindguru learning record accuracy', backtest: 'backtest back-test test history results accuracy', strategies: 'strategies', concepts: 'concepts', knowledge: 'library documents upload books', theory: 'theory', methodology: 'methodology sources',
   };
-  const pageLabel = p => { for (const g of GROUPS) for (const [id, l] of g.pages) if (id === p) return [l, g.label]; return [p, '']; };
+  const pageLabel = p => { for (const g of ALL_GROUPS) for (const [id, l] of g.pages) if (id === p) return [l, g.label]; return [p, '']; };
   let SQ = { items: [], sel: 0, timer: null, seq: 0 };
   const recent = () => { try { return JSON.parse(localStorage.getItem('mm-recent-stocks') || '[]'); } catch { return []; } };
   const remember = st => { try { const r = recent().filter(x => x.symbol !== st.symbol); r.unshift({ symbol: st.symbol, name: st.name || '' }); localStorage.setItem('mm-recent-stocks', JSON.stringify(r.slice(0, 8))); } catch { /* ok */ } };
@@ -177,6 +237,7 @@
     go('concepts');
     setTimeout(() => { const inp = document.getElementById('concept-search'); if (inp) { inp.value = x.name; inp.dispatchEvent(new Event('input')); } }, 300);
   }
+  let gPending = false;
   function initSearch() {
     const ov = document.getElementById('search-ov'), inp = ov.querySelector('input');
     document.querySelectorAll('[data-open-search]').forEach(b => { b.onclick = () => openSearch(); });
@@ -193,10 +254,18 @@
       const typing = /input|textarea|select/i.test((document.activeElement || {}).tagName || '');
       if ((e.key === 'k' && (e.ctrlKey || e.metaKey)) || (e.key === '/' && !typing)) { e.preventDefault(); openSearch(); }
       else if (e.key === 'Escape' && !ov.classList.contains('hidden')) closeSearch();
+      else if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // g then a letter jumps to a tab; ? lists the shortcuts
+        const KEYS = { h: 'home', m: 'markets', s: 'stocks', f: 'fno', p: 'portfolio', r: 'research', l: 'learn' };
+        if (gPending && KEYS[e.key]) { const g = GROUPS.find(x => x.id === KEYS[e.key]); const ps = g ? visiblePages(g) : []; if (ps.length) go(ps[0][0]); gPending = false; return; }
+        gPending = e.key === 'g';
+        if (e.key === '?') toast('Shortcuts: / search · g h Home · g m Markets · g s Stocks · g f F&O · g p Portfolio · g r Research · g l Learn');
+      }
     });
   }
 
   function init() {
+    applyPrefs(); applyTheme(); // saved per user, loaded at sign-in
     initSheet();
     initSearch();
     initHelp();
@@ -223,5 +292,5 @@
     });
   }
 
-  root.Nav = { init, sync, go, GROUPS, search: openSearch };
+  root.Nav = { init, sync, go, get GROUPS() { return GROUPS; }, search: openSearch, customize: openCustomize, refresh: () => { applyPrefs(); applyTheme(); render(); } };
 })(window);
