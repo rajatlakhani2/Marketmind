@@ -52,5 +52,13 @@ jobs:
           show("results-comparision", f"/api/results-comparision?symbol={sym}", f"/get-quotes/equity?symbol={sym}")
           show("corporate actions (symbol)", f"/api/corporates-corporateActions?index=equities&symbol={sym}", "/companies-listing/corporate-filings-actions")
           show("corporate actions (all upcoming)", "/api/corporates-corporateActions?index=equities", "/companies-listing/corporate-filings-actions")
+          s,b=get(f"/api/results-comparision?symbol={sym}", ref=f"/get-quotes/equity?symbol={sym}")
+          try: print("\nresults periods:", [(r.get("re_from_dt"), r.get("re_to_dt"), r.get("re_res_type"), r.get("re_net_sale")) for r in json.loads(b)["resCmpData"]])
+          except Exception as e: print("periods err", e)
+          import datetime as dt
+          t=dt.date.today(); f=t.strftime("%d-%m-%Y"); e=(t+dt.timedelta(days=90)).strftime("%d-%m-%Y")
+          s,b=get(f"/api/corporates-corporateActions?index=equities&from_date={f}&to_date={e}", ref="/companies-listing/corporate-filings-actions")
+          try: j=json.loads(b); print("actions with date range:", s, len(j), "last exDate:", j[-1]["exDate"] if j else None)
+          except Exception as x: print("range err", s, b[:300])
           show("event calendar", "/api/event-calendar", "/companies-listing/corporate-filings-event-calendar")
           PY
