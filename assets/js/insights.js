@@ -73,13 +73,50 @@
     } catch (e) { put('in-hol', `<p class="home-empty">Could not load holidays: ${esc(e.message)}</p>`); }
   }
 
+  async function gaps() {
+    try {
+      const g = await j('api/overview.php?action=gaps');
+      const big = g.rows.filter(r => Math.abs(r.gap) >= 1);
+      put('in-gap', big.length ? `<table class="screener-table"><thead><tr><th>Stock</th><th>Gap at open</th><th>Now</th><th>Filled?</th></tr></thead><tbody>
+        ${big.map(r => `<tr data-sym="${esc(r.sym)}"><td><b>${esc(r.sym)}</b></td><td class="${tone(r.gap)}">${pct(r.gap, 2)}</td><td class="${tone(r.now)}">${pct(r.now, 2)}</td><td>${r.now != null && Math.sign(r.now) !== Math.sign(r.gap) ? 'yes, reversed' : r.now != null && Math.abs(r.now) < Math.abs(r.gap) / 2 ? 'half' : 'no'}</td></tr>`).join('')}</tbody></table>
+        <p class="citation">NIFTY 100 stocks opening at least 1% away from yesterday's close (${g.checked} checked, day ${esc((g.rows[0] || {}).day || '')}). Prices delayed.</p>` : `<p class="home-empty">No NIFTY 100 stock opened more than 1% away from yesterday's close.</p>`);
+    } catch (e) { put('in-gap', `<p class="home-empty">${esc(e.message)}</p>`); }
+  }
+
+  // Options pulse (needs ICICI today): put-call ratio, max pain, biggest OI strikes, ATM straddle; flags expiry day
+  async function optionsPulse() {
+    try {
+      const meta = (await j('api/breeze.php?action=fo_meta')).underlyings.filter(u => u.kind === 'index' && u.options.length).slice(0, 2);
+      const today = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+      const out = await Promise.all(meta.map(async u => {
+        const e = u.options[0], q = `api/breeze.php?action=option_chain&isec=${encodeURIComponent(u.isec)}&expiry=${e}`;
+        const [c, p, sp] = await Promise.all([j(q + '&right=call'), j(q + '&right=put'), j(`api/breeze.php?action=fo_spot&isec=${encodeURIComponent(u.isec)}`).catch(() => ({}))]);
+        const oi = (rows, k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
+        const pcr = oi(p.rows, 'oi') / (oi(c.rows, 'oi') || 1);
+        const strikes = [...new Set([...c.rows, ...p.rows].map(r => r.strike))].sort((a, b) => a - b);
+        const co = new Map(c.rows.map(r => [r.strike, r])), po = new Map(p.rows.map(r => [r.strike, r]));
+        let pain = null, best = Infinity;
+        for (const k of strikes) { let v = 0; for (const s2 of strikes) { v += ((co.get(s2) || {}).oi || 0) * Math.max(0, k - s2) + ((po.get(s2) || {}).oi || 0) * Math.max(0, s2 - k); } if (v < best) { best = v; pain = k; } }
+        const top = rows => [...rows].sort((a, b) => (b.oi || 0) - (a.oi || 0))[0] || {};
+        const spot = sp.spot, atm = spot ? strikes.reduce((a, b) => (Math.abs(b - spot) < Math.abs(a - spot) ? b : a), strikes[0]) : null;
+        const straddle = atm != null ? ((co.get(atm) || {}).ltp || 0) + ((po.get(atm) || {}).ltp || 0) : null;
+        return { u, e, pcr, pain, call: top(c.rows).strike, put: top(p.rows).strike, spot, atm, straddle, expToday: e === today };
+      }));
+      put('in-opt', out.map(o => `<div class="opt-pulse"><b>${esc(o.u.name)}</b> ${o.expToday ? '<span class="user-badge warn">Expiry today</span>' : `<small class="muted">expiry ${esc(o.e)}</small>`}
+        <div class="money-total"><div><span>Put-call ratio</span><b class="${o.pcr > 1.2 ? 'up' : o.pcr < 0.7 ? 'down' : ''}">${o.pcr.toFixed(2)}</b></div><div><span>Max pain</span><b>${o.pain ?? '—'}</b></div><div><span>Spot</span><b>${o.spot ? Math.round(o.spot) : '—'}</b></div></div>
+        <p class="muted">Most call OI ${o.call ?? '—'} (likely resistance) · most put OI ${o.put ?? '—'} (likely support)${o.straddle ? ` · ATM ${o.atm} straddle ₹${o.straddle.toFixed(1)} (expected move ±${(o.straddle / o.spot * 100).toFixed(1)}%)` : ''}</p></div>`).join('')
+        + `<p class="citation">PCR above 1.2 often means heavy put writing (support below); below 0.7 the reverse. ${out.some(o => o.expToday) ? 'On expiry day premiums lose value fast after 1 pm; avoid buying options late in the day.' : ''}</p>`);
+    } catch (e) { put('in-opt', `<p class="home-empty">Needs ICICI logged in today${e.message ? ': ' + esc(e.message) : ''}.</p>`); }
+  }
+
   async function renderPage(el) {
     if (!el) return;
     el.innerHTML = `<div class="home-grid in-grid">
       ${card('in-breadth', 'Market breadth', 'NIFTY 500')}${card('in-rot', 'Sector rotation', 'strength vs momentum')}
       ${card('in-rs', 'Strongest stocks', 'top 20 vs NIFTY, 3 months')}${card('in-move', 'What moved today', 'biggest moves, with sector news')}
+      ${card('in-gap', 'Gap scanner', 'NIFTY 100 at the open')}${card('in-opt', 'Options pulse', 'NIFTY and BANK NIFTY')}
       ${card('in-flow', 'FII / DII money flow', 'NSE')}${card('in-hol', 'Market holidays', 'NSE')}</div>`;
-    market(); flows(); holidays();
+    market(); gaps(); optionsPulse(); flows(); holidays();
   }
   root.Insights = { renderPage };
 })(typeof window !== 'undefined' ? window : globalThis);

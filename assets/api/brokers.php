@@ -11,6 +11,7 @@
 // GET  ?action=funds&id=N     -> cash: bank balance, allocated to equity / F&O, free
 //
 // Every account belongs to the signed-in user; nobody else, the admin included, can use it.
+// POST ?action=share {id, usernames: "a,b"} lets those users VIEW its holdings and cash (never log in or trade).
 // POST requests must send the header  X-Requested-With: MarketMind
 
 declare(strict_types=1);
@@ -36,7 +37,14 @@ try {
         }
         $brokers = [];
         foreach (MM_BROKERS as $k => $b) $brokers[$k] = $b['name'];
-        mm_json(200, ['accounts' => array_map('mm_broker_public', $st->fetchAll()), 'brokers' => $brokers, 'main' => $main]);
+        // Accounts other people shared with me (read-only)
+        $sh = [];
+        $q = $pdo->prepare("SELECT b.*, u.display_name AS owner_name, u.username AS owner_user FROM broker_accounts b JOIN users u ON u.id = b.user_id WHERE b.user_id <> ? AND b.shared_with <> ''");
+        $q->execute([$uid]);
+        foreach ($q->fetchAll() as $a) {
+            if (in_array(strtolower($u['username']), array_map('trim', explode(',', strtolower((string) $a['shared_with']))), true)) $sh[] = mm_broker_public($a) + ['owner' => $a['owner_name'] ?: $a['owner_user'], 'sharedWith' => ''];
+        }
+        mm_json(200, ['accounts' => array_map('mm_broker_public', $st->fetchAll()), 'shared' => $sh, 'brokers' => $brokers, 'main' => $main]);
     }
 
     if ($action === 'add') {
@@ -90,13 +98,25 @@ try {
         mm_json(200, ['ok' => true]);
     }
 
+    if ($action === 'share') {
+        $body = mm_require_post();
+        $a = mm_broker_account($uid, (int) ($body['id'] ?? 0));
+        $names = array_values(array_unique(array_filter(array_map(fn($x) => strtolower(trim($x)), explode(',', (string) ($body['usernames'] ?? ''))))));
+        foreach ($names as $n) {
+            $c = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ? AND is_active = 1"); $c->execute([$n]);
+            if (!(int) $c->fetchColumn()) mm_json(400, ['error' => "No active MarketMind user called \"$n\""]);
+        }
+        $pdo->prepare('UPDATE broker_accounts SET shared_with = ?, updated_at = ? WHERE id = ?')->execute([substr(implode(',', $names), 0, 250), mm_now(), $a['id']]);
+        mm_json(200, ['ok' => true, 'account' => mm_broker_public(mm_broker_account($uid, (int) $a['id']))]);
+    }
+
     if ($action === 'funds') {
-        $a = mm_broker_account($uid, (int) ($_GET['id'] ?? 0));
+        $a = mm_broker_viewable($u, (int) ($_GET['id'] ?? 0));
         mm_json(200, mm_icici_funds($a) + ['account' => mm_broker_public($a)]);
     }
 
     if ($action === 'holdings') {
-        $a = mm_broker_account($uid, (int) ($_GET['id'] ?? 0));
+        $a = mm_broker_viewable($u, (int) ($_GET['id'] ?? 0));
         $out = mm_icici_holdings($a);
         $out['account'] = mm_broker_public($a);
         mm_json(200, $out);

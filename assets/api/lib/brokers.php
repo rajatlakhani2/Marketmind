@@ -24,6 +24,16 @@ function mm_broker_account(int $userId, int $id): array {
     return $a;
 }
 
+// An account this user may VIEW: their own, or one its owner shared with them (read-only).
+function mm_broker_viewable(array $u, int $id): array {
+    $st = mm_db()->prepare('SELECT * FROM broker_accounts WHERE id = ?');
+    $st->execute([$id]);
+    $a = $st->fetch();
+    $shared = $a ? array_filter(array_map('trim', explode(',', strtolower((string) $a['shared_with'])))) : [];
+    if (!$a || ((int) $a['user_id'] !== (int) $u['id'] && !in_array(strtolower($u['username']), $shared, true))) mm_json(404, ['error' => 'Broker account not found']);
+    return $a;
+}
+
 function mm_broker_public(array $a): array {
     $today = mm_ist_today();
     return [
@@ -31,6 +41,7 @@ function mm_broker_public(array $a): array {
         'label' => $a['label'], 'apiKeyEnd' => substr((string) $a['api_key'], -4),
         'connectedToday' => ($a['session_date'] ?? '') === $today && !empty($a['session_enc']),
         'brokerUser' => $a['broker_user'], 'lastError' => $a['last_error'], 'updatedAt' => $a['updated_at'],
+        'sharedWith' => $a['shared_with'] ?? '',
     ];
 }
 

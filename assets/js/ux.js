@@ -46,12 +46,21 @@
       ${spark(c.slice(-63))}<p class="muted dr-sub">3 months · ATR(14) ₹${n2(atr)}</p>
       <div data-why></div>
       <div class="dr-actions"><button class="btn-primary btn-small" data-open>Open stock page</button><button class="btn-secondary btn-small" data-watch>+ Watchlist</button></div>
+      <h4>Alert me when</h4>
+      <div class="dr-alert"><select data-ak><option value="above">price rises above</option><option value="below">price falls below</option><option value="rsi_below">RSI falls below</option><option value="rsi_above">RSI rises above</option><option value="ma200_up">crosses above 200-DMA</option><option value="ma200_down">crosses below 200-DMA</option></select>
+        <input type="number" step="0.05" data-av value="${last ? (last * 1.05).toFixed(2) : ''}"><button class="btn-secondary btn-small" data-aadd>Set</button></div>
       <h4>Position size</h4>
       <div class="dr-calc"><label>Capital ₹<input type="number" data-cap value="${cap}"></label><label>Risk %<input type="number" step="0.1" data-rp value="${rp}"></label>
         <label>Entry<input type="number" step="0.05" data-en value="${last ? last.toFixed(2) : ''}"></label><label>Stop<input type="number" step="0.05" data-st value="${stop0}"></label></div>
       <p class="dr-out" data-out></p>`;
     d.querySelector('[data-close]').onclick = () => d.classList.remove('open');
     d.querySelector('[data-open]').onclick = () => { d.classList.remove('open'); root.Stock && Stock.open(sym); };
+    const ak = d.querySelector('[data-ak]'), av = d.querySelector('[data-av]');
+    ak.onchange = () => { av.disabled = ak.value.startsWith('ma200'); av.value = ak.value === 'above' ? (last * 1.05).toFixed(2) : ak.value === 'below' ? (last * 0.95).toFixed(2) : ak.value === 'rsi_below' ? 30 : ak.value === 'rsi_above' ? 70 : ''; };
+    d.querySelector('[data-aadd]').onclick = async () => {
+      try { await j('api/alerts.php?action=add', { symbol: sym, kind: ak.value, value: +av.value || null }); toast('Alert set. You get a notification while MarketMind is open, and an email if your contact is an email address.', 'success'); if ('Notification' in root && Notification.permission === 'default') Notification.requestPermission(); }
+      catch (e) { toast(e.message, 'error'); }
+    };
     d.querySelector('[data-watch]').onclick = async () => { try { await j('api/watchlist.php?action=add', { symbol: sym }); toast(`${sym} added to your Watchlist`, 'success'); } catch (e) { toast(e.message, 'error'); } };
     const calc = () => {
       const g = k => +d.querySelector(`[data-${k}]`).value, risk = g('cap') * g('rp') / 100, per = g('en') - g('st');
@@ -161,5 +170,33 @@
     }));
   }
 
-  root.UX = { drawer, undo, flash, speak, snapshot, checklist };
+  // ---------- alerts: check every minute while the app is open in market hours ----------
+  async function pollAlerts() {
+    if (document.hidden || !(root.Account && Account.user)) return;
+    const n = new Date(Date.now() + 5.5 * 3600e3), m = n.getUTCHours() * 60 + n.getUTCMinutes();
+    if (n.getUTCDay() === 0 || n.getUTCDay() === 6 || m < 555 || m > 935) return;
+    try {
+      const r = await j('api/alerts.php?action=check');
+      if (!r.fired.length) return;
+      r.fired.forEach(a => { toast('🔔 ' + a.message, 'warning'); if ('Notification' in root && Notification.permission === 'granted') new Notification('MarketMind alert', { body: a.message, icon: 'icon-192.png' }); });
+      j('api/alerts.php?action=seen', {});
+    } catch { /* quiet */ }
+  }
+  setInterval(pollAlerts, 60000); setTimeout(pollAlerts, 8000);
+  async function openAlerts() {
+    const ov = document.getElementById('modal-overlay');
+    const draw = async () => {
+      let d = { alerts: [], kinds: {} }; try { d = await j('api/alerts.php?action=list'); } catch (e) { toast(e.message, 'error'); }
+      ov.innerHTML = `<div class="modal modal-wide"><button class="modal-close" data-x>&times;</button><h3>Alerts</h3>
+        <p class="auth-text">Set alerts from any stock's panel (tap a stock symbol). They are checked every minute while MarketMind is open in market hours, and every 5 minutes on the server if the admin added the cron job.</p>
+        ${d.alerts.length ? `<ul class="users-list">${d.alerts.map(a => `<li class="user-row${a.active == 1 ? '' : ' off'}"><div class="user-main"><b>${esc(a.symbol)}</b> <span class="text-muted">${esc(d.kinds[a.kind] || a.kind)} ${a.value != null ? esc(+a.value) : ''}</span>
+          ${a.active == 1 ? '<span class="user-badge you">Active</span>' : `<div class="text-muted user-meta">Fired: ${esc(a.message)}</div>`}</div><div class="user-actions"><button class="btn-danger btn-small" data-del="${a.id}">Delete</button></div></li>`).join('')}</ul>` : '<p class="home-empty">No alerts yet.</p>'}
+        <button class="btn-primary" data-x>Close</button></div>`;
+      ov.querySelectorAll('[data-x]').forEach(b => (b.onclick = () => { ov.classList.add('hidden'); ov.innerHTML = ''; }));
+      ov.querySelectorAll('[data-del]').forEach(b => (b.onclick = async () => { await j('api/alerts.php?action=delete', { id: +b.dataset.del }); draw(); }));
+    };
+    ov.classList.remove('hidden'); await draw();
+  }
+
+  root.UX = { drawer, undo, flash, speak, snapshot, checklist, openAlerts };
 })(typeof window !== 'undefined' ? window : globalThis);

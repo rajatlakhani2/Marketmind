@@ -248,7 +248,7 @@
     const admin = !!(root.Account && root.Account.isAdmin);
     let list = { accounts: [] };
     try { list = await getJSON('api/brokers.php?action=list'); } catch (e) { /* older server: main account only */ }
-    const choices = [...(admin ? [{ id: 'main', label: 'ICICI Direct · main' }] : []), ...list.accounts.map(a => ({ id: String(a.id), label: `${a.label}${a.connectedToday ? '' : ' (log in needed)'}` }))];
+    const choices = [...(admin ? [{ id: 'main', label: 'ICICI Direct · main' }] : []), ...list.accounts.map(a => ({ id: String(a.id), label: `${a.label}${a.connectedToday ? '' : ' (log in needed)'}` })), ...(list.shared || []).map(a => ({ id: String(a.id), label: `${a.label} · ${a.owner}${a.connectedToday ? '' : ' (not logged in today)'}` }))];
     if (!choices.length) {
       container.innerHTML = '<div class="data-warning">No broker account connected yet. Open <b>Broker accounts</b> in the sidebar (under your name) to add your ICICI account, then log in to it for today.</div>';
       return;

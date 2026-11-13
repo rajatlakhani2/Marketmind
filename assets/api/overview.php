@@ -173,6 +173,30 @@ try {
         if (!$d) { $d = ov_market(); ov_cache_put('market', $d); }
         mm_json(200, $d + ['open' => ov_market_open()]);
     }
+    // Gap scanner: NIFTY 100 stocks whose open today is far from yesterday's close (Yahoo daily bars)
+    if ($action === 'gaps') {
+        $d = ov_cache_get('gaps', 300);
+        if (!$d) {
+            $syms = [];
+            foreach (mm_universe() as $sym => $m) if (in_array($m['g'], ['L', 'N'], true)) $syms[$sym] = 'https://query1.finance.yahoo.com/v8/finance/chart/' . rawurlencode($sym . '.NS') . '?range=5d&interval=1d';
+            $res = ov_multi($syms, ['Accept: application/json'], 10, 15);
+            $rows = [];
+            foreach ($res as $sym => $body) {
+                $r = json_decode((string) ($body[1] ?? ""), true)["chart"]["result"][0] ?? null;
+                $q = $r['indicators']['quote'][0] ?? null;
+                if (!$q || count($r['timestamp'] ?? []) < 2) continue;
+                $n = count($r['timestamp']);
+                $open = $q['open'][$n - 1] ?? null; $prev = $q['close'][$n - 2] ?? null; $last = $r['meta']['regularMarketPrice'] ?? ($q['close'][$n - 1] ?? null);
+                if (!$open || !$prev) continue;
+                $rows[] = ['sym' => $sym, 'gap' => round(($open / $prev - 1) * 100, 2), 'now' => $last ? round(($last / $prev - 1) * 100, 2) : null, 'open' => round($open, 2), 'prev' => round($prev, 2),
+                    'day' => gmdate('Y-m-d', (int) $r['timestamp'][$n - 1] + 19800)];
+            }
+            usort($rows, fn($a, $b) => abs($b['gap']) <=> abs($a['gap']));
+            $d = ['at' => time(), 'rows' => array_slice($rows, 0, 15), 'checked' => count($rows)];
+            ov_cache_put('gaps', $d);
+        }
+        mm_json(200, $d);
+    }
     if ($action === 'news') {
         $d = ov_cache_get('news', 3600);
         if (!$d) { $d = ov_news(); ov_cache_put('news', $d); }

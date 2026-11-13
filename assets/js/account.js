@@ -436,10 +436,13 @@
             <a class="btn-primary btn-small" href="${BROKERS_API}?action=login&id=${a.id}">Log in today</a>
             <button class="btn-secondary btn-small" data-act="holdings">Holdings</button>
             <button class="btn-secondary btn-small" data-act="edit">Edit</button>
+            <button class="btn-secondary btn-small" data-act="share" title="Let family members see this account's holdings and cash">${a.sharedWith ? 'Shared: ' + esc(a.sharedWith) : 'Share'}</button>
             ${a.connectedToday ? '<button class="btn-secondary btn-small" data-act="logout">Log out</button>' : ''}
             <button class="btn-danger btn-small" data-act="delete">Remove</button>
           </div></div>`).join('') || (d.main ? '' : '<p class="auth-text">No broker accounts yet.</p>')}
       </div>
+      ${(d.shared || []).length ? `<h4 class="users-sub">Shared with you (view only)</h4><div class="users-list">${d.shared.map((a) => `<div class="user-row"><div class="user-main"><div><b>${esc(a.label)}</b> <span class="text-muted">${esc(a.brokerName)} · from ${esc(a.owner)}</span> ${status(a)}</div></div>
+        <div class="user-actions"><button class="btn-secondary btn-small" data-shared-hold="${a.id}">Holdings</button></div></div>`).join('')}</div>` : ''}
       <h4 class="users-sub" id="broker-form-title">Add an account</h4>
       <form class="auth-form users-add" autocomplete="off">
         <input type="hidden" name="acctId" value="" />
@@ -487,6 +490,10 @@
       await renderBrokers();
     });
 
+    body.querySelectorAll('[data-shared-hold]').forEach((b) => (b.onclick = () => {
+      try { localStorage.setItem('mm_holdings_account', b.dataset.sharedHold); } catch { /* ignore */ }
+      closeModal(); if (window.app && app._navigateTo) app._navigateTo('holdings');
+    }));
     body.querySelectorAll('.user-row[data-id]').forEach((row) => {
       const id = Number(row.dataset.id);
       const a = d.accounts.find((x) => x.id === id);
@@ -507,6 +514,12 @@
               closeModal();
               if (window.app && app._navigateTo) app._navigateTo('holdings');
               return;
+            }
+            if (act === 'share') {
+              const v = prompt(`Usernames (comma-separated) who may SEE ${a.label}'s holdings and cash. They can't log in or trade. Leave empty to stop sharing.`, a.sharedWith || '');
+              if (v === null) return;
+              await request(`${BROKERS_API}?action=share`, { id, usernames: v });
+              toast(v.trim() ? `Shared with ${v}` : 'Sharing stopped', 'success');
             }
             if (act === 'logout') await request(`${BROKERS_API}?action=logout`, { id });
             if (act === 'delete') {
@@ -545,6 +558,7 @@
         ${u.role === 'admin' ? `<a href="#" data-acc="users">Users${state.waiting ? ` <span class="user-badge warn">${state.waiting} new</span>` : ''}</a>` : ''}
         <a href="#" data-acc="brokers">Broker accounts</a>
         <a href="#" data-acc="layout">Tabs &amp; theme</a>
+        <a href="#" data-acc="alerts">Alerts</a>
         <a href="#" data-acc="password">Password</a>
         <a href="#" data-acc="logout">Sign out</a>
       </div>`;
@@ -554,6 +568,7 @@
         const act = a.dataset.acc;
         if (act === 'users') openUsers();
         else if (act === 'brokers') openBrokers();
+        else if (act === 'alerts') { if (window.UX) UX.openAlerts(); }
         else if (act === 'layout') { if (window.Nav && Nav.customize) Nav.customize(); }
         else if (act === 'password') openChangePassword();
         else if (act === 'logout') logout();

@@ -324,6 +324,23 @@ function mm_migrations(): array {
             "ALTER TABLE trade_orders ADD COLUMN note TEXT NULL",
             "ALTER TABLE trade_orders ADD COLUMN note_tag VARCHAR(20) NOT NULL DEFAULT ''",
         ],
+        // Price / indicator alerts, and broker accounts shared read-only with family members
+        12 => [
+            "CREATE TABLE price_alerts (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                user_id INT UNSIGNED NOT NULL,
+                symbol VARCHAR(20) NOT NULL,
+                kind VARCHAR(12) NOT NULL,
+                value DECIMAL(14,2) NULL,
+                active TINYINT NOT NULL DEFAULT 1,
+                seen TINYINT NOT NULL DEFAULT 0,
+                message VARCHAR(255) NOT NULL DEFAULT '',
+                created_at DATETIME NOT NULL,
+                triggered_at DATETIME NULL
+            )$t",
+            "CREATE INDEX ix_price_alerts_active ON price_alerts (active)",
+            "ALTER TABLE broker_accounts ADD COLUMN shared_with VARCHAR(255) NOT NULL DEFAULT ''",
+        ],
     ];
 }
 

@@ -145,7 +145,8 @@
     POS.clear(); WHERE.clear();
     const b = ctx.brokers || { accounts: [] };
     const accts = [...(b.main && b.main.connectedToday ? [{ label: 'ICICI · main', url: 'api/breeze.php?action=holdings' }] : []),
-      ...b.accounts.filter(a => a.connectedToday).map(a => ({ label: a.label, url: `api/brokers.php?action=holdings&id=${a.id}` }))];
+      ...b.accounts.filter(a => a.connectedToday).map(a => ({ label: a.label, url: `api/brokers.php?action=holdings&id=${a.id}` })),
+      ...(b.shared || []).filter(a => a.connectedToday).map(a => ({ label: `${a.label} (${a.owner})`, url: `api/brokers.php?action=holdings&id=${a.id}` }))];
     if (!accts.length) {
       xray(document.querySelector('#home-xray .home-card-body')); goal(document.querySelector('#home-goal .home-card-body'), {});
       const ce = document.querySelector('#home-cash .home-card-body'); if (ce) ce.innerHTML = '<p class="home-empty">Shows once a broker account is connected today.</p>';
