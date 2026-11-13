@@ -1,0 +1,119 @@
+name: Deploy to cPanel
+
+# Uploads changed site files to SpidyHost cPanel (account kuhuorgi) through the cPanel API.
+# Repo index.html and assets/* go to /home/kuhuorgi/public_html/marketmind.
+# PHP files are uploaded as .php.new, then the old file is removed and the new one renamed
+# (the host firewall blocks direct uploads of PHP that contains SQL).
+#
+# Needs repository secret CPANEL_TOKEN (cPanel → Security → Manage API Tokens).
+# Optional repository variable CPANEL_HOST (default kuhu.org.in).
+#
+# Runs on every push to main (files changed in that push), or by hand from the
+# Actions tab: give a commit SHA to deploy the files changed in that commit, or "all".
+
+on:
+  push:
+    branches: [main]
+    paths: ['index.html', 'assets/**']
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Commit SHA whose changed files to deploy, or "all" for every site file'
+        required: true
+        default: 'all'
+
+concurrency:
+  group: cpanel-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CP_USER: kuhuorgi
+      CP_HOST: ${{ vars.CPANEL_HOST || 'kuhu.org.in' }}
+      CP_TOKEN: ${{ secrets.CPANEL_TOKEN }}
+      SITE: /home/kuhuorgi/public_html/marketmind
+      LIVE: https://marketmind.kuhu.org.in
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Check token
+        id: token
+        run: |
+          if [ -z "$CP_TOKEN" ]; then
+            echo "::warning::CPANEL_TOKEN secret is not set, so nothing was deployed."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Work out which files to deploy
+        if: steps.token.outputs.ok == 'true'
+        run: |
+          set -euo pipefail
+          INPUT="${{ github.event.inputs.commit }}"
+          BEFORE="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "$INPUT" = "all" ]; then
+            git ls-files index.html 'assets/**' > files.txt
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            git diff-tree --no-commit-id --name-only --diff-filter=AM -r "$INPUT" -- index.html assets > files.txt
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$BEFORE" 2>/dev/null; then
+            git diff --name-only --diff-filter=AM "$BEFORE" "${{ github.sha }}" -- index.html assets > files.txt
+          else
+            git diff-tree --no-commit-id --name-only --diff-filter=AM -r "${{ github.sha }}" -- index.html assets > files.txt
+          fi
+          echo "Files to deploy:"; cat files.txt
+
+      - name: Upload to cPanel
+        if: steps.token.outputs.ok == 'true'
+        run: |
+          set -euo pipefail
+          AUTH="Authorization: cpanel $CP_USER:$CP_TOKEN"
+          BASE="https://$CP_HOST:2083"
+
+          ok() { # fail unless the UAPI/API2 JSON reports success
+            python3 -c 'import json,sys
+          j=json.load(sys.stdin)
+          good = j.get("status")==1 or (j.get("cpanelresult",{}).get("event",{}).get("result")==1 and not j.get("cpanelresult",{}).get("error"))
+          print(json.dumps(j)[:400]); sys.exit(0 if good else 1)'
+          }
+          api2() { # module func args...
+            local m=$1 f=$2; shift 2
+            curl -sS --fail-with-body -H "$AUTH" -G "$BASE/json-api/cpanel" \
+              --data-urlencode "cpanel_jsonapi_user=$CP_USER" --data-urlencode cpanel_jsonapi_apiversion=2 \
+              --data-urlencode "cpanel_jsonapi_module=$m" --data-urlencode "cpanel_jsonapi_func=$f" "$@"
+          }
+          upload() { # local-file remote-dir remote-name
+            mkdir -p /tmp/up && cp "$1" "/tmp/up/$3"
+            curl -sS --fail-with-body -H "$AUTH" "$BASE/execute/Fileman/upload_files" \
+              -F "dir=$2" -F overwrite=1 -F "file-1=@/tmp/up/$3" | ok
+            rm -f "/tmp/up/$3"
+          }
+
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            rel="${f#assets/}"
+            dir="$SITE"; [ "$(dirname "$rel")" != "." ] && dir="$SITE/$(dirname "$rel")"
+            name="$(basename "$rel")"
+            api2 Fileman mkdir --data-urlencode "path=$(dirname "$dir")" --data-urlencode "name=$(basename "$dir")" >/dev/null || true
+            echo "→ $f  ⇒  $dir/$name"
+            if [[ "$name" == *.php ]]; then
+              upload "$f" "$dir" "$name.new"
+              api2 Fileman fileop --data-urlencode op=unlink --data-urlencode "sourcefiles=$dir/$name" >/dev/null || true
+              api2 Fileman fileop --data-urlencode op=rename --data-urlencode "sourcefiles=$dir/$name.new" --data-urlencode "destfiles=$dir/$name" | ok
+            else
+              upload "$f" "$dir" "$name"
+            fi
+          done < files.txt
+
+      - name: Check the live site
+        if: steps.token.outputs.ok == 'true'
+        run: |
+          sleep 5
+          echo "sw.js version: $(curl -sS "$LIVE/sw.js" | grep -o "mm-v[0-9]*" | head -1)"
+          for q in "action=actions_board" "action=results_board" "action=results&symbol=TCS"; do
+            echo "== $q"; curl -sS -m 60 "$LIVE/api/events.php?$q" | head -c 1500; echo
+          done
