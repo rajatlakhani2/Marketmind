@@ -84,7 +84,7 @@ try {
         if ((int) $u['id'] === (int) $admin['id']) mm_json(400, ["error" => "You can't delete your own account"]);
         if ($u['role'] === 'admin') mm_keep_one_admin((int) $u['id']);
         // Child rows are removed explicitly as well, in case foreign keys are off
-        foreach (['sessions', 'user_settings', 'knowledge_items'] as $t) $pdo->prepare("DELETE FROM $t WHERE user_id = ?")->execute([$u['id']]);
+        foreach (['sessions', 'user_settings', 'knowledge_items', 'broker_accounts'] as $t) $pdo->prepare("DELETE FROM $t WHERE user_id = ?")->execute([$u['id']]);
         $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$u['id']]);
         mm_json(200, ['ok' => true]);
     }

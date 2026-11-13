@@ -324,7 +324,20 @@ if ($action === 'callback' && !mm_current_user()) {
         . ($code !== '' ? ' and paste: <code>' . htmlspecialchars($code) . '</code>' : '') . '.</p><p><a href="../index.html">Open MarketMind</a></p>';
     exit;
 }
-mm_require_user();
+$me = mm_require_user();
+
+// A user's own broker account (Broker accounts screen) is waiting for this ICICI login: finish it there.
+if ($action === 'callback') {
+    require_once __DIR__ . '/lib/brokers.php';
+    $pendingAcct = mm_broker_pending((int) $me['id']);
+    if ($pendingAcct) {
+        mm_broker_set_pending((int) $me['id'], 0);
+        if (!preg_match('/^[A-Za-z0-9]{4,64}$/', (string) $incoming)) { header('Location: ../index.html#broker=badcode'); exit; }
+        try { mm_icici_finish_login($pendingAcct, (string) $incoming); header('Location: ../index.html#broker=connected'); }
+        catch (Throwable $e) { header('Location: ../index.html#broker=failed'); }
+        exit;
+    }
+}
 
 if ($action === 'status') {
     $s = $cfg ? current_session() : null;
@@ -342,6 +355,8 @@ if (in_array($action, ['login', 'callback', 'logout'], true) && (mm_current_user
 }
 
 if ($action === 'login') {
+    require_once __DIR__ . '/lib/brokers.php';
+    mm_broker_set_pending((int) $me['id'], 0); // this login is for the main (server-config) account
     header('Location: ' . $cfg['login_url'] . '?api_key=' . rawurlencode($cfg['api_key']));
     exit;
 }

@@ -28,6 +28,10 @@ return [
     // Set to false to close sign-ups.
     'allow_signup' => true,
 
+    // Optional: a long random phrase used to encrypt the broker API secrets people save.
+    // Set it once and keep it; changing it means everyone re-enters their broker secrets.
+    // 'encryption_key' => 'PASTE_A_LONG_RANDOM_PHRASE',
+
     // How long "Keep me signed in" lasts, in days.
     'session_days' => 30,
 ];

@@ -301,6 +301,24 @@ function mm_migrations(): array {
             "ALTER TABLE users ADD COLUMN approval_status VARCHAR(10) NOT NULL DEFAULT 'approved'",
             "ALTER TABLE users ADD COLUMN contact VARCHAR(120) NOT NULL DEFAULT ''",
         ],
+        // Broker accounts each user connects (ICICI now; Zerodha, Groww, Upstox, Angel One later)
+        10 => [
+            "CREATE TABLE broker_accounts (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                user_id INT UNSIGNED NOT NULL,
+                broker VARCHAR(20) NOT NULL,
+                label VARCHAR(60) NOT NULL DEFAULT '',
+                api_key VARCHAR(120) NOT NULL,
+                secret_enc TEXT NOT NULL,
+                session_enc TEXT NULL,
+                session_date VARCHAR(10) NULL,
+                broker_user VARCHAR(60) NOT NULL DEFAULT '',
+                last_error VARCHAR(255) NOT NULL DEFAULT '',
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL
+            )$t",
+            "CREATE INDEX ix_broker_accounts_user ON broker_accounts (user_id)",
+        ],
     ];
 }
 
@@ -318,6 +336,30 @@ function mm_migrate(PDO $pdo): void {
         }
         $pdo->prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)')->execute([$version, mm_now()]);
     }
+}
+
+// ---------- encryption for stored broker secrets ----------
+// Key: 'encryption_key' in marketmind-config.php, or else one derived from the setup_key and database password
+// (both kept outside public_html). If that changes, saved secrets can't be read and must be entered again.
+function mm_crypt_key(): string {
+    $c = mm_config() ?? [];
+    $k = (string) ($c['encryption_key'] ?? '');
+    if ($k === '') $k = 'mm-derived|' . ($c['setup_key'] ?? '') . '|' . ($c['db']['pass'] ?? '') . '|' . ($c['db']['name'] ?? ($c['db']['dsn'] ?? ''));
+    return hash('sha256', $k, true);
+}
+function mm_encrypt(string $plain): string {
+    $iv = random_bytes(12);
+    $tag = '';
+    $ct = openssl_encrypt($plain, 'aes-256-gcm', mm_crypt_key(), OPENSSL_RAW_DATA, $iv, $tag);
+    if ($ct === false) throw new RuntimeException('Encryption failed (PHP openssl)');
+    return 'g1:' . base64_encode($iv . $tag . $ct);
+}
+function mm_decrypt(string $stored): ?string {
+    if (strpos($stored, 'g1:') !== 0) return null;
+    $raw = base64_decode(substr($stored, 3), true);
+    if ($raw === false || strlen($raw) < 29) return null;
+    $out = openssl_decrypt(substr($raw, 28), 'aes-256-gcm', mm_crypt_key(), OPENSSL_RAW_DATA, substr($raw, 0, 12), substr($raw, 12, 16));
+    return $out === false ? null : $out;
 }
 
 // ---------- request helpers ----------

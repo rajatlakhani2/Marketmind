@@ -240,17 +240,36 @@
   const num = v => (v == null || v === '' || !isFinite(Number(v)) ? null : Number(v));
   const pick = (r, keys) => { for (const k of keys) if (num(r[k]) != null) return num(r[k]); return null; };
 
+  // Which account the Holdings page shows: 'main' (admin's server-config ICICI) or a Broker accounts id
+  const HOLD_KEY = 'mm_holdings_account';
   async function renderHoldingsPage(container) {
     if (!container) return;
-    container.innerHTML = '<p class="muted" style="padding:16px;">Reading your ICICI holdings…</p>';
-    let h;
-    try { h = await getJSON('api/breeze.php?action=holdings'); }
-    catch (e) {
-      container.innerHTML = e.needsLogin
-        ? '<div class="data-warning">ICICI isn\'t connected today. <a href="api/breeze.php?action=login">Log in to ICICI</a>, then come back to this page.</div>'
-        : `<div class="data-warning">Couldn't read your holdings: ${esc(e.message)}</div>`;
+    container.innerHTML = '<p class="muted" style="padding:16px;">Reading your accounts…</p>';
+    const admin = !!(root.Account && root.Account.isAdmin);
+    let list = { accounts: [] };
+    try { list = await getJSON('api/brokers.php?action=list'); } catch (e) { /* older server: main account only */ }
+    const choices = [...(admin ? [{ id: 'main', label: 'ICICI Direct · main' }] : []), ...list.accounts.map(a => ({ id: String(a.id), label: `${a.label}${a.connectedToday ? '' : ' (log in needed)'}` }))];
+    if (!choices.length) {
+      container.innerHTML = '<div class="data-warning">No broker account connected yet. Open <b>Broker accounts</b> in the sidebar (under your name) to add your ICICI account, then log in to it for today.</div>';
       return;
     }
+    let sel; try { sel = localStorage.getItem(HOLD_KEY); } catch { sel = null; }
+    if (!choices.some(c => c.id === sel)) sel = choices[0].id;
+    const picker = choices.length > 1 ? `<div class="live-bar"><label>Account <select id="hold-account">${choices.map(c => `<option value="${esc(c.id)}"${c.id === sel ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label></div>` : '';
+    const loginUrl = sel === 'main' ? 'api/breeze.php?action=login' : `api/brokers.php?action=login&id=${encodeURIComponent(sel)}`;
+    container.innerHTML = picker + '<div id="hold-main"><p class="muted" style="padding:16px;">Reading holdings…</p></div>';
+    const pickEl = container.querySelector('#hold-account');
+    if (pickEl) pickEl.onchange = () => { try { localStorage.setItem(HOLD_KEY, pickEl.value); } catch { /* ignore */ } renderHoldingsPage(container); };
+    const target = container.querySelector('#hold-main');
+    let h;
+    try { h = await getJSON(sel === 'main' ? 'api/breeze.php?action=holdings' : `api/brokers.php?action=holdings&id=${encodeURIComponent(sel)}`); }
+    catch (e) {
+      target.innerHTML = e.needsLogin
+        ? `<div class="data-warning">This account isn't connected today. <a href="${loginUrl}">Log in to it</a>, then come back to this page.</div>`
+        : `<div class="data-warning">Couldn't read the holdings: ${esc(e.message)}</div>`;
+      return;
+    }
+    container = target;
     const sym = code => h.symbols[String(code || '').toUpperCase()] || String(code || '').toUpperCase();
     const src = h.holdings && h.holdings.length ? h.holdings : (h.demat || []);
     const holdings = src.map(r => ({
@@ -310,7 +329,7 @@
         <tbody>${positions.map(p => `<tr><td>${esc(sym(p.stock_code))}${p.strike_price && num(p.strike_price) ? ` ${esc(num(p.strike_price))} ${esc(String(p.right || '').toUpperCase().slice(0, 1) === 'P' ? 'PE' : 'CE')} ${esc(String(p.expiry_date || '').slice(0, 11))}` : ''}</td>
           <td>${esc(p.product_type || p.segment || '')}</td><td>${esc(num(p.quantity))}</td><td>${rs(pick(p, ['average_price', 'cost_price']))}</td><td>${rs(pick(p, ['ltp', 'current_market_price']))}</td></tr>`).join('')}</tbody></table></div>` : ''}
       ${h.notes && h.notes.length ? `<p class="citation">${esc(h.notes.join(' · '))}</p>` : ''}
-      <p class="citation">Read-only from your ICICI account. Suggested stop = the verdict's stop-loss, or the bottom of the nearest demand zone below the price. Not a recommendation.</p>`;
+      <p class="citation">Read-only from ${h.account ? esc(h.account.label) : 'your ICICI account'}. Suggested stop = the verdict's stop-loss, or the bottom of the nearest demand zone below the price. Not a recommendation.</p>`;
     body.querySelectorAll('[data-analyze]').forEach(b => { b.onclick = () => openAnalyze(b.dataset.analyze); });
   }
 

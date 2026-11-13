@@ -382,6 +382,132 @@
     });
   }
 
+  // ---------- broker accounts (each user's own) ----------
+  const BROKERS_API = 'api/brokers.php';
+  const REDIRECT_URL = new URL('api/breeze.php', location.href).href;
+
+  async function openBrokers() {
+    const m = openModal(`<button class="modal-close" data-close>&times;</button><h3>Broker accounts</h3>
+      <p class="auth-text">Connect your own broker accounts to see holdings and P&amp;L in MarketMind. Each account needs a daily log-in (an exchange rule). Only you can use the accounts you add.</p>
+      <div id="brokers-body"><p class="auth-text">Loading…</p></div>`);
+    m.classList.add('modal-wide');
+    await renderBrokers();
+  }
+
+  async function renderBrokers() {
+    const body = document.getElementById('brokers-body');
+    if (!body) return;
+    let d;
+    try { d = await request(`${BROKERS_API}?action=list`); } catch (e) { body.innerHTML = `<p class="auth-error">${esc(e.message)}</p>`; return; }
+    const status = (a) => a.connectedToday
+      ? `<span class="user-badge you">Connected today${a.brokerUser ? ' · ' + esc(a.brokerUser) : ''}</span>`
+      : '<span class="user-badge warn">Log in needed today</span>';
+    body.innerHTML = `
+      <div class="users-list">
+        ${d.main ? `<div class="user-row"><div class="user-main"><div><b>ICICI Direct · main</b> <span class="text-muted">server settings (breeze-config.php)</span> ${status(d.main)}</div>
+          <div class="text-muted user-meta">Market data for everyone and your trading come from this account.</div></div>
+          <div class="user-actions"><a class="btn-secondary btn-small" href="api/breeze.php?action=login">Log in today</a></div></div>` : ''}
+        ${d.accounts.map((a) => `<div class="user-row" data-id="${a.id}">
+          <div class="user-main"><div><b>${esc(a.label)}</b> <span class="text-muted">${esc(a.brokerName)} · key …${esc(a.apiKeyEnd)}</span> ${status(a)}</div>
+            ${a.lastError ? `<div class="auth-error user-meta">${esc(a.lastError)}</div>` : ''}</div>
+          <div class="user-actions">
+            <a class="btn-primary btn-small" href="${BROKERS_API}?action=login&id=${a.id}">Log in today</a>
+            <button class="btn-secondary btn-small" data-act="holdings">Holdings</button>
+            <button class="btn-secondary btn-small" data-act="edit">Edit</button>
+            ${a.connectedToday ? '<button class="btn-secondary btn-small" data-act="logout">Log out</button>' : ''}
+            <button class="btn-danger btn-small" data-act="delete">Remove</button>
+          </div></div>`).join('') || (d.main ? '' : '<p class="auth-text">No broker accounts yet.</p>')}
+      </div>
+      <h4 class="users-sub" id="broker-form-title">Add an account</h4>
+      <form class="auth-form users-add" autocomplete="off">
+        <input type="hidden" name="acctId" value="" />
+        <div class="users-grid">
+          <label>Broker<select name="broker">
+            ${Object.entries(d.brokers).map(([k, n]) => `<option value="${k}">${esc(n)}</option>`).join('')}
+            <option disabled>Zerodha (coming next)</option><option disabled>Groww (coming soon)</option>
+            <option disabled>Upstox (coming soon)</option><option disabled>Angel One (coming soon)</option>
+          </select></label>
+          <label>Name for this account<input name="label" maxlength="60" placeholder="e.g. ICICI · Mom" /></label>
+          <label>API key<input name="apiKey" maxlength="120" autocapitalize="none" spellcheck="false" /></label>
+          <label>API secret<input name="secret" type="password" maxlength="200" autocomplete="new-password" spellcheck="false" /></label>
+        </div>
+        <details class="auth-text"><summary>How to get an ICICI API key and secret</summary>
+          <ol class="auth-steps">
+            <li>The account holder signs in at <b>api.icicidirect.com</b> with their own ICICI login.</li>
+            <li>Choose <b>Register an App</b> and give it any name.</li>
+            <li>Set the redirect URL to <code>${esc(REDIRECT_URL)}</code></li>
+            <li>Copy the <b>API key</b> and <b>secret</b> it shows into this form.</li>
+          </ol>
+          The secret is stored encrypted on the MarketMind server and is never shown again.</details>
+        <p class="auth-error"></p>
+        <button type="submit" class="btn-primary">Add account</button>
+        <button type="button" class="btn-secondary hidden" id="broker-cancel-edit">Cancel</button>
+      </form>`;
+
+    const form = body.querySelector('form');
+    const title = body.querySelector('#broker-form-title');
+    const cancel = body.querySelector('#broker-cancel-edit');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const resetForm = () => {
+      form.reset(); form.elements.acctId.value = ''; title.textContent = 'Add an account'; submitBtn.textContent = 'Add account';
+      form.elements.broker.disabled = false; form.elements.apiKey.placeholder = ''; form.elements.secret.placeholder = ''; cancel.classList.add('hidden');
+    };
+    cancel.onclick = resetForm;
+    bindForm(form, async (v) => {
+      if (v.acctId) {
+        await request(`${BROKERS_API}?action=update`, { id: Number(v.acctId), label: v.label, apiKey: v.apiKey, secret: v.secret });
+        toast('Account updated', 'success');
+      } else {
+        if (!v.apiKey || !v.secret) throw new Error('Enter both the API key and the API secret');
+        const r = await request(`${BROKERS_API}?action=add`, { broker: v.broker, label: v.label, apiKey: v.apiKey, secret: v.secret });
+        toast(`Added ${r.account.label}. Click "Log in today" to connect it.`, 'success');
+      }
+      await renderBrokers();
+    });
+
+    body.querySelectorAll('.user-row[data-id]').forEach((row) => {
+      const id = Number(row.dataset.id);
+      const a = d.accounts.find((x) => x.id === id);
+      row.querySelectorAll('[data-act]').forEach((btn) => {
+        btn.onclick = async () => {
+          try {
+            const act = btn.dataset.act;
+            if (act === 'edit') {
+              form.elements.acctId.value = id; form.elements.label.value = a.label; form.elements.broker.value = a.broker; form.elements.broker.disabled = true;
+              form.elements.apiKey.value = ''; form.elements.apiKey.placeholder = `…${a.apiKeyEnd} (leave blank to keep)`;
+              form.elements.secret.value = ''; form.elements.secret.placeholder = 'leave blank to keep the saved secret';
+              title.textContent = `Edit ${a.label}`; submitBtn.textContent = 'Save'; cancel.classList.remove('hidden');
+              form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              return;
+            }
+            if (act === 'holdings') {
+              try { localStorage.setItem('mm_holdings_account', String(id)); } catch { /* ignore */ }
+              closeModal();
+              if (window.app && app._navigateTo) app._navigateTo('holdings');
+              return;
+            }
+            if (act === 'logout') await request(`${BROKERS_API}?action=logout`, { id });
+            if (act === 'delete') {
+              if (!confirm(`Remove ${a.label} from MarketMind? Its saved key and secret are deleted here (your broker account itself is not affected).`)) return;
+              await request(`${BROKERS_API}?action=delete`, { id });
+              toast(`Removed ${a.label}`, 'success');
+            }
+            await renderBrokers();
+          } catch (e) { toast(e.message, 'error'); }
+        };
+      });
+    });
+  }
+
+  // Coming back from a broker's login page
+  function brokerReturnNotice() {
+    const m = /^#broker=(\w+)/.exec(location.hash);
+    if (!m) return;
+    history.replaceState(null, '', location.pathname + location.search);
+    const msg = { connected: ['Broker account connected for today', 'success'], failed: ['The broker login did not finish. Open Broker accounts to see the error and try again.', 'error'], badcode: ["That doesn't look like a broker session code. Try logging in again.", 'error'] }[m[1]];
+    if (msg) setTimeout(() => toast(msg[0], msg[1]), 1500);
+  }
+
   // ---------- sidebar account block ----------
   function renderMenu() {
     const el = document.getElementById('account-menu');
@@ -395,6 +521,7 @@
       <div class="account-name" title="@${esc(u.username)}">${esc(u.displayName)}${u.role === 'admin' ? ' <span class="user-badge admin">Admin</span>' : ''}</div>
       <div class="account-links">
         ${u.role === 'admin' ? `<a href="#" data-acc="users">Users${state.waiting ? ` <span class="user-badge warn">${state.waiting} new</span>` : ''}</a>` : ''}
+        <a href="#" data-acc="brokers">Broker accounts</a>
         <a href="#" data-acc="password">Password</a>
         <a href="#" data-acc="logout">Sign out</a>
       </div>`;
@@ -403,6 +530,7 @@
         e.preventDefault();
         const act = a.dataset.acc;
         if (act === 'users') openUsers();
+        else if (act === 'brokers') openBrokers();
         else if (act === 'password') openChangePassword();
         else if (act === 'logout') logout();
       };
@@ -471,6 +599,7 @@
     state.user = user;
     await loadSettings();
     closeScreen();
+    brokerReturnNotice();
     return user;
   }
 
@@ -484,7 +613,7 @@
   });
 
   window.Account = {
-    boot, renderMenu, saveSetting, openUsers, openChangePassword, logout, ensureStockList, request,
+    boot, renderMenu, saveSetting, openUsers, openChangePassword, openBrokers, logout, ensureStockList, request,
     get user() { return state.user; },
     get isAdmin() { return !!state.user && state.user.role === 'admin'; },
     get devMode() { return state.devMode; },
