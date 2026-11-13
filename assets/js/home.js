@@ -44,6 +44,8 @@
   const CARDS = [
     { id: 'home-money', title: 'My money', btn: ['holdings', 'Holdings'] },
     { id: 'home-risk', title: 'Risk', btn: ['trading', 'Orders'], admin: true },
+    { id: 'home-xray', title: 'Portfolio X-ray', btn: ['holdings', 'Holdings'] },
+    { id: 'home-goal', title: 'Goal & benchmark', btn: null },
     { id: 'home-watch', title: 'Your Watchlist', btn: ['watchlist', 'Calls'] },
     { id: 'home-opps', title: "Today's best setups", btn: ['opps', 'All'] },
     { id: 'home-orders', title: 'Orders', btn: ['trading', 'Open'], admin: true },
@@ -107,6 +109,8 @@
     let list = [];
     try { list = (await getJSON('api/watchlist.php?action=list')).items || []; } catch { /* shown below */ }
     watch(list);
+    clearInterval(liveTimer);
+    if (marketOpen()) liveTimer = setInterval(() => { if (document.body.contains(container) && container.querySelector('#home-watch')) watch(list); else clearInterval(liveTimer); }, 60000);
     opps();
     if (admin && container.querySelector('#home-orders')) orders();
     events(list);
@@ -126,8 +130,15 @@
       <li data-sym="${esc(i.symbol)}"><div><b>${esc(i.symbol)}</b><small>${esc(i.name || '')}</small></div>
       <div class="q-num"><b>${q ? num(q.ltp) : '—'}</b><small class="chg ${tone(q && q.changePct)}">${q ? pct(q.changePct) : ''}</small></div></li>`).join('')}</ul>
       ${list.length > 8 ? `<p class="home-more">+${list.length - 8} more on the Watchlist</p>` : ''}`);
-    document.querySelectorAll('#home-watch [data-sym]').forEach(li => { li.onclick = () => (root.Stock ? Stock.open(li.dataset.sym) : root.Nav && Nav.go('watchlist')); });
+    // Flash prices that moved since the last refresh
+    rows.forEach(([i, q]) => {
+      const was = lastPx.get(i.symbol);
+      if (q && q.ltp && was && was !== q.ltp && root.UX) UX.flash(document.querySelector(`#home-watch [data-sym="${i.symbol}"] .q-num b`), q.ltp > was);
+      if (q && q.ltp) lastPx.set(i.symbol, q.ltp);
+    });
   }
+  const lastPx = new Map();
+  let liveTimer = null;
 
   async function opps() {
     try {

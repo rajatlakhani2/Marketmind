@@ -20,7 +20,7 @@
 
   const ALL_GROUPS = [
     { id: 'home', label: 'Home', pages: [['dashboard', 'Home']] },
-    { id: 'markets', label: 'Markets', pages: [['events', 'Events & News'], ['corpactions', 'Corporate actions'], ['results', 'Results']] },
+    { id: 'markets', label: 'Markets', pages: [['insights', 'Insights'], ['events', 'Events & News'], ['corpactions', 'Corporate actions'], ['results', 'Results']] },
     { id: 'stocks', label: 'Stocks', pages: [['stock', 'Stock'], ['analyze', 'Analyze'], ['screener', 'Screener'], ['opps', 'Opportunities'], ['live', 'Live buyers']] },
     { id: 'fno', label: 'F&O', pages: [['optcalls', 'Option calls'], ['fno', 'Option chain & futures']] },
     { id: 'portfolio', label: 'Portfolio', pages: [['holdings', 'Holdings'], ['watchlist', 'Watchlist'], ['trading', 'Orders']] },
@@ -161,7 +161,7 @@
 
   // ---------- universal search: stocks, pages, strategies, concepts ----------
   const PAGE_WORDS = {
-    dashboard: 'home overview index nifty sensex', watchlist: 'watchlist calls buy sell my stocks', stock: 'stock chart price', live: 'live buyers sellers order book depth market depth pressure',
+    dashboard: 'home overview index nifty sensex', insights: 'insights breadth sector rotation strongest relative strength movers fii dii holidays', watchlist: 'watchlist calls buy sell my stocks', stock: 'stock chart price', live: 'live buyers sellers order book depth market depth pressure',
     opps: 'opportunities scan setups ideas', fno: 'f&o fno options futures option chain calls puts strategy builder iron condor straddle', analyze: 'analyze analysis verdict',
     events: 'events news results dividend corporate actions calendar', screener: 'screener filter', trading: 'orders trading algo approve', holdings: 'holdings portfolio',
     mindguru: 'mindguru learning record accuracy', backtest: 'backtest back-test test history results accuracy', strategies: 'strategies', concepts: 'concepts', knowledge: 'library documents upload books', theory: 'theory', methodology: 'methodology sources',

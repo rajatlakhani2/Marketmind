@@ -464,7 +464,7 @@
       catch (e) { toast(e.message, 'warning'); }
       badge(); render(container);
     };
-    container.querySelectorAll('[data-approve]').forEach(b => { b.onclick = () => { b.disabled = true; act(() => call('approve', { id: Number(b.dataset.approve) })); }; });
+    container.querySelectorAll('[data-approve]').forEach(b => { b.onclick = async () => { if (!(await moodOk())) return; b.disabled = true; act(() => call('approve', { id: Number(b.dataset.approve) })); }; });
     container.querySelectorAll('[data-reject]').forEach(b => { b.onclick = () => act(() => call('reject', { id: Number(b.dataset.reject) })); });
     container.querySelectorAll('[data-exit]').forEach(b => {
       b.onclick = async () => {
@@ -549,6 +549,19 @@
     }, 1000);
   }
   if (typeof document !== 'undefined') autoStart();
+
+  // Mood check before a manual approval: rushed or chasing a loss -> wait 15 minutes
+  async function moodOk() {
+    let until = 0; try { until = +localStorage.getItem('mm_mood_wait') || 0; } catch { /* none */ }
+    if (Date.now() < until) { toast(`Take a break: approvals open again in ${Math.ceil((until - Date.now()) / 60000)} min.`, 'warning'); return false; }
+    let last = 0; try { last = +localStorage.getItem('mm_mood_at') || 0; } catch { /* none */ }
+    if (Date.now() - last < 30 * 60000) return true; // asked in the last 30 minutes
+    const ans = prompt('How are you feeling right now?\n1 = calm\n2 = rushed\n3 = want to win back a loss', '1');
+    if (ans === null) return false;
+    try { localStorage.setItem('mm_mood_at', String(Date.now())); } catch { /* ignore */ }
+    if (ans.trim() === '2' || ans.trim() === '3') { try { localStorage.setItem('mm_mood_wait', String(Date.now() + 15 * 60000)); } catch { /* ignore */ } toast('Wait 15 minutes before approving. A calm mind trades better.', 'warning'); return false; }
+    return true;
+  }
 
   root.Trading = { renderPage };
 })(typeof window !== 'undefined' ? window : globalThis);

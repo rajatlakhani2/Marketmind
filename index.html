@@ -32,7 +32,7 @@
   <script src="js/optbuilder.js?v=16"></script>
   <script src="js/fno.js?v=16"></script>
   <script src="js/events.js?v=14"></script>
-  <script src="js/trading.js?v=17"></script>
+  <script src="js/trading.js?v=18"></script>
   <script src="js/scan.js?v=16"></script>
   <script src="js/watchlist.js?v=21"></script>
   <script src="js/candlechart.js?v=21"></script>
@@ -41,10 +41,12 @@
   <script src="js/optcalls.js?v=2"></script>
   <script src="js/corpact.js?v=2"></script>
   <script src="js/backtest.js?v=30"></script>
-  <script src="js/nav.js?v=26"></script>
+  <script src="js/nav.js?v=27"></script>
   <script src="js/overview.js?v=1"></script>
-  <script src="js/cockpit.js?v=1"></script>
-  <script src="js/home.js?v=23"></script>
+  <script src="js/ux.js?v=1"></script>
+  <script src="js/insights.js?v=1"></script>
+  <script src="js/cockpit.js?v=3"></script>
+  <script src="js/home.js?v=24"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1215,6 +1217,29 @@ body[data-mood="down"] #topbar { border-bottom-color: var(--red); }
 .cust-pages { width: 100%; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .88rem; }
 .cust-pages .pin { border: 0; background: none; cursor: pointer; color: var(--text-muted); font-size: 1rem; padding: 0 2px; }
 .cust-pages .pin.on { color: var(--yellow); }
+
+/* ===== Interaction layer (ux.js) ===== */
+#ux-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 100vw); background: var(--bg-card); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,.15); z-index: 90; padding: 16px; overflow-y: auto; transform: translateX(105%); transition: transform .22s ease; padding-top: calc(16px + env(safe-area-inset-top)); }
+#ux-drawer.open { transform: none; }
+.dr-head { display: flex; justify-content: space-between; align-items: center; font-size: 1.15rem; }
+.dr-head .modal-close { position: static; }
+.dr-price b { font-size: 1.6rem; } .dr-spark { width: 100%; height: 80px; margin: 8px 0 2px; } .dr-sub { font-size: .8rem; }
+.dr-actions { display: flex; gap: 8px; margin: 10px 0 16px; }
+.dr-calc { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .dr-calc label { font-size: .8rem; color: var(--text-muted); } .dr-calc input { width: 100%; }
+.dr-out { margin-top: 10px; font-size: .9rem; }
+.ux-undo { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--text-primary); color: var(--bg-card); padding: 10px 14px; border-radius: 10px; display: flex; gap: 14px; align-items: center; z-index: 95; }
+.ux-undo button { background: none; border: 0; color: var(--accent-soft); font-weight: 700; cursor: pointer; }
+@keyframes fu { from { background: var(--green-soft); } to { background: transparent; } } @keyframes fd { from { background: var(--red-soft); } to { background: transparent; } }
+.flash-up { animation: fu 1.2s ease-out; } .flash-down { animation: fd 1.2s ease-out; }
+body.is-offline #topbar::after { content: 'Offline · showing last loaded data'; display: block; text-align: center; font-size: .78rem; background: var(--yellow); color: #fff; padding: 2px; }
+.checklist { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; padding: 10px 14px; border: 1px dashed var(--accent); border-radius: var(--radius); margin-bottom: 10px; font-size: .9rem; }
+.ck-tools { margin: -6px 0 12px; font-size: .85rem; }
+
+.in-grid .home-card { min-width: 0; } .in-grid table { width: 100%; font-size: .85rem; }
+.rot { width: 100%; height: auto; } .rot-ax { stroke: var(--border); stroke-dasharray: 4 4; } .rot-q { font-size: 12px; font-weight: 600; text-anchor: start; }
+.rot text.rot-q:nth-of-type(1), .rot text.rot-q:nth-of-type(4) { text-anchor: end; } .rot-l { font-size: 11px; fill: var(--text-secondary); } .rot-t { font-size: 11px; fill: var(--text-muted); text-anchor: middle; }
+.xray-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; margin: 6px 0 10px; } .xray-bar i { display: block; height: 100%; }
+.xray-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .8rem; } .xray-legend b { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -1235,6 +1260,7 @@ body[data-mood="down"] #topbar { border-bottom-color: var(--red); }
         <li><a href="#" data-page="stock"><span class="nav-icon">&#x1F50E;</span> Stock</a></li>
         <li><a href="#" data-page="live"><span class="nav-icon">&#x1F4CA;</span> Live buyers</a></li>
         <li><a href="#" data-page="optcalls"><span class="nav-icon">&#x1F3AF;</span> Option calls</a></li>
+        <li><a href="#" data-page="insights"><span class="nav-icon">&#x1F4C8;</span> Insights</a></li>
         <li><a href="#" data-page="corpactions"><span class="nav-icon">&#x1F4B0;</span> Corporate actions</a></li>
         <li><a href="#" data-page="results"><span class="nav-icon">&#x1F4C8;</span> Results</a></li>
         <li><a href="#" data-page="mindguru"><span class="nav-icon">&#x1F9E0;</span> MindGuru</a></li>
@@ -1409,6 +1435,10 @@ body[data-mood="down"] #topbar { border-bottom-color: var(--red); }
       </div>
       <div id="page-stock" class="page">
         <div id="stock-container"></div>
+      </div>
+      <div id="page-insights" class="page">
+        <header class="page-header"><h2>Insights</h2><p class="muted">Market breadth, sector rotation, strongest stocks, today's movers, FII/DII flows and holidays</p></header>
+        <div id="insights-container"></div>
       </div>
       <div id="page-corpactions" class="page">
         <header class="page-header"><h2>Corporate actions</h2><p class="muted">Dividends, bonus, splits, rights and buybacks coming up, with MarketMind's call</p></header>
@@ -3555,6 +3585,7 @@ class App {
       case 'backtest': await Backtest.renderPage(document.getElementById('backtest-container')); break;
       case 'live': await LivePage.renderPage(document.getElementById('live-container')); break;
       case 'optcalls': await OptCalls.renderPage(document.getElementById('optcalls-container')); break;
+      case 'insights': await Insights.renderPage(document.getElementById('insights-container')); break;
       case 'corpactions': await CorpActions.renderPage(document.getElementById('corpactions-container')); break;
       case 'results': await ResultsPage.renderPage(document.getElementById('results-container')); break;
       case 'holdings': await Holdings.renderPage(document.getElementById('holdings-container')); break;

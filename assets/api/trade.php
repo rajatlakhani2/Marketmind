@@ -349,6 +349,19 @@ try {
             if ((int) $st->fetchColumn() >= (int) $S['maxOrdersDay']) $fail("You've reached today's limit of {$S['maxOrdersDay']} new trades.");
             $open = (int) $pdo->query("SELECT COUNT(*) FROM trade_orders WHERE purpose = 'entry' AND status IN ('open','filled')")->fetchColumn();
             if ($open >= (int) $S['maxOpen']) $fail("You already have $open open positions (limit {$S['maxOpen']}).");
+            // Risk lock: money at risk in open trades plus this one stays within 2% of capital
+            $atRisk = 0.0;
+            foreach ($pdo->query("SELECT fill_price, limit_price, stop, qty, side FROM trade_orders WHERE purpose = 'entry' AND status IN ('open','filled') AND stop IS NOT NULL")->fetchAll() as $r) {
+                $px = (float) ($r['fill_price'] ?: $r['limit_price']);
+                $atRisk += max(0, ($r['side'] === 'sell' ? (float) $r['stop'] - $px : $px - (float) $r['stop'])) * (int) $r['qty'];
+            }
+            $limit = (float) $S['account'] * 0.02;
+            if ($risk !== null && !$paperFut && $atRisk + $risk > $limit * 1.02) $fail('Risk lock: open trades already risk ₹' . number_format($atRisk) . '; this one would take the total above ₹' . number_format($limit) . ' (2% of capital).');
+            // Loss streak brake: after 3 losing trades in a row, no new trades for the rest of the day
+            $last = $pdo->query("SELECT pnl, closed_at FROM trade_orders WHERE purpose = 'entry' AND status = 'closed' AND pnl IS NOT NULL ORDER BY closed_at DESC LIMIT 3")->fetchAll();
+            if (count($last) === 3 && max(array_map(fn($r) => (float) $r['pnl'], $last)) < 0 && $last[0]['closed_at'] >= $todayStart) {
+                $fail('Loss streak brake: your last 3 trades lost money, so new trades are paused until tomorrow.');
+            }
         }
 
         $mode = order_mode($S, $o);

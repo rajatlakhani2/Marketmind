@@ -337,6 +337,33 @@ $action = (string) ($_GET['action'] ?? '');
 try {
     mm_require_user();
 
+    // FII / DII cash-market buying and selling (NSE, latest days)
+    if ($action === 'fiidii') {
+        if ($hit = ev_cache_get('fiidii', 1800)) mm_json(200, $hit);
+        $j = nse('/api/fiidiiTradeReact', '/reports/fii-dii');
+        $rows = array_is_list($j) ? $j : ($j['data'] ?? []);
+        $out = [];
+        foreach ($rows as $r) if (is_array($r)) $out[] = ['who' => (string) ($r['category'] ?? ''), 'date' => (string) ($r['date'] ?? ''),
+            'buy' => (float) str_replace(',', '', (string) ($r['buyValue'] ?? 0)), 'sell' => (float) str_replace(',', '', (string) ($r['sellValue'] ?? 0)), 'net' => (float) str_replace(',', '', (string) ($r['netValue'] ?? 0))];
+        $res = ['at' => time(), 'rows' => $out, 'keys' => $rows && is_array($rows[0] ?? null) ? array_keys($rows[0]) : []];
+        ev_cache_put('fiidii', $res);
+        mm_json(200, $res);
+    }
+
+    // Trading holidays for the year (NSE equity segment)
+    if ($action === 'holidays') {
+        if ($hit = ev_cache_get('holidays', 86400)) mm_json(200, $hit);
+        $j = nse('/api/holiday-master?type=trading', '/resources/exchange-communication-holidays');
+        $out = [];
+        foreach (($j['CM'] ?? $j['FO'] ?? []) as $r) {
+            $d = DateTime::createFromFormat('d-M-Y', (string) ($r['tradingDate'] ?? ''));
+            if ($d) $out[] = ['date' => $d->format('Y-m-d'), 'what' => (string) ($r['description'] ?? 'Holiday')];
+        }
+        $res = ['at' => time(), 'holidays' => $out, 'keys' => array_keys($j)];
+        ev_cache_put('holidays', $res);
+        mm_json(200, $res);
+    }
+
     if ($action === 'calendar') {
         if ($hit = ev_cache_get('calendar', 3600)) mm_json(200, $hit);
         $today = ev_today();
