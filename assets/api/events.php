@@ -120,6 +120,12 @@ function shape_meetings(array $rows): array {
 }
 
 // Corporate actions: dividends, splits, bonus, rights, buybacks
+// Upcoming corporate actions: without a date range NSE returns only its latest 20 rows
+function actions_window_path(int $days = 90): string {
+    $t = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
+    $f = $t->format('d-m-Y');
+    return '/api/corporates-corporateActions?index=equities&from_date=' . $f . '&to_date=' . $t->modify("+$days days")->format('d-m-Y');
+}
 function shape_actions(array $rows): array {
     $out = [];
     foreach ($rows as $r) {
@@ -250,6 +256,46 @@ function num_of(array $r, array $patterns): ?float {
     return null;
 }
 function results_quarters(string $sym): array {
+    $y = yahoo_quarters($sym);
+    if (count($y) >= 2) return ['quarters' => $y, 'keys' => [], 'source' => 'Yahoo Finance (consolidated)'];
+    $n = nse_quarters($sym);
+    return $n + ['source' => 'NSE'];
+}
+// Yahoo quarterly fundamentals (rupees) -> ₹ lakh, the unit the app shows. Missing quarters are filled with blanks
+// so "same quarter last year" is always 4 rows back.
+function yahoo_quarters(string $sym): array {
+    $types = ['quarterlyTotalRevenue', 'quarterlyNetIncome', 'quarterlyDilutedEPS', 'quarterlyBasicEPS'];
+    $now = time();
+    [$st, $b] = ev_get('https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/' . rawurlencode($sym . '.NS')
+        . '?type=' . implode(',', $types) . '&period1=' . ($now - 5 * 365 * 86400) . '&period2=' . $now, ['Accept: application/json']);
+    $j = $st === 200 ? json_decode($b, true) : null;
+    $by = [];
+    foreach ((array) ($j['timeseries']['result'] ?? []) as $res) {
+        $t = $res['meta']['type'][0] ?? '';
+        foreach ((array) ($res[$t] ?? []) as $v) {
+            if (!is_array($v) || !isset($v['asOfDate'], $v['reportedValue']['raw'])) continue;
+            $by[$v['asOfDate']][$t] = (float) $v['reportedValue']['raw'];
+        }
+    }
+    if (!$by) return [];
+    ksort($by);
+    $out = [];
+    $d = new DateTime(array_key_first($by));
+    $last = array_key_last($by);
+    while (($k = $d->format('Y-m-d')) <= $last) {
+        $r = $by[$k] ?? [];
+        $out[] = [
+            'period' => $k,
+            'revenue' => isset($r['quarterlyTotalRevenue']) ? round($r['quarterlyTotalRevenue'] / 1e5, 2) : null,
+            'profit' => isset($r['quarterlyNetIncome']) ? round($r['quarterlyNetIncome'] / 1e5, 2) : null,
+            'eps' => $r['quarterlyDilutedEPS'] ?? $r['quarterlyBasicEPS'] ?? null,
+            'audited' => null,
+        ];
+        $d->modify('first day of next month')->modify('+2 months')->modify('last day of this month');
+    }
+    return $out;
+}
+function nse_quarters(string $sym): array {
     $j = nse('/api/results-comparision?symbol=' . rawurlencode($sym), '/get-quotes/equity?symbol=' . rawurlencode($sym));
     $rows = $j['resCmpData'] ?? $j['data'] ?? (array_is_list($j) ? $j : []);
     $out = [];
@@ -261,7 +307,7 @@ function results_quarters(string $sym): array {
             'period' => $to,
             'revenue' => num_of($r, ['/net_?sale/i', '/rev/i', '/tot_?inc/i', '/income/i']),
             'profit' => num_of($r, ['/net_?profit/i', '/pro_?loss_?aft/i', '/pat/i', '/profit/i']),
-            'eps' => num_of($r, ['/dil_?eps/i', '/basic_?eps/i', '/eps/i']),
+            'eps' => num_of($r, ['/dil_?eps/i', '/dilut\w*_eps/i', '/basic_?eps/i', '/eps/i']),
             'audited' => isset($r['re_res_type']) ? (string) $r['re_res_type'] : null,
         ];
     }
@@ -295,7 +341,7 @@ try {
         if ($hit = ev_cache_get('calendar', 3600)) mm_json(200, $hit);
         $today = ev_today();
         $meetings = array_values(array_filter(shape_meetings(nse('/api/event-calendar')), fn($m) => $m['date'] >= $today));
-        $actions = array_values(array_filter(shape_actions(nse('/api/corporates-corporateActions?index=equities')), fn($a) => $a['exDate'] >= $today));
+        $actions = array_values(array_filter(shape_actions(nse(actions_window_path())), fn($a) => $a['exDate'] >= $today));
         usort($meetings, fn($a, $b) => [$a['date'], $a['symbol']] <=> [$b['date'], $b['symbol']]);
         usort($actions, fn($a, $b) => [$a['exDate'], $a['symbol']] <=> [$b['exDate'], $b['symbol']]);
         $out = ['meetings' => $meetings, 'actions' => $actions, 'at' => time()];
@@ -330,7 +376,7 @@ try {
     if ($action === 'actions_board') {
         if ($hit = ev_cache_get('actions_board', 1800)) mm_json(200, $hit);
         $today = ev_today();
-        $acts = array_values(array_filter(shape_actions(nse('/api/corporates-corporateActions?index=equities')), fn($a) => $a['exDate'] >= $today));
+        $acts = array_values(array_filter(shape_actions(nse(actions_window_path())), fn($a) => $a['exDate'] >= $today));
         usort($acts, fn($a, $b) => [$a['exDate'], $a['symbol']] <=> [$b['exDate'], $b['symbol']]);
         $acts = array_slice($acts, 0, 150);
         $px = yahoo_prices(array_column($acts, 'symbol'));
@@ -424,7 +470,7 @@ try {
             usort($moves, fn($a, $b) => strcmp($b['date'], $a['date']));
         } catch (Throwable $e) { /* optional */ }
         $out = ['symbol' => $sym, 'quarters' => array_reverse($q), 'next' => $next, 'resultDays' => array_slice($moves, 0, 12),
-            'moveStats' => stats_of(array_column($moves, 'move')), 'unit' => '₹ lakh', 'keys' => $r['keys'], 'at' => time()];
+            'moveStats' => stats_of(array_column($moves, 'move')), 'unit' => '₹ lakh', 'source' => $r['source'] ?? 'NSE', 'keys' => $r['keys'], 'at' => time()];
         ev_cache_put("results|$sym", $out);
         mm_json(200, $out);
     }

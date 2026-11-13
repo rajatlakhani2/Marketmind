@@ -11,7 +11,7 @@
   const cls = v => (v > 0 ? 'up' : v < 0 ? 'down' : '');
   const fmtDate = d => (d ? new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
   const daysTo = d => Math.round((Date.parse(d + 'T00:00:00+05:30') - Date.now()) / 864e5);
-  const crore = v => (v == null ? '—' : v >= 1e5 ? `₹${num(v / 100, 0)} Cr` : `₹${num(v / 100, 1)} Cr`);   // NSE gives ₹ lakh
+  const crore = v => (v == null ? '—' : v >= 1e5 ? `₹${num(v / 100, 0)} Cr` : `₹${num(v / 100, 1)} Cr`);   // API gives ₹ lakh
 
   async function getJSON(url) {
     const r = await fetch(url, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
@@ -179,7 +179,7 @@
           <td>${rs(m.price)}<br><small class="${cls(m.chg)}">${pct(m.chg, 2)}</small></td></tr>
           ${RS.open === id ? `<tr class="ov-detail"><td colspan="3"><div id="rs-detail">${RS.detail[id] || '<div class="skeleton"></div>'}</div></td></tr>` : ''}`; }).join('')}
       </tbody></table></div>` : ''}
-      <p class="citation">Results: NSE (₹ crore). "Estimate" is MarketMind's own: the same quarter last year grown by the company's recent year-on-year growth. It is not an analyst consensus. Not investment advice.</p>`;
+      <p class="citation">Results: Yahoo Finance quarterly figures (consolidated; NSE when Yahoo has none), ₹ crore. "Estimate" is MarketMind's own: the same quarter last year grown by the company's recent year-on-year growth. It is not an analyst consensus. Not investment advice.</p>`;
     const qi = container.querySelector('#rs-q');
     if (qi) {
       qi.oninput = () => { RS.q = qi.value; const pos = qi.selectionStart; drawResults(container); const n = container.querySelector('#rs-q'); n.focus(); n.setSelectionRange(pos, pos); };
