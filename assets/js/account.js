@@ -7,7 +7,7 @@
   const AUTH = 'api/auth.php';
   const USERS = 'api/users.php';
   // Browser storage keys that follow the user from device to device (server key -> localStorage key)
-  const SYNCED = { sizing: 'marketmind_sizing', methodology: 'marketmind_methodology', home_layout: 'marketmind_home_layout', nav_layout: 'marketmind_nav_layout', theme: 'marketmind_theme' };
+  const SYNCED = { sizing: 'marketmind_sizing', methodology: 'marketmind_methodology', home_layout: 'marketmind_home_layout', nav_layout: 'marketmind_nav_layout', theme: 'marketmind_theme', layout: 'marketmind_layout' };
 
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
@@ -559,6 +559,7 @@
         <a href="#" data-acc="brokers">Broker accounts</a>
         <a href="#" data-acc="layout">Tabs &amp; theme</a>
         <a href="#" data-acc="alerts">Alerts</a>
+        <a href="#" data-acc="rules">My rules</a>
         <a href="#" data-acc="password">Password</a>
         <a href="#" data-acc="logout">Sign out</a>
       </div>`;
@@ -568,6 +569,7 @@
         const act = a.dataset.acc;
         if (act === 'users') openUsers();
         else if (act === 'brokers') openBrokers();
+        else if (act === 'rules') { if (window.Kundli) Kundli.openRules(); }
         else if (act === 'alerts') { if (window.UX) UX.openAlerts(); }
         else if (act === 'layout') { if (window.Nav && Nav.customize) Nav.customize(); }
         else if (act === 'password') openChangePassword();

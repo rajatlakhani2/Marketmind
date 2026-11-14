@@ -83,10 +83,11 @@
 
   async function renderPage(container) {
     const token = ++S.token;
+    S.cs = undefined; S.calls = S.calls || {};
     clearInterval(S.timer);
     if (S.chart) { S.chart.destroy(); S.chart = null; }
     if (!S.symbol) {
-      container.innerHTML = `<div class="st-empty"><h2>Look up any stock</h2><p>Search by name or symbol to see its chart, buy and sell calls on every timeframe, and live buyers and sellers.</p><button type="button" class="btn-primary" data-search>Search stocks</button></div>`;
+      container.innerHTML = `<div class="st-empty"><h2>Stock kundli</h2><p>Search any stock to see its full report card: verdict, trend on every timeframe, fundamentals, ownership, F&amp;O picture, risk flags and your own rules.</p><button type="button" class="btn-primary" data-search>Search stocks</button></div>`;
       container.querySelector('[data-search]').onclick = () => root.Nav && Nav.search();
       return;
     }
@@ -102,6 +103,7 @@
           <button type="button" class="btn-secondary hide-sm" data-search>Change stock</button>
         </div>
       </div>
+      <div id="kd-verdict" class="kd-verdict"><div class="skeleton" style="height:90px"></div></div>
       <div class="st-grid">
         <div class="st-main">
           <section class="card st-card st-o1">
@@ -114,6 +116,14 @@
             <div id="st-tested"><div class="skeleton"></div></div>
           </section>
           <section class="card st-card st-o4">
+            <div class="st-card-head"><h3>Fundamentals & ownership</h3><span class="muted small">Yahoo Finance · NSE</span></div>
+            <div id="kd-fund"><div class="skeleton"></div></div>
+          </section>
+          <section class="card st-card st-o4">
+            <div class="st-card-head"><h3>My rules</h3><span class="muted small">your own criteria</span></div>
+            <div id="kd-rules"><div class="skeleton"></div></div>
+          </section>
+          <section class="card st-card st-o4">
             <div class="st-card-head"><h3>Buy / sell calls on every timeframe</h3><span class="muted small">from demand & supply zones ${root.Tiers ? Tiers.zoneBadge() : ''}</span></div>
             <div id="st-matrix"></div>
           </section>
@@ -123,6 +133,18 @@
           </section>
         </div>
         <aside class="st-side">
+          <section class="card st-card st-o2">
+            <div class="st-card-head"><h3>Risk flags</h3></div>
+            <div id="kd-risk"><div class="skeleton"></div></div>
+          </section>
+          <section class="card st-card st-o2" id="kd-fo-card" hidden>
+            <div class="st-card-head"><h3>F&amp;O picture</h3><span class="muted small">nearest expiry</span></div>
+            <div id="kd-fo"><div class="skeleton"></div></div>
+          </section>
+          <section class="card st-card st-o3">
+            <div class="st-card-head"><h3>Track record on this stock</h3></div>
+            <div id="kd-record"><div class="skeleton"></div></div>
+          </section>
           <section class="card st-card st-o2">
             <div class="st-card-head"><h3>Live buyers & sellers</h3><span class="muted small" id="st-depth-at"></span></div>
             <div id="st-depth"><div class="skeleton"></div><div class="skeleton short"></div></div>
@@ -145,6 +167,7 @@
     events(token);
     news(token);
     watchState();
+    if (root.Kundli) Kundli.enrich(S.symbol, token);
     S.timer = setInterval(() => {
       const page = document.getElementById('page-stock');
       if (!page || !page.classList.contains('active')) { clearInterval(S.timer); return; }
@@ -279,6 +302,7 @@
       const ks = KS001.analyze({ price, ltf: { tf: '1d', candles: hist }, itf: { tf: '1w', candles: MarketData.aggregateByPeriod(hist, 'week') }, htf: { tf: '1mo', candles: MarketData.aggregateByPeriod(hist, 'month') } });
       const [brain] = await Promise.all([root.MindGuru ? MindGuru.getBrain().catch(() => null) : null, root.Tiers ? Tiers.ready() : null]);
       const cs = Consensus.run({ md: { ...md, price }, ks, strategies: k.strategies, check: (c, d) => k.checkConditionDetail(c, d), learned: brain ? brain.strategies : null });
+      S.cs = cs;
       if (token !== S.token || !box()) return;
       const c = cs.conclusion;
       const active = cs.results.filter(r => r.status === 'Active');
@@ -295,7 +319,7 @@
           ${ignored.length ? `<li class="muted">Not counted: ${ignored.map(r => esc(r.name) + (r.shortBlocked ? ' (short; NIFTY is above its 200-day)' : '')).join(', ')}</li>` : ''}
         </ul>
         <p class="muted small">${mk ? `NIFTY ${num(mk.nifty, 0)} is ${mk.above200 ? 'above' : 'below'} its 200-day average (${num(mk.ma200, 0)}), so short signals ${mk.above200 ? 'are not counted' : 'count'}.` : 'Short signals are not counted until the NIFTY 200-day check loads.'}</p>`;
-    } catch (e) { if (box()) box().innerHTML = `<p class="muted">Not available: ${esc(e.message)}</p>`; }
+    } catch (e) { S.cs = null; if (box()) box().innerHTML = `<p class="muted">Not available: ${esc(e.message)}</p>`; }
   }
 
   function summary() {
@@ -417,5 +441,5 @@
     if (b) b.disabled = false;
   }
 
-  root.Stock = { renderPage, open, dsCall, current: () => S.symbol };
+  root.Stock = { renderPage, open, dsCall, current: () => S.symbol, state: () => S };
 })(window);

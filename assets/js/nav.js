@@ -21,7 +21,7 @@
   const ALL_GROUPS = [
     { id: 'home', label: 'Home', pages: [['dashboard', 'Home']] },
     { id: 'markets', label: 'Markets', pages: [['insights', 'Insights'], ['events', 'Events & News'], ['corpactions', 'Corporate actions'], ['results', 'Results']] },
-    { id: 'stocks', label: 'Stocks', pages: [['stock', 'Stock'], ['analyze', 'Analyze'], ['screener', 'Screener'], ['opps', 'Opportunities'], ['live', 'Live buyers']] },
+    { id: 'stocks', label: 'Stocks', pages: [['stock', 'Kundli'], ['fund', 'Fund kundli'], ['analyze', 'Analyze'], ['screener', 'Screener'], ['opps', 'Opportunities'], ['live', 'Live buyers']] },
     { id: 'fno', label: 'F&O', pages: [['optcalls', 'Option calls'], ['fno', 'Option chain & futures']] },
     { id: 'portfolio', label: 'Portfolio', pages: [['holdings', 'Holdings'], ['watchlist', 'Watchlist'], ['trading', 'Orders'], ['journal', 'Journal']] },
     { id: 'research', label: 'Research', pages: [['backtest', 'Back-test'], ['strategies', 'Strategies'], ['mindguru', 'MindGuru']] },
@@ -59,12 +59,16 @@
     const draw = () => {
       const groups = ALL_GROUPS.filter(g => g.id !== 'home').sort((a, b) => p.order.indexOf(a.id) - p.order.indexOf(b.id));
       ov.innerHTML = `<div class="modal modal-wide"><button class="modal-close" data-x>&times;</button><h3>Tabs and theme</h3>
+        <label class="auth-text">Layout <select id="nv-layout"><option value="classic">Classic</option><option value="kundli">Kundli (simple, search first)</option></select></label>
         <label class="auth-text">Theme <select id="nv-theme"><option value="light">Light</option><option value="dark">Dark</option><option value="cb">Colour-blind safe</option></select></label>
         <p class="auth-text">Move tabs up or down. Untick a page to hide it; ★ pins it to a Favourites tab at the front.</p>
         <ul class="cust-list">${groups.map((g, i) => `<li class="cust-group"><b>${esc(g.label)}</b><span><button class="btn-secondary btn-small" data-up="${g.id}" ${i ? '' : 'disabled'}>↑</button><button class="btn-secondary btn-small" data-dn="${g.id}" ${i < groups.length - 1 ? '' : 'disabled'}>↓</button></span>
           <div class="cust-pages">${g.pages.map(([x, l]) => `<label><input type="checkbox" data-hide="${x}" ${p.hidden.includes(x) ? '' : 'checked'}> ${esc(l)} <button type="button" class="pin ${p.pins.includes(x) ? 'on' : ''}" data-pin="${x}" title="Pin to Favourites">★</button></label>`).join('')}</div></li>`).join('')}</ul>
         <button class="btn-secondary" data-reset>Reset to default</button> <button class="btn-primary" data-x>Done</button></div>`;
       ov.querySelector('#nv-theme').value = theme;
+      let lay = 'classic'; try { lay = JSON.parse(localStorage.getItem('marketmind_layout')) || 'classic'; } catch { /* default */ }
+      ov.querySelector('#nv-layout').value = lay;
+      ov.querySelector('#nv-layout').onchange = e => { try { localStorage.setItem('marketmind_layout', JSON.stringify(e.target.value)); } catch { /* ignore */ } if (root.Account) Account.saveSetting('marketmind_layout', e.target.value); const hp = document.getElementById('page-dashboard'); if (hp && hp.classList.contains('active')) go('dashboard'); };
       ov.querySelector('#nv-theme').onchange = e => { try { localStorage.setItem(TKEY, JSON.stringify(e.target.value)); } catch { /* ignore */ } if (root.Account) Account.saveSetting(TKEY, e.target.value); applyTheme(); };
       ov.querySelectorAll('[data-up],[data-dn]').forEach(b => (b.onclick = () => {
         const id = b.dataset.up || b.dataset.dn, seq = groups.map(g => g.id), i = seq.indexOf(id), k = b.dataset.up ? i - 1 : i + 1;
@@ -161,7 +165,7 @@
 
   // ---------- universal search: stocks, pages, strategies, concepts ----------
   const PAGE_WORDS = {
-    dashboard: 'home overview index nifty sensex', insights: 'insights breadth sector rotation strongest relative strength movers fii dii holidays', watchlist: 'watchlist calls buy sell my stocks', stock: 'stock chart price', live: 'live buyers sellers order book depth market depth pressure',
+    dashboard: 'home overview index nifty sensex', fund: 'fund mutual fund mf nav sip kundli', stock: 'stock kundli report', insights: 'insights breadth sector rotation strongest relative strength movers fii dii holidays', watchlist: 'watchlist calls buy sell my stocks', stock: 'stock chart price', live: 'live buyers sellers order book depth market depth pressure',
     opps: 'opportunities scan setups ideas', fno: 'f&o fno options futures option chain calls puts strategy builder iron condor straddle', analyze: 'analyze analysis verdict',
     events: 'events news results dividend corporate actions calendar', screener: 'screener filter', trading: 'orders trading algo approve', holdings: 'holdings portfolio', journal: 'journal notes trades scorecard tax what if patterns',
     mindguru: 'mindguru learning record accuracy', backtest: 'backtest back-test test history results accuracy', strategies: 'strategies', concepts: 'concepts', knowledge: 'library documents upload books', theory: 'theory', methodology: 'methodology sources',

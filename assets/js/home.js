@@ -55,9 +55,12 @@
     { id: 'home-mg', title: 'MindGuru record', btn: ['mindguru', 'Details'] },
   ];
   const LKEY = 'marketmind_home_layout';
+  const isKundli = () => { try { return JSON.parse(localStorage.getItem('marketmind_layout')) === 'kundli'; } catch { return false; } };
   function layout(admin) {
     let saved = {}; try { saved = JSON.parse(localStorage.getItem(LKEY)) || {}; } catch { /* default */ }
-    const order = saved.order || [], hidden = new Set(saved.hidden || (admin ? [] : ['home-mg']));
+    let lay = 'classic'; try { lay = JSON.parse(localStorage.getItem('marketmind_layout')) || 'classic'; } catch { /* default */ }
+    const simple = ['home-money', 'home-opps', 'home-watch'];
+    const order = saved.order || [], hidden = new Set(saved.hidden || (lay === 'kundli' ? CARDS.map(c => c.id).filter(id => !simple.includes(id)) : admin ? [] : ['home-mg']));
     return CARDS.filter(c => admin || !c.admin)
       .sort((a, b) => (order.indexOf(a.id) + 1 || 99) - (order.indexOf(b.id) + 1 || 99))
       .map(c => ({ ...c, hidden: hidden.has(c.id) }));
@@ -97,17 +100,19 @@
         <p>${istNow().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}</p></div>
         <span class="mkt-pill ${open ? 'open' : ''}"><i></i>${open ? 'Market open' : 'Market closed'}</span>
       </div>
+      ${isKundli() ? `<div class="kd-hero"><h2>What do you want to check?</h2><div class="kd-searchbox"><button class="btn-secondary" data-kdsearch>🔎 Stock, future or option…</button><button class="btn-secondary" data-go="fund">💰 Mutual fund…</button></div></div>` : ''}
       <div id="home-cockpit"></div>
       <div class="home-grid" id="home-grid">
         ${layout(admin).filter(c => !c.hidden).map(c => card(c.id, c.title, c.btn ? openBtn(c.btn[0], c.btn[1]) : '')).join('')}
       </div>
       <p class="home-tools"><button type="button" class="link-btn" id="home-customize">Customize Home</button></p>
-      ${root.Overview ? '<div id="home-overview"></div>' : `<div class="idx-row" id="home-idx">${INDICES.map(([n]) => `<div class="idx"><span>${n}</span><b class="skeleton-text">—</b><small>&nbsp;</small></div>`).join('')}</div>`}`;
+      ${isKundli() ? '' : root.Overview ? '<div id="home-overview"></div>' : `<div class="idx-row" id="home-idx">${INDICES.map(([n]) => `<div class="idx"><span>${n}</span><b class="skeleton-text">—</b><small>&nbsp;</small></div>`).join('')}</div>`}`;
     container.onclick = e => { const b = e.target.closest('[data-go]'); if (b && root.Nav) Nav.go(b.dataset.go); };
     container.querySelector('#home-customize').onclick = () => customize(container, admin);
+    const ks = container.querySelector('[data-kdsearch]'); if (ks) ks.onclick = () => root.Nav && Nav.search();
     if (root.Cockpit) Cockpit.render(container.querySelector('#home-cockpit'));
 
-    if (root.Overview) Overview.render(container.querySelector('#home-overview')); else indices(container);
+    if (container.querySelector('#home-overview')) Overview.render(container.querySelector('#home-overview')); else if (container.querySelector('#home-idx')) indices(container);
     let list = [];
     try { list = (await getJSON('api/watchlist.php?action=list')).items || []; } catch { /* shown below */ }
     watch(list);

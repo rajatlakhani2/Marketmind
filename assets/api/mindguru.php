@@ -1,6 +1,7 @@
 <?php
 // MarketMind AI — MindGuru endpoints.
 //
+// GET  ?action=symbol&symbol=X -> judged calls on one stock: count, wins, average R, recent ones
 // GET  ?action=brain     -> learned weights per strategy (used by the All-Strategy Verdict)
 // GET  ?action=report    -> stats, lessons, learning log and recent projections for the MindGuru page
 // POST ?action=record    { source: "live"|"backtest", predictions: [...] }  (max 500 per call)
@@ -17,6 +18,18 @@ $action = (string) ($_GET['action'] ?? '');
 try {
     $user = mm_require_user();
     $pdo = mm_db();
+
+    // Track record for one stock: every judged MarketMind call on it (live, watch and back-test)
+    if ($action === 'symbol') {
+        $sym = strtoupper(trim((string) ($_GET['symbol'] ?? '')));
+        if (!preg_match('/^[A-Z0-9&\-]{1,20}$/', $sym)) mm_json(400, ['error' => 'Invalid symbol']);
+        $st = $pdo->prepare("SELECT source, strategy_name, side, signal_date, status, r_multiple, days_held FROM predictions WHERE symbol = ? AND r_multiple IS NOT NULL ORDER BY signal_date DESC LIMIT 300");
+        $st->execute([$sym]);
+        $rows = $st->fetchAll();
+        $by = fn($l) => ['n' => count($l), 'wins' => count(array_filter($l, fn($r) => (float) $r['r_multiple'] > 0)), 'avgR' => $l ? round(array_sum(array_map(fn($r) => (float) $r['r_multiple'], $l)) / count($l), 2) : null];
+        mm_json(200, ['symbol' => $sym, 'all' => $by($rows), 'live' => $by(array_values(array_filter($rows, fn($r) => $r['source'] !== 'backtest'))),
+            'backtest' => $by(array_values(array_filter($rows, fn($r) => $r['source'] === 'backtest'))), 'recent' => array_slice($rows, 0, 8)]);
+    }
 
     if ($action === 'brain') {
         mm_json(200, mg_brain($pdo));
