@@ -8,7 +8,8 @@ declare(strict_types=1);
 if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === realpath(__FILE__)) { http_response_code(404); exit; }
 
 const MM_BROKERS = [
-    'icici' => ['name' => 'ICICI Direct', 'login_url' => 'https://api.icicidirect.com/apiuser/login', 'api_url' => 'https://api.icicidirect.com/breezeapi/api/v1/'],
+    'icici' => ['name' => 'ICICI Direct', 'login_url' => 'https://api.icicidirect.com/apiuser/login?api_key=', 'api_url' => 'https://api.icicidirect.com/breezeapi/api/v1/'],
+    'zerodha' => ['name' => 'Zerodha (Kite)', 'login_url' => 'https://kite.zerodha.com/connect/login?v=3&api_key=', 'api_url' => 'https://api.kite.trade/'],
 ];
 const MM_BROKER_PENDING_KEY = 'broker_login_pending'; // user_settings key: account waiting for its ICICI callback
 const MM_MAX_BROKER_ACCOUNTS = 6;
@@ -155,4 +156,71 @@ function mm_icici_holdings(array $a): array {
     $out['symbols'] = $map;
     $out['at'] = time();
     return $out;
+}
+
+
+// ---------- Zerodha (Kite Connect v3) ----------
+// Login: kite.zerodha.com sends the user back to api/kite.php with request_token; we swap it for the day's access token.
+function mm_kite_finish_login(array $a, string $requestToken): void {
+    $secret = mm_decrypt((string) $a['secret_enc']);
+    if ($secret === null) throw new RuntimeException('The saved secret can no longer be read; enter it again');
+    [$st, $resp] = mm_broker_http('POST', MM_BROKERS['zerodha']['api_url'] . 'session/token',
+        http_build_query(['api_key' => $a['api_key'], 'request_token' => $requestToken, 'checksum' => hash('sha256', $a['api_key'] . $requestToken . $secret)]),
+        ['X-Kite-Version: 3', 'Content-Type: application/x-www-form-urlencoded']);
+    $j = $resp ? json_decode($resp, true) : null;
+    $token = $j['data']['access_token'] ?? null;
+    if (!$token) {
+        $msg = (string) ($j['message'] ?? "HTTP $st");
+        mm_db()->prepare('UPDATE broker_accounts SET last_error = ?, updated_at = ? WHERE id = ?')->execute([substr('Login: ' . $msg, 0, 250), mm_now(), $a['id']]);
+        throw new RuntimeException($msg);
+    }
+    mm_db()->prepare("UPDATE broker_accounts SET session_enc = ?, session_date = ?, broker_user = ?, last_error = '', updated_at = ? WHERE id = ?")
+        ->execute([mm_encrypt($token), mm_ist_today(), substr((string) ($j['data']['user_id'] ?? ''), 0, 60), mm_now(), $a['id']]);
+}
+
+function mm_kite_call(array $a, string $path): array {
+    if (($a['session_date'] ?? '') !== mm_ist_today() || empty($a['session_enc'])) mm_json(401, ['error' => 'Log in to this Zerodha account for today first', 'needsLogin' => true, 'accountId' => (int) $a['id']]);
+    $token = mm_decrypt((string) $a['session_enc']);
+    [$st, $resp, $err] = mm_broker_http('GET', MM_BROKERS['zerodha']['api_url'] . $path, null, ['X-Kite-Version: 3', 'Authorization: token ' . $a['api_key'] . ':' . $token]);
+    $j = $resp ? json_decode($resp, true) : null;
+    if (!is_array($j)) throw new RuntimeException('Could not reach Zerodha' . ($err ? ": $err" : ''));
+    if (($j['status'] ?? '') !== 'success') {
+        if (($j['error_type'] ?? '') === 'TokenException' || $st === 403) {
+            mm_db()->prepare('UPDATE broker_accounts SET session_enc = NULL, session_date = NULL, updated_at = ? WHERE id = ?')->execute([mm_now(), $a['id']]);
+            mm_json(401, ['error' => 'Zerodha session expired. Log in to this account again.', 'needsLogin' => true, 'accountId' => (int) $a['id']]);
+        }
+        throw new RuntimeException('Zerodha: ' . ($j['message'] ?? "HTTP $st"));
+    }
+    return $j['data'] ?? [];
+}
+
+// Same shape as the ICICI holdings, so the app's Holdings, My money and X-ray work unchanged
+function mm_kite_holdings(array $a): array {
+    $out = ['holdings' => [], 'positions' => [], 'notes' => [], 'symbols' => []];
+    try {
+        foreach (mm_kite_call($a, 'portfolio/holdings') as $h) {
+            $sym = strtoupper((string) $h['tradingsymbol']);
+            $out['holdings'][] = ['stock_code' => $sym, 'quantity' => (float) ($h['quantity'] ?? 0) + (float) ($h['t1_quantity'] ?? 0), 'average_price' => (float) ($h['average_price'] ?? 0),
+                'current_market_price' => (float) ($h['last_price'] ?? 0), 'pnl' => (float) ($h['pnl'] ?? 0), 'exchange_code' => $h['exchange'] ?? 'NSE'];
+            $out['symbols'][$sym] = $sym;
+        }
+    } catch (Throwable $e) { $out['notes'][] = 'Holdings: ' . $e->getMessage(); }
+    try {
+        foreach ((mm_kite_call($a, 'portfolio/positions')['net'] ?? []) as $p) {
+            if ((float) ($p['quantity'] ?? 0) == 0 && (float) ($p['pnl'] ?? 0) == 0) continue;
+            $sym = strtoupper((string) $p['tradingsymbol']);
+            $out['positions'][] = ['stock_code' => $sym, 'quantity' => (float) $p['quantity'], 'average_price' => (float) ($p['average_price'] ?? 0), 'ltp' => (float) ($p['last_price'] ?? 0),
+                'pnl' => (float) ($p['pnl'] ?? 0), 'product_type' => $p['product'] ?? '', 'exchange_code' => $p['exchange'] ?? ''];
+            $out['symbols'][$sym] = $sym;
+        }
+    } catch (Throwable $e) { $out['notes'][] = 'Positions: ' . $e->getMessage(); }
+    $out['at'] = time();
+    return $out;
+}
+
+function mm_kite_funds(array $a): array {
+    $m = mm_kite_call($a, 'user/margins');
+    $eq = $m['equity'] ?? [];
+    return ['bank' => isset($eq['net']) ? (float) $eq['net'] : null, 'equity' => isset($eq['utilised']['debits']) ? (float) $eq['utilised']['debits'] : null, 'fno' => null,
+        'free' => isset($eq['available']['live_balance']) ? (float) $eq['available']['live_balance'] : (isset($eq['net']) ? (float) $eq['net'] : null), 'keys' => array_keys($eq)];
 }

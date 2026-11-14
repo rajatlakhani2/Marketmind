@@ -449,7 +449,7 @@
         <div class="users-grid">
           <label>Broker<select name="broker">
             ${Object.entries(d.brokers).map(([k, n]) => `<option value="${k}">${esc(n)}</option>`).join('')}
-            <option disabled>Zerodha (coming next)</option><option disabled>Groww (coming soon)</option>
+            <option disabled>Groww (coming soon)</option>
             <option disabled>Upstox (coming soon)</option><option disabled>Angel One (coming soon)</option>
           </select></label>
           <label>Name for this account<input name="label" maxlength="60" placeholder="e.g. ICICI · Mom" /></label>
@@ -464,6 +464,13 @@
             <li>Copy the <b>API key</b> and <b>secret</b> it shows into this form.</li>
           </ol>
           The secret is stored encrypted on the MarketMind server and is never shown again.</details>
+        <details class="auth-text"><summary>How to get a Zerodha (Kite Connect) API key and secret</summary>
+          <ol class="auth-steps">
+            <li>The account holder signs in at <b>developers.kite.trade</b> with their Zerodha login and creates an app (check Zerodha's site for the current plan and price).</li>
+            <li>Set the redirect URL to <code>${esc(new URL('api/kite.php', location.href).href)}</code></li>
+            <li>Copy the app's <b>API key</b> and <b>API secret</b> into this form, choose <b>Zerodha (Kite)</b>, and click <b>Log in today</b>.</li>
+          </ol>
+          MarketMind only reads holdings, positions and cash. Zerodha sessions end every morning, so log in once a day.</details>
         <p class="auth-error"></p>
         <button type="submit" class="btn-primary">Add account</button>
         <button type="button" class="btn-secondary hidden" id="broker-cancel-edit">Cancel</button>

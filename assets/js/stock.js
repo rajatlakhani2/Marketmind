@@ -121,6 +121,10 @@
             <div id="kd-fund"><div class="skeleton"></div></div>
           </section>
           <section class="card st-card st-o4">
+            <div class="st-card-head"><h3>Peers</h3><span class="muted small">same industry, NIFTY 500</span></div>
+            <div id="kd-peers"><div class="skeleton"></div></div>
+          </section>
+          <section class="card st-card st-o4">
             <div class="st-card-head"><h3>My rules</h3><span class="muted small">your own criteria</span></div>
             <div id="kd-rules"><div class="skeleton"></div></div>
           </section>

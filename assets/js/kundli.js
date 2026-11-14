@@ -46,6 +46,31 @@
     };
   }
 
+  // ---------- today's NIFTY 500 figures (evening scan) ----------
+  let MET = null;
+  async function loadMetrics() {
+    if (MET) return MET;
+    const d = await j('api/swing.php?action=metrics');
+    if (!d.rows) throw new Error(d.note || 'No scan yet');
+    const map = {};
+    for (const [sym, r] of Object.entries(d.rows)) { const o = {}; d.cols.forEach((c, i) => (o[c] = r[i])); map[sym] = o; }
+    MET = { date: d.date, map };
+    return MET;
+  }
+  const isFund = c => FUND_FIELDS.includes(c.f) || (typeof c.v === 'string' && FUND_FIELDS.includes(c.v));
+
+  // Stocks passing each of your rules today (technical conditions; fundamentals need the stock's kundli)
+  async function scanRules() {
+    const [rules, met] = await Promise.all([loadRules(), loadMetrics()]);
+    return { date: met.date, results: rules.map(r => {
+      const tech = { ...r, conds: r.conds.filter(c => !isFund(c)) };
+      if (!tech.conds.length) return { rule: r, hits: [], onlyFund: true };
+      const hits = Object.entries(met.map).filter(([, m]) => evalRule(tech, m).pass).map(([sym, m]) => ({ sym, ...m }))
+        .sort((a, b) => (b.chg3m ?? -999) - (a.chg3m ?? -999));
+      return { rule: r, hits, skipped: r.conds.length - tech.conds.length };
+    }) };
+  }
+
   // ---------- your rules ----------
   const TEMPLATES = [
     { name: 'Trend template breakout (best in research)', conds: [{ f: 'trendTemplate', op: '>', v: 0.5 }, { f: 'breakout20', op: '>', v: 0.5 }] },
@@ -209,6 +234,7 @@
     }).catch(() => {});
     if (!live()) return;
     drawFund(fund);
+    drawPeers(sym, fund).catch(() => put('kd-peers', '<p class="muted">Peers show after the first evening scan.</p>'));
     drawFo(fo);
     drawRecord(rec);
     // the daily/weekly analysis comes from the Stock page itself
@@ -297,6 +323,42 @@
       ${fo.fut ? `<p>Futures (${esc(fo.futExp)}): ${rs(fo.fut.ltp)} · premium ${pct(fo.premium, 2)} · OI change ${fo.fut.oiChange != null ? num(fo.fut.oiChange, 0) : '—'}</p>` : ''}
       <p class="muted small">Expiry ${esc(fo.expiry)} · lot ${fo.u.lot}. Today's OI change: PCR ${num(fo.pcrChg, 2)} (above 1 = more puts written today, usually supportive). <a href="#" data-gofno>Open option chain</a></p>`);
     const g = document.querySelector('[data-gofno]'); if (g) g.onclick = e => { e.preventDefault(); root.Nav && Nav.go('fno'); };
+  }
+
+  async function drawPeers(sym, fund) {
+    const met = await loadMetrics(), me = met.map[sym];
+    if (!me) return put('kd-peers', '<p class="muted">Not in NIFTY 500, so no peer list.</p>');
+    const order = { L: 0, N: 1, M: 2, S: 3 };
+    const peers = Object.entries(met.map).filter(([s, m]) => s !== sym && m.ind === me.ind).sort((a, b) => order[a[1].g] - order[b[1].g] || (b[1].chg3m ?? 0) - (a[1].chg3m ?? 0)).slice(0, 5);
+    const funds = await Promise.all(peers.map(([s]) => j(`api/kundli.php?action=fundamentals&symbol=${encodeURIComponent(s)}`).catch(() => ({}))));
+    const rows = [[sym, me, fund && !fund.err ? fund : {}], ...peers.map(([s, m], i) => [s, m, funds[i]])];
+    const best = (k, low) => { const v = rows.map(r => (k in r[1] ? r[1][k] : r[2][k])).filter(x => x != null); return v.length ? (low ? Math.min(...v) : Math.max(...v)) : null; };
+    const cell = (r, k, low, fmt) => { const v = k in r[1] ? r[1][k] : r[2][k]; return `<td class="${v != null && v === best(k, low) ? 'kd-best' : ''}">${v == null ? '—' : fmt(v)}</td>`; };
+    put('kd-peers', `<div class="fno-tablewrap"><table class="screener-table"><thead><tr><th>Stock</th><th>P/E</th><th>ROE</th><th>1 month</th><th>3 months</th><th>From 52w high</th><th>Trend</th></tr></thead><tbody>
+      ${rows.map(r => `<tr${r[0] === sym ? ' class="sel"' : ` data-sym="${esc(r[0])}"`}><td><b>${esc(r[0])}</b></td>${cell(r, 'pe', true, v => num(v, 1))}${cell(r, 'roe', false, v => num(v, 1) + '%')}${cell(r, 'chg1m', false, v => pct(v))}${cell(r, 'chg3m', false, v => pct(v))}${cell(r, 'from52h', false, v => pct(v))}<td>${r[1].trendTemplate ? '<span class="up">strong</span>' : r[1].price > r[1].sma200 ? 'up' : '<span class="down">down</span>'}</td></tr>`).join('')}</tbody></table></div>
+      <p class="muted small">${esc(me.ind)} · figures from the ${esc(met.date)} scan · best in each column highlighted. <button class="link-btn" data-compare>Compare with another stock…</button></p>`);
+    const b = document.querySelector('[data-compare]'); if (b) b.onclick = () => { const o = prompt('Compare with which NSE symbol?', peers[0] ? peers[0][0] : ''); if (o) compare(sym, o.trim().toUpperCase()); };
+  }
+
+  // Two kundlis side by side
+  async function compare(a, b) {
+    const ov = document.getElementById('modal-overlay');
+    ov.innerHTML = '<div class="modal modal-wide"><p class="muted">Comparing…</p></div>'; ov.classList.remove('hidden');
+    const met = await loadMetrics().catch(() => ({ map: {} }));
+    const [fa, fb] = await Promise.all([a, b].map(s => j(`api/kundli.php?action=fundamentals&symbol=${encodeURIComponent(s)}`).catch(() => ({}))));
+    const A = { ...(met.map[a] || {}), ...fa, profitGrowth: metrics(null, fa).profitGrowth }, B = { ...(met.map[b] || {}), ...fb, profitGrowth: metrics(null, fb).profitGrowth };
+    const ROWS = [['Price', 'price', null, v => rs(v)], ['P/E', 'pe', 'low', v => num(v, 1)], ['ROE', 'roe', 'high', v => num(v, 1) + '%'], ['Debt ÷ equity', 'de', 'low', v => num(v, 2)],
+      ['Profit growth YoY', 'profitGrowth', 'high', v => pct(v)], ['1-month change', 'chg1m', 'high', v => pct(v)], ['3-month change', 'chg3m', 'high', v => pct(v)], ['From 52-week high', 'from52h', 'high', v => pct(v)],
+      ['RSI (14)', 'rsi', null, v => num(v, 0)], ['Strong uptrend (template)', 'trendTemplate', 'high', v => (v ? 'yes' : 'no')], ['Industry', 'ind', null, v => esc(v)]];
+    const win = (x, y, w) => (w && x != null && y != null && x !== y ? ((w === 'low') === (x < y) ? 1 : 2) : 0);
+    let sa = 0, sb = 0;
+    const body = ROWS.map(([n, k, w, f]) => { const x = A[k], y = B[k], wv = win(x, y, w); if (wv === 1) sa++; if (wv === 2) sb++; return `<tr><td>${n}</td><td class="${wv === 1 ? 'kd-best' : ''}">${x == null ? '—' : f(x)}</td><td class="${wv === 2 ? 'kd-best' : ''}">${y == null ? '—' : f(y)}</td></tr>`; }).join('');
+    ov.innerHTML = `<div class="modal modal-wide"><button class="modal-close" data-x>&times;</button><h3>${esc(a)} vs ${esc(b)}</h3>
+      <table class="screener-table"><thead><tr><th></th><th>${esc(a)}</th><th>${esc(b)}</th></tr></thead><tbody>${body}</tbody></table>
+      <p><b>${sa > sb ? esc(a) : sb > sa ? esc(b) : 'Neither'}</b> ${sa === sb ? 'stands out' : `is better on ${Math.max(sa, sb)} of ${sa + sb} compared lines`}. Open each kundli for the full verdict.</p>
+      <p><button class="btn-secondary btn-small" data-open="${esc(b)}">Open ${esc(b)} kundli</button> <button class="btn-secondary" data-x>Close</button></p></div>`;
+    ov.querySelectorAll('[data-x]').forEach(x => (x.onclick = () => { ov.classList.add('hidden'); ov.innerHTML = ''; }));
+    ov.querySelector('[data-open]').onclick = () => { ov.classList.add('hidden'); ov.innerHTML = ''; root.Stock && Stock.open(b); };
   }
 
   function drawRecord(r) {
@@ -391,5 +453,5 @@
     if (FS.code) renderFund(body); else body.innerHTML = '<p class="home-empty">Search for a fund to see its kundli: growth vs NIFTY, returns, worst fall, consistency and a Keep / Review call.</p>';
   }
 
-  root.Kundli = { enrich, openRules, renderFundPage, metrics, FIELDS };
+  root.Kundli = { enrich, openRules, renderFundPage, metrics, FIELDS, scanRules, loadRules, compare };
 })(typeof window !== 'undefined' ? window : globalThis);

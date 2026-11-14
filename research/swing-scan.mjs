@@ -115,4 +115,18 @@ const out = {
   rules: 'NIFTY 500 stocks in a strong uptrend (price > 150-day > 200-day average, 200-day rising for a month, 50-day above 150-day, at least 30% above the 52-week low and within 25% of the high) closing above their 20-day high, while NIFTY is above its 200-day average. Paper trade: buy next open, stop 2×ATR, trail the 10-day low once up 1R, exit after 60 days, 0.25% costs. Quantity = ₹500 risk (0.5% of ₹1 lakh).',
 };
 writeFileSync(outPath, JSON.stringify(out));
+
+// Today's figures for every stock (for "my rules" scans, peers and compare in the app)
+const rsi14 = c => { if (c.length < 16) return null; let g = 0, l = 0; for (let i = 1; i <= 14; i++) { const d = c[i] - c[i - 1]; d > 0 ? (g += d) : (l -= d); } g /= 14; l /= 14;
+  for (let i = 15; i < c.length; i++) { const d = c[i] - c[i - 1]; g = (g * 13 + Math.max(d, 0)) / 14; l = (l * 13 + Math.max(-d, 0)) / 14; } return l === 0 ? 100 : 100 - 100 / (1 + g / l); };
+const rows = {};
+for (const s of syms) {
+  const b = bars[s]; if (!b || b.length < 30) continue;
+  const i = b.length - 1, c = b.map(x => x.c), v = b.map(x => x.v), p = c[i], st = b.length >= 260 ? setup(b, i) : null;
+  const r1 = x => (x == null || !isFinite(x) ? null : +x.toFixed(2));
+  const v20 = v.length > 21 ? v.slice(-21, -1).reduce((a, x) => a + x, 0) / 20 : null;
+  rows[s] = [r1(p), r1(rsi14(c.slice(-120))), r1(sma(c, 50, i)), r1(sma(c, 150, i)), r1(sma(c, 200, i)), r1(i >= 21 ? (p / c[i - 21] - 1) * 100 : null), r1(i >= 63 ? (p / c[i - 63] - 1) * 100 : null),
+    r1((p / Math.max(...c.slice(-252)) - 1) * 100), r1(v20 ? v[i] / v20 : null), st && st.trend ? 1 : 0, st && st.breakout ? 1 : 0, U[s].g, U[s].ind, b[i].d];
+}
+writeFileSync(outPath.replace(/swing\.json$/, 'metrics.json'), JSON.stringify({ date: today, cols: ['price', 'rsi', 'sma50', 'sma150', 'sma200', 'chg1m', 'chg3m', 'from52h', 'volRatio', 'trendTemplate', 'breakout20', 'g', 'ind', 'd'], rows }));
 console.log(`${today}: fetched ${fetched}/${syms.length}, market ${marketUp ? 'up' : 'down'}, ${signals.length} signals, ${near.length} near, ${out.open.length} open, ${closed.length} closed (${out.closedStats.avgR ?? '—'}R avg)`);

@@ -43,6 +43,7 @@
   // ---------- card layout: order and hidden cards, per user (synced through Account) ----------
   const CARDS = [
     { id: 'home-swing', title: "Today's swing setups", btn: ['insights', 'Tracker'] },
+    { id: 'home-rules', title: 'Passed my rules today', btn: null },
     { id: 'home-money', title: 'My money', btn: ['holdings', 'Holdings'] },
     { id: 'home-risk', title: 'Risk', btn: ['trading', 'Orders'], admin: true },
     { id: 'home-xray', title: 'Portfolio X-ray', btn: ['holdings', 'Holdings'] },
@@ -60,7 +61,7 @@
   function layout(admin) {
     let saved = {}; try { saved = JSON.parse(localStorage.getItem(LKEY)) || {}; } catch { /* default */ }
     let lay = 'classic'; try { lay = JSON.parse(localStorage.getItem('marketmind_layout')) || 'classic'; } catch { /* default */ }
-    const simple = ['home-swing', 'home-money', 'home-watch'];
+    const simple = ['home-swing', 'home-rules', 'home-money', 'home-watch'];
     const order = saved.order || [], hidden = new Set(saved.hidden || (lay === 'kundli' ? CARDS.map(c => c.id).filter(id => !simple.includes(id)) : admin ? [] : ['home-mg']));
     return CARDS.filter(c => admin || !c.admin)
       .sort((a, b) => (order.indexOf(a.id) + 1 || 99) - (order.indexOf(b.id) + 1 || 99))
@@ -125,6 +126,19 @@
     mindguru(list);
     lesson();
     swing();
+    myRules();
+  }
+
+  async function myRules() {
+    if (!root.Kundli) return;
+    try {
+      const r = await Kundli.scanRules();
+      if (!r.results.length) return fill('home-rules', '<p class="home-empty">No rules yet. Create one under your name → <b>My rules</b> (try the "Trend template breakout" template), and every evening MarketMind lists the NIFTY 500 stocks that pass it.</p><button class="btn-secondary btn-small" data-myrules>Create a rule</button>');
+      fill('home-rules', r.results.map(x => `<div class="rule-hit"><b>${esc(x.rule.name)}</b> <span class="muted">${x.onlyFund ? 'uses fundamentals only: check it in a kundli' : `${x.hits.length} stock${x.hits.length === 1 ? '' : 's'}`}</span>
+        ${x.hits.length ? `<div class="chips">${x.hits.slice(0, 12).map(h => `<button data-sym="${esc(h.sym)}">${esc(h.sym)}</button>`).join('')}${x.hits.length > 12 ? `<span class="muted">+${x.hits.length - 12} more</span>` : ''}</div>` : ''}
+        ${x.skipped ? `<small class="muted">${x.skipped} fundamentals condition(s) checked in each stock's kundli</small>` : ''}</div>`).join('') + `<p class="citation">NIFTY 500, scan of ${esc(r.date)}. Tap a stock for its kundli.</p>`);
+    } catch (e) { fill('home-rules', `<p class="home-empty">${esc(e.message)}. The list fills after the evening scan.</p>`); }
+    const b = document.querySelector('[data-myrules]'); if (b) b.onclick = () => Kundli.openRules(() => myRules());
   }
 
   // Trend-template breakouts from the evening scan, with the paper record so far

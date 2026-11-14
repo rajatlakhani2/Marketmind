@@ -45,4 +45,4 @@ jobs:
           AUTH="Authorization: cpanel $CP_USER:$CP_TOKEN"; BASE="https://$CP_HOST:2083"
           curl -sS -H "$AUTH" -G "$BASE/json-api/cpanel" --data-urlencode cpanel_jsonapi_user=$CP_USER --data-urlencode cpanel_jsonapi_apiversion=2 \
             --data-urlencode cpanel_jsonapi_module=Fileman --data-urlencode cpanel_jsonapi_func=mkdir --data-urlencode path=/home/$CP_USER --data-urlencode name=marketmind-data >/dev/null || true
-          curl -sS --fail-with-body -H "$AUTH" "$BASE/execute/Fileman/upload_files" -F dir=/home/$CP_USER/marketmind-data -F overwrite=1 -F "file-1=@swing.json" | head -c 300; echo
+          curl -sS --fail-with-body -H "$AUTH" "$BASE/execute/Fileman/upload_files" -F dir=/home/$CP_USER/marketmind-data -F overwrite=1 -F "file-1=@swing.json" -F "file-2=@metrics.json" | head -c 400; echo

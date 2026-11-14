@@ -87,7 +87,7 @@ try {
     if ($action === 'login') {
         $a = mm_broker_account($uid, (int) ($_GET['id'] ?? 0));
         mm_broker_set_pending($uid, (int) $a['id']); // breeze.php's callback finishes the login for this account
-        header('Location: ' . MM_BROKERS[$a['broker']]['login_url'] . '?api_key=' . rawurlencode($a['api_key']));
+        header('Location: ' . MM_BROKERS[$a['broker']]['login_url'] . rawurlencode($a['api_key']));
         exit;
     }
 
@@ -112,12 +112,12 @@ try {
 
     if ($action === 'funds') {
         $a = mm_broker_viewable($u, (int) ($_GET['id'] ?? 0));
-        mm_json(200, mm_icici_funds($a) + ['account' => mm_broker_public($a)]);
+        mm_json(200, ($a['broker'] === 'zerodha' ? mm_kite_funds($a) : mm_icici_funds($a)) + ['account' => mm_broker_public($a)]);
     }
 
     if ($action === 'holdings') {
         $a = mm_broker_viewable($u, (int) ($_GET['id'] ?? 0));
-        $out = mm_icici_holdings($a);
+        $out = $a['broker'] === 'zerodha' ? mm_kite_holdings($a) : mm_icici_holdings($a);
         $out['account'] = mm_broker_public($a);
         mm_json(200, $out);
     }
