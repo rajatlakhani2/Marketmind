@@ -21,6 +21,7 @@
 
   // ---------- metrics used by the verdict and by your rules ----------
   const FIELDS = {
+    trendTemplate: 'Trend template (1 = yes)', breakout20: 'Above 20-day high (1 = yes)', sma150: '150-day average',
     price: 'Price ₹', rsi: 'RSI (14)', sma50: '50-day average', sma200: '200-day average', chg1m: '1-month change %', chg3m: '3-month change %',
     from52h: '% from 52-week high', volRatio: 'Volume ÷ 20-day average', pe: 'P/E', roe: 'ROE %', de: 'Debt ÷ equity',
     profitGrowth: 'Profit growth YoY %', promoter: 'Promoter holding %', pledge: 'Pledged %', delivery: 'Delivery %',
@@ -30,7 +31,11 @@
     const back = n => (c.length > n ? (p / c[c.length - 1 - n] - 1) * 100 : null);
     const hi = c.length ? Math.max(...c.slice(-252)) : null;
     const q = (fund && fund.q) || [], lastQ = q[q.length - 1], yearAgo = q[q.length - 5];
+    const s150 = sma(c, 150), s200ago = c.length > 220 ? sma(c.slice(0, -20), 200) : null, lo = c.length ? Math.min(...c.slice(-252)) : null;
+    const hi20 = h.length > 21 ? Math.max(...h.slice(-21, -1).map(x => x.high)) : null;
     return {
+      trendTemplate: !!(s150 && sma(c, 200) && s200ago && p > s150 && s150 > sma(c, 200) && sma(c, 200) > s200ago && sma(c, 50) > s150 && lo && p > 1.3 * lo && hi && p > 0.75 * hi) ? 1 : 0,
+      breakout20: hi20 && p > hi20 ? 1 : 0, sma150: s150,
       price: p, rsi: root.MarketData && c.length > 15 ? MarketData.rsi(c, 14) : null, sma50: sma(c, 50), sma200: sma(c, 200),
       chg1m: back(21), chg3m: back(63), from52h: hi ? (p / hi - 1) * 100 : null,
       volRatio: v.length > 21 && sma(v.slice(0, -1), 20) ? v[v.length - 1] / sma(v.slice(0, -1), 20) : null,
@@ -43,6 +48,7 @@
 
   // ---------- your rules ----------
   const TEMPLATES = [
+    { name: 'Trend template breakout (best in research)', conds: [{ f: 'trendTemplate', op: '>', v: 0.5 }, { f: 'breakout20', op: '>', v: 0.5 }] },
     { name: '52-week high breakout', conds: [{ f: 'from52h', op: '>', v: -3 }, { f: 'volRatio', op: '>', v: 1.5 }, { f: 'price', op: '>', v: 'sma200' }] },
     { name: 'Strong trend pullback', conds: [{ f: 'price', op: '>', v: 'sma200' }, { f: 'sma50', op: '>', v: 'sma200' }, { f: 'rsi', op: '<', v: 45 }] },
     { name: 'Value + momentum', conds: [{ f: 'pe', op: '<', v: 25 }, { f: 'roe', op: '>', v: 15 }, { f: 'chg3m', op: '>', v: 0 }] },
@@ -66,6 +72,47 @@
   }
   const condText = (c, p) => `${FIELDS[c.f] || c.f} ${c.op} ${typeof c.v === 'string' ? (FIELDS[c.v] || c.v) : c.v}${p ? ` <span class="muted">(${p.a == null ? 'no data' : num(p.a)}${typeof c.v === 'string' && p.b != null ? ' vs ' + num(p.b) : ''})</span>` : ''}`;
 
+  // ---------- test a rule: 5 years, 100 stocks, NIFTY above its 200-day; exit like the research's best strategy ----------
+  const FUND_FIELDS = ['pe', 'roe', 'de', 'profitGrowth', 'promoter', 'pledge', 'delivery'];
+  async function testRule(rule, progress) {
+    const conds = rule.conds.filter(c => !FUND_FIELDS.includes(c.f) && !(typeof c.v === 'string' && FUND_FIELDS.includes(c.v)));
+    const skipped = rule.conds.length - conds.length;
+    if (!conds.length) throw new Error('This rule only uses fundamentals, which have no daily history to test against.');
+    const syms = root.Backtest && Backtest.universe ? Backtest.universe() : [];
+    const parse = x => MarketData.parseYahooChart(x).candles;
+    const nifty = parse(await j('api/chart.php?symbol=%5ENSEI&interval=1d&range=5y'));
+    const nUp = new Map(); nifty.forEach((b, i) => { const s2 = i >= 199 ? nifty.slice(i - 199, i + 1).reduce((a, x) => a + x.close, 0) / 200 : null; nUp.set(new Date(b.time).toISOString().slice(0, 10), s2 != null && b.close > s2); });
+    const trades = []; let done = 0;
+    const one = async sym => {
+      let h; try { h = parse(await j(`api/chart.php?symbol=${encodeURIComponent(sym + '.NS')}&interval=1d&range=5y`)); } catch { return; }
+      let busy = -1;
+      for (let i = 260; i < h.length - 1; i += 1) {
+        if (i <= busy) continue;
+        const dkey = new Date(h[i].time).toISOString().slice(0, 10);
+        if (!nUp.get(dkey)) continue;
+        const win = h.slice(Math.max(0, i - 299), i + 1), m = metrics({ priceHistory: win }, null, null);
+        if (!conds.every(c => { const a = m[c.f], b = typeof c.v === 'string' ? m[c.v] : +c.v; return a != null && b != null && (c.op === '>' ? a > b : a < b); })) continue;
+        // ATR(14), entry next open, stop 2 ATR, trail 10-day low once +1R, max 60 days, 0.25% costs
+        let atr = 0; for (let k = i - 13; k <= i; k++) atr += Math.max(h[k].high - h[k].low, Math.abs(h[k].high - h[k - 1].close), Math.abs(h[k].low - h[k - 1].close)); atr /= 14;
+        const f = i + 1, fill = h[f].open, risk = 2 * atr; let stop = fill - risk, armed = false, exit = null, e = Math.min(h.length - 1, f + 60);
+        for (let k = f; k <= Math.min(h.length - 1, f + 60); k++) {
+          if (k > f && armed) stop = Math.max(stop, Math.min(...h.slice(k - 10, k).map(x => x.low)));
+          if (h[k].low <= stop) { exit = Math.min(k === f ? fill : h[k].open, stop); e = k; break; }
+          if (h[k].high >= fill + risk) armed = true;
+        }
+        if (exit == null) exit = h[e].close;
+        busy = e;
+        trades.push({ sym, d: dkey, r: (exit - fill) / risk - 0.0025 * fill / risk, ret: (exit / fill - 1) * 100 - 0.25 });
+      }
+    };
+    const queue = [...syms];
+    await Promise.all([1, 2, 3, 4].map(async () => { while (queue.length) { await one(queue.shift()); progress && progress(++done, syms.length); } }));
+    const fy = d => { const y = +d.slice(0, 4), mo = +d.slice(5, 7), s0 = mo >= 4 ? y : y - 1; return `FY ${String(s0).slice(2)}-${String(s0 + 1).slice(2)}`; };
+    const by = {}; trades.forEach(t => (by[fy(t.d)] = by[fy(t.d)] || []).push(t));
+    const st = l => ({ n: l.length, win: l.length ? l.filter(t => t.r > 0).length / l.length * 100 : 0, avg: l.length ? l.reduce((a, t) => a + t.r, 0) / l.length : 0, ret: l.length ? l.reduce((a, t) => a + t.ret, 0) / l.length : 0 });
+    return { all: st(trades), years: Object.entries(by).sort().map(([k, l]) => [k, st(l)]), skipped, stocks: syms.length };
+  }
+
   function openRules(onDone) {
     const ov = document.getElementById('modal-overlay');
     let list = (RULES || []).map(r => JSON.parse(JSON.stringify(r))), edit = null;
@@ -78,7 +125,7 @@
             ${fieldSel('vf', typeof c.v === 'string' ? c.v : '#', true)}<input type="number" step="any" data-vn value="${typeof c.v === 'string' ? '' : esc(c.v)}" ${typeof c.v === 'string' ? 'hidden' : ''}><button class="btn-secondary btn-small" data-rm="${i}">✕</button></div>`).join('')}
           <button class="btn-secondary btn-small" data-addc>+ Condition</button> <button class="btn-primary btn-small" data-save>Save rule</button> <button class="btn-secondary btn-small" data-cancel>Cancel</button></div>`
         : `<ul class="users-list">${list.map((r, i) => `<li class="user-row"><div class="user-main"><b>${esc(r.name)}</b><div class="text-muted user-meta">${r.conds.map(c => condText(c)).join(' · ')}</div></div>
-            <div class="user-actions"><button class="btn-secondary btn-small" data-ed="${i}">Edit</button><button class="btn-danger btn-small" data-del="${i}">Delete</button></div></li>`).join('') || '<p class="home-empty">No rules yet.</p>'}</ul>
+            <div class="user-actions"><button class="btn-primary btn-small" data-test="${i}">Test</button><button class="btn-secondary btn-small" data-ed="${i}">Edit</button><button class="btn-danger btn-small" data-del="${i}">Delete</button></div></li>`).join('') || '<p class="home-empty">No rules yet.</p>'}</ul>
           <p><button class="btn-primary btn-small" data-new>+ New rule</button> <select data-tpl><option value="">Start from a template…</option>${TEMPLATES.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('')}</select></p>`}
         <button class="btn-secondary" data-x>Close</button></div>`;
       ov.querySelectorAll('[data-x]').forEach(b => (b.onclick = () => { ov.classList.add('hidden'); ov.innerHTML = ''; onDone && onDone(); }));
@@ -103,6 +150,18 @@
         ov.querySelector('[data-new]').onclick = () => { edit = { name: '', conds: [{ f: 'price', op: '>', v: 'sma200' }] }; draw(); };
         ov.querySelector('[data-tpl]').onchange = e => { if (e.target.value !== '') { edit = JSON.parse(JSON.stringify(TEMPLATES[+e.target.value])); draw(); } };
         ov.querySelectorAll('[data-ed]').forEach(b => (b.onclick = () => { edit = { ...JSON.parse(JSON.stringify(list[+b.dataset.ed])), i: +b.dataset.ed }; draw(); }));
+        ov.querySelectorAll('[data-test]').forEach(b => (b.onclick = async () => {
+          const r = list[+b.dataset.test], row = b.closest('li'), out = document.createElement('div');
+          out.className = 'rule-test'; row.after(out); b.disabled = true;
+          try {
+            const res = await testRule(r, (n, t) => { out.innerHTML = `<p class="muted">Testing on ${t} stocks, 5 years… ${n}/${t}</p>`; });
+            const a = res.all, verdict = a.n < 30 ? 'Too few trades to judge.' : a.avg >= 0.1 && res.years.filter(([, y]) => y.avg > 0).length >= res.years.length * 0.6 ? 'Promising: positive on average and in most years.' : a.avg > 0 ? 'Small edge: positive overall but weak or uneven.' : 'No edge: this rule lost money on average.';
+            out.innerHTML = `<p><b>${a.n} trades · ${a.win.toFixed(0)}% winners · average ${a.avg >= 0 ? '+' : ''}${a.avg.toFixed(2)}R (${a.ret >= 0 ? '+' : ''}${a.ret.toFixed(2)}% a trade)</b> — ${verdict}</p>
+              <table class="screener-table"><tbody>${res.years.map(([k, y]) => `<tr><td>${k}</td><td>${y.n} trades</td><td>${y.win.toFixed(0)}% win</td><td class="${y.avg > 0 ? 'up' : 'down'}">${y.avg >= 0 ? '+' : ''}${y.avg.toFixed(2)}R</td></tr>`).join('')}</tbody></table>
+              <p class="citation">Rules: only while NIFTY is above its 200-day average; buy next day's open; stop 2× ATR; once up 1R the stop trails the 10-day low; out after 60 days; 0.25% costs. ${res.skipped ? `${res.skipped} fundamentals condition(s) left out (no history). ` : ''}For comparison, MarketMind's best researched strategy averaged about +0.10R a trade. Past results don't guarantee future ones.</p>`;
+          } catch (e) { out.innerHTML = `<p class="auth-error">${esc(e.message)}</p>`; }
+          b.disabled = false;
+        }));
         ov.querySelectorAll('[data-del]').forEach(b => (b.onclick = async () => { list.splice(+b.dataset.del, 1); try { await saveRules(list); } catch (e) { toast(e.message, 'error'); } draw(); }));
       }
     };
@@ -177,6 +236,7 @@
       ['Daily trend is up', d.trend ? d.trend === 'Bullish' : null],
       ['Weekly trend is up', w.trend ? w.trend === 'Bullish' : null],
       ['Price is above its 200-day average', m.sma200 ? m.price > m.sma200 : null],
+      ['Strong uptrend (trend template: 50 > 150 > 200-day, near 52-week high)', m.sma150 ? m.trendTemplate === 1 : null],
       ['Not inside a daily sell (supply) zone', d.action ? d.action !== 'SELL' : null],
       ['RSI is not overbought (below 70)', m.rsi != null ? m.rsi < 70 : null],
       ['NIFTY is above its 200-day average', mk ? mk.above200 : null],

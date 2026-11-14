@@ -24,3 +24,20 @@ but almost all of it comes from 2020-21 and 2023-24; 6 of 10 financial years los
 With at most 5 trades open (closer to ₹1L capital): current rules −13R over 9.5 years, deepest drop 34R;
 trailing exit +55R, deepest drop 32R, positive in 3 of 10 years. Both are far from the paper-trading bar
 (deepest drop no more than 6R).
+
+## New entries, 15 Nov 2026 (`node research/strategies.mjs data [c]`)
+
+Raw daily bars, 99 stocks, NIFTY above its 200-day; stop 2×ATR; R per trade after 0.25% costs.
+
+| Entry (best exit) | Train FY17-25 | FY 25-26 | FY 26-27 | 5 open: total R, deepest drop, positive years |
+|---|---|---|---|---|
+| A 52-week-high breakout on volume (trail 3×ATR) | +0.12 | −0.16 | +0.00 | +38R, 43R, 6/10 |
+| B Tight range breakout (trail 10-day low) | +0.13 | −0.15 | +0.18 | +7R, 21R, 5/10 |
+| **C Trend template + 20-day high (trail 10-day low)** | **+0.13** | −0.18 | +0.06 | **+54R, 24R, 7/10** |
+| D Pullback in uptrend, RSI-2 < 10 (exit above 5-day avg) | −0.01 | +0.01 | +0.07 | −57R, 58R, 2/10 |
+| E Monthly top-5 momentum rotation | 12.9% a year vs NIFTY 10.1%, deepest fall −25%; behind NIFTY in 6 of 10 years | | | |
+
+C holds +0.10 to +0.14R a trade in the training years across small changes (10/50-day high, 1.5–3 ATR stop, volume filter),
+about double the current Combined system (+0.05R). It loses in FY 25-26 in every variant and needs the NIFTY filter
+(without it FY 26-27 is −0.26R). Profits again come mostly from trending years (FY 20-21, 23-24). Not proven for live money:
+added to the app as a kundli check and a rule template ("Trend template breakout"), to be tracked live.

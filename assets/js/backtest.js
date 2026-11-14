@@ -427,5 +427,5 @@
     </svg><div class="bt-legend">${list.map((s, i) => `<span><i style="background:${COLORS[i]}"></i>${esc(root.Plain ? Plain.name(s.id, s.name) : s.name)} <b class="${s.total >= 0 ? 'up' : 'down'}">${fmtR(s.total)}</b></span>`).join('')}</div></div>`;
   }
 
-  root.Backtest = { renderPage, _simulate: simulate, _summarise: summarise, _demandBounce: demandBounce };
+  root.Backtest = { renderPage, _simulate: simulate, _summarise: summarise, _demandBounce: demandBounce, universe: () => LARGE.concat(MID) };
 })(window);
