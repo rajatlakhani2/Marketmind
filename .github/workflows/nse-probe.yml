@@ -74,5 +74,15 @@ jobs:
               for res in yj["timeseries"]["result"]:
                   t=res["meta"]["type"][0]; print("yahoo", t, [(v["asOfDate"], v["reportedValue"]["raw"]) for v in res.get(t) or [] if v])
           except Exception as x: print("yahoo err", x)
+          show("quote-equity", f"/api/quote-equity?symbol={sym}", f"/get-quotes/equity?symbol={sym}")
+          show("trade_info", f"/api/quote-equity?symbol={sym}&section=trade_info", f"/get-quotes/equity?symbol={sym}")
+          show("shareholding", f"/api/corporate-share-holdings-master?index=equities&symbol={sym}", "/companies-listing/corporate-filings-shareholding-pattern")
+          show("pledge", f"/api/corporate-pledgedata?index=equities&symbol={sym}", "/companies-listing/corporate-filings-pledged-data")
+          show("bulk deals", "/api/historical/bulk-deals?from=01-11-2026&to=14-11-2026", "/report-detail/display-bulk-and-block-deals")
+          for u in ["https://api.mfapi.in/mf/119551", "https://api.mfapi.in/mf/search?q=parag%20parikh%20flexi"]:
+              try:
+                  b = urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": UA}), timeout=30).read().decode()
+                  j = json.loads(b); print("\n=====", u, "OK", (list(j.keys()) if isinstance(j, dict) else len(j)), b[:400])
+              except Exception as x: print("\n=====", u, "ERR", x)
           show("event calendar", "/api/event-calendar", "/companies-listing/corporate-filings-event-calendar")
           PY
