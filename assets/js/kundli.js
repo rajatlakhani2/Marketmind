@@ -202,6 +202,11 @@
       foPicture(sym).catch(e => ({ err: e.message })),
       loadRules(),
     ]);
+    j('api/swing.php?action=latest').then(d => {
+      const hit = d && d.signals && d.signals.find(x => x.sym === sym), open = d && d.open && d.open.find(x => x.sym === sym), near = d && d.near && d.near.find(x => x.sym === sym);
+      const msg = hit ? `📈 Today's trend-template breakout (scan ${d.date}): stop ₹${hit.stop}, ${hit.qty} shares for ₹500 risk.` : open ? `📈 In the swing paper record since ${open.signalDate}${open.r != null ? `, now ${open.r > 0 ? '+' : ''}${open.r.toFixed(2)}R` : ''}.` : near ? `👀 Within ${near.gap}% of a trend-template breakout (above ₹${near.trigger}).` : '';
+      if (msg && live()) put('kd-swing', `<p class="kd-swing">${msg}</p>`);
+    }).catch(() => {});
     if (!live()) return;
     drawFund(fund);
     drawFo(fo);

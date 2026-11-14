@@ -42,6 +42,7 @@
 
   // ---------- card layout: order and hidden cards, per user (synced through Account) ----------
   const CARDS = [
+    { id: 'home-swing', title: "Today's swing setups", btn: ['insights', 'Tracker'] },
     { id: 'home-money', title: 'My money', btn: ['holdings', 'Holdings'] },
     { id: 'home-risk', title: 'Risk', btn: ['trading', 'Orders'], admin: true },
     { id: 'home-xray', title: 'Portfolio X-ray', btn: ['holdings', 'Holdings'] },
@@ -59,7 +60,7 @@
   function layout(admin) {
     let saved = {}; try { saved = JSON.parse(localStorage.getItem(LKEY)) || {}; } catch { /* default */ }
     let lay = 'classic'; try { lay = JSON.parse(localStorage.getItem('marketmind_layout')) || 'classic'; } catch { /* default */ }
-    const simple = ['home-money', 'home-opps', 'home-watch'];
+    const simple = ['home-swing', 'home-money', 'home-watch'];
     const order = saved.order || [], hidden = new Set(saved.hidden || (lay === 'kundli' ? CARDS.map(c => c.id).filter(id => !simple.includes(id)) : admin ? [] : ['home-mg']));
     return CARDS.filter(c => admin || !c.admin)
       .sort((a, b) => (order.indexOf(a.id) + 1 || 99) - (order.indexOf(b.id) + 1 || 99))
@@ -123,6 +124,19 @@
     events(list);
     mindguru(list);
     lesson();
+    swing();
+  }
+
+  // Trend-template breakouts from the evening scan, with the paper record so far
+  async function swing() {
+    let d; try { d = await getJSON('api/swing.php?action=latest'); } catch (e) { return fill('home-swing', `<p class="home-empty">${esc(e.message)}</p>`); }
+    if (!d.date) return fill('home-swing', `<p class="home-empty">${esc(d.note || 'No scan yet.')} It runs every trading evening at about 5:15 pm.</p>`);
+    const cs = d.closedStats || {}, rec = cs.n ? `Paper record since ${esc(d.start)}: ${cs.n} closed trades, ${Math.round(cs.wins / cs.n * 100)}% winners, average ${cs.avgR > 0 ? '+' : ''}${cs.avgR}R · ${d.open.length} open` : `${d.open.length} paper trades open`;
+    const sig = d.signals.slice(0, 8);
+    fill('home-swing', `${!d.market.up ? '<p class="warn">NIFTY is below its 200-day average: no new buys (the strategy only works in uptrends).</p>' : ''}
+      ${sig.length ? `<ul class="q-list">${sig.map(x => `<li data-sym="${esc(x.sym)}"><div><b>${esc(x.sym)}</b><small>${esc(x.ind)} · stop ₹${x.stop} (${x.riskPct}%)</small></div><div class="q-num"><b>₹${x.close}</b><small>${x.qty} sh for ₹500 risk</small></div></li>`).join('')}</ul>`
+        : `<p class="home-empty">No breakout on ${esc(d.date)}.${d.near.length ? ` ${d.near.length} stocks are within 2% of a breakout: ${d.near.slice(0, 5).map(x => esc(x.sym)).join(', ')}.` : ''}</p>`}
+      <p class="citation">${rec}. Scan of ${esc(d.date)} (${d.fetched}/${d.universe} stocks).</p>`);
   }
 
   function lesson() {

@@ -1,0 +1,48 @@
+name: Swing scan
+
+# Every trading evening: scan NIFTY 500 for trend-template breakouts, update the paper record, and upload
+# swing.json to the server (outside public_html), where api/swing.php serves it to the app.
+# State (all paper trades) is kept in the swing-state branch.
+
+on:
+  schedule:
+    - cron: '45 11 * * 1-5'   # 17:15 IST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: swing-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      CP_USER: kuhuorgi
+      CP_HOST: ${{ vars.CPANEL_HOST || 'kuhu.org.in' }}
+      CP_TOKEN: ${{ secrets.CPANEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Load state
+        run: |
+          git fetch --depth=1 origin swing-state && git show origin/swing-state:state.json > state.json || echo "no state yet"
+      - name: Scan
+        run: node research/swing-scan.mjs state.json swing.json
+      - name: Save state
+        run: |
+          mkdir -p /tmp/st && cp state.json /tmp/st/ && cd /tmp/st
+          git init -q -b swing-state && git config user.name github-actions && git config user.email github-actions@users.noreply.github.com
+          git add state.json && git commit -qm "Swing state $(date -u +%F)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" swing-state
+      - name: Upload to server
+        if: env.CP_TOKEN != ''
+        run: |
+          set -euo pipefail
+          AUTH="Authorization: cpanel $CP_USER:$CP_TOKEN"; BASE="https://$CP_HOST:2083"
+          curl -sS -H "$AUTH" -G "$BASE/json-api/cpanel" --data-urlencode cpanel_jsonapi_user=$CP_USER --data-urlencode cpanel_jsonapi_apiversion=2 \
+            --data-urlencode cpanel_jsonapi_module=Fileman --data-urlencode cpanel_jsonapi_func=mkdir --data-urlencode path=/home/$CP_USER --data-urlencode name=marketmind-data >/dev/null || true
+          curl -sS --fail-with-body -H "$AUTH" "$BASE/execute/Fileman/upload_files" -F dir=/home/$CP_USER/marketmind-data -F overwrite=1 -F "file-1=@swing.json" | head -c 300; echo

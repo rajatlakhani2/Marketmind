@@ -109,14 +109,26 @@
     } catch (e) { put('in-opt', `<p class="home-empty">Needs ICICI logged in today${e.message ? ': ' + esc(e.message) : ''}.</p>`); }
   }
 
+  async function swingTracker() {
+    let d; try { d = await j('api/swing.php?action=latest'); } catch (e) { return put('in-swing', `<p class="home-empty">${esc(e.message)}</p>`); }
+    if (!d.date) return put('in-swing', `<p class="home-empty">${esc(d.note || 'No scan yet.')}</p>`);
+    const cs = d.closedStats || {}, row = t => `<tr data-sym="${esc(t.sym)}"><td><b>${esc(t.sym)}</b>${t.backfill ? ' <small class="muted">bf</small>' : ''}</td><td>${esc(t.signalDate)}</td><td>${t.entry ?? '—'}</td><td>${t.status === 'closed' ? t.exit : t.last ?? '—'}</td><td class="${tone(t.r)}">${t.r != null ? (t.r > 0 ? '+' : '') + t.r.toFixed(2) + 'R' : '—'}</td><td>${t.status === 'closed' ? esc(t.why) : t.status === 'pending' ? 'buys at next open' : `open, stop ${t.stop}`}</td></tr>`;
+    put('in-swing', `<div class="money-total"><div><span>Closed trades</span><b>${cs.n || 0}</b></div><div><span>Winners</span><b>${cs.n ? Math.round(cs.wins / cs.n * 100) + '%' : '—'}</b></div><div><span>Average</span><b class="${tone(cs.avgR)}">${cs.avgR != null ? (cs.avgR > 0 ? '+' : '') + cs.avgR + 'R' : '—'}</b></div></div>
+      <p class="muted">Total ${cs.sumR != null ? (cs.sumR > 0 ? '+' : '') + cs.sumR + 'R' : '—'} since ${esc(d.start)} (at 0.5% risk a trade, 1R = ₹500 on ₹1 lakh). Research expectation: about +0.10R a trade, with losing years.</p>
+      ${d.open.length ? `<h4>Open (${d.open.length})</h4><div class="fno-tablewrap"><table class="screener-table"><thead><tr><th>Stock</th><th>Signal</th><th>Entry</th><th>Now</th><th>R</th><th>Status</th></tr></thead><tbody>${d.open.map(row).join('')}</tbody></table></div>` : ''}
+      ${d.recentClosed.length ? `<h4>Recently closed</h4><div class="fno-tablewrap"><table class="screener-table"><thead><tr><th>Stock</th><th>Signal</th><th>Entry</th><th>Exit</th><th>R</th><th>Why</th></tr></thead><tbody>${d.recentClosed.map(row).join('')}</tbody></table></div>` : ''}
+      <p class="citation">${esc(d.rules)} "bf" = backfilled from this financial year's data when tracking started.</p>`);
+  }
+
   async function renderPage(el) {
     if (!el) return;
     el.innerHTML = `<div class="home-grid in-grid">
+      ${card('in-swing', 'Swing tracker', 'trend-template breakouts, paper-traded')}
       ${card('in-breadth', 'Market breadth', 'NIFTY 500')}${card('in-rot', 'Sector rotation', 'strength vs momentum')}
       ${card('in-rs', 'Strongest stocks', 'top 20 vs NIFTY, 3 months')}${card('in-move', 'What moved today', 'biggest moves, with sector news')}
       ${card('in-gap', 'Gap scanner', 'NIFTY 100 at the open')}${card('in-opt', 'Options pulse', 'NIFTY and BANK NIFTY')}
       ${card('in-flow', 'FII / DII money flow', 'NSE')}${card('in-hol', 'Market holidays', 'NSE')}</div>`;
-    market(); gaps(); optionsPulse(); flows(); holidays();
+    swingTracker(); market(); gaps(); optionsPulse(); flows(); holidays();
   }
   root.Insights = { renderPage };
 })(typeof window !== 'undefined' ? window : globalThis);

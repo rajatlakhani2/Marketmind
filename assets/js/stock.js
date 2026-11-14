@@ -104,6 +104,7 @@
         </div>
       </div>
       <div id="kd-verdict" class="kd-verdict"><div class="skeleton" style="height:90px"></div></div>
+      <div id="kd-swing"></div>
       <div class="st-grid">
         <div class="st-main">
           <section class="card st-card st-o1">
