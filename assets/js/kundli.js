@@ -298,10 +298,10 @@
     put('kd-verdict', `<div class="kd-v ${cls}"><div class="kd-call"><b>${v.call}</b>${v.strength ? `<span>${v.strength}</span>` : ''}<div class="kd-ring" style="--p:${v.score100}" title="Weighted score out of 100"><i>${v.score100}</i></div><span>score</span></div>
       <div class="kd-why"><p><b>Score ${v.score100}/100 · ${v.pass} of ${v.total} checks pass.</b> ${esc(v.why)}</p>
       ${v.lv ? `<p class="kd-lv">Entry ${v.lv.entry} · Stop ${rs(v.lv.stop)} · ${typeof v.lv.target === 'string' ? 'Exit: ' + v.lv.target : 'Target ' + rs(v.lv.target)}${v.lv.stop && m.price ? ` · risk ${pct((v.lv.stop / m.price - 1) * 100)}` : ''}</p>` : ''}
-      ${(() => { const z = v.call === 'BUY' && v.lv && root.Plan ? Plan.size(m.price, v.lv.stop) : null; return z && z.qty ? `<p class="kd-size">Size: <b>${z.qty} shares</b> (${rs(z.value)}), risking ${rs(z.risk)} of your ${rs(Plan.settings().capital)} capital</p>` : ''; })()}
+      ${(() => { const z = v.call === 'BUY' && v.lv && root.Plan ? Plan.size(m.price, v.lv.stop) : null; return z && z.qty ? `<p class="kd-size">Size: <b>${z.qty} shares</b> (₹${Math.round(z.value).toLocaleString('en-IN')}), risking ₹${Math.round(z.risk).toLocaleString('en-IN')} of your ₹${Math.round(Plan.settings().capital).toLocaleString('en-IN')} capital</p>` : ''; })()}
       <ul class="kd-checks">${(mode === 'expert' ? v.checks : top).map(([t, ok, wt]) => `<li class="${ok === null ? 'muted' : ok ? 'up' : 'down'}">${ok === null ? '–' : ok ? '✓' : '✗'} ${esc(t)}${mode === 'expert' ? ` <small class="muted">weight ${wt}</small>` : ''}</li>`).join('')}</ul>
       <button class="link-btn" data-kdmode>${mode === 'expert' ? 'Simple view' : 'Show all checks (expert)'}</button></div></div>
-      <p class="citation">For information, not investment advice. The verdict combines the back-tested strategies with trend, valuation, ownership and risk checks.</p>`);
+      <p class="citation">The score shows how many checks agree, not the chance of profit: in 10 years of testing the breakout setup won about 4 trades in 10 and made money only through a few big winners. For information, not investment advice. The verdict combines the back-tested strategies with trend, valuation, ownership and risk checks.</p>`);
     const b = document.querySelector('[data-kdmode]');
     if (b) b.onclick = () => { try { localStorage.setItem('kd_mode', mode === 'expert' ? 'simple' : 'expert'); } catch { /* ignore */ } drawVerdict(v, m); };
   }
