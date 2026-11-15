@@ -45,7 +45,7 @@
       <div class="dr-price"><b>₹${n2(last)}</b> <span class="${ch >= 0 ? 'up' : 'down'}">${ch == null ? '' : (ch > 0 ? '+' : '') + ch.toFixed(2) + '%'}</span></div>
       ${spark(c.slice(-63))}<p class="muted dr-sub">3 months · ATR(14) ₹${n2(atr)}</p>
       <div data-why></div>
-      <div class="dr-actions"><button class="btn-primary btn-small" data-open>Open full kundli</button><button class="btn-secondary btn-small" data-watch>+ Watchlist</button></div>
+      <div class="dr-actions"><button class="btn-primary btn-small" data-open>Open Stock 360°</button><button class="btn-secondary btn-small" data-watch>+ Watchlist</button></div>
       <h4>Alert me when</h4>
       <div class="dr-alert"><select data-ak><option value="above">price rises above</option><option value="below">price falls below</option><option value="rsi_below">RSI falls below</option><option value="rsi_above">RSI rises above</option><option value="ma200_up">crosses above 200-DMA</option><option value="ma200_down">crosses below 200-DMA</option></select>
         <input type="number" step="0.05" data-av value="${last ? (last * 1.05).toFixed(2) : ''}"><button class="btn-secondary btn-small" data-aadd>Set</button></div>

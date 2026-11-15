@@ -87,7 +87,7 @@
     clearInterval(S.timer);
     if (S.chart) { S.chart.destroy(); S.chart = null; }
     if (!S.symbol) {
-      container.innerHTML = `<div class="st-empty"><h2>Stock kundli</h2><p>Search any stock to see its full report card: verdict, trend on every timeframe, fundamentals, ownership, F&amp;O picture, risk flags and your own rules.</p><button type="button" class="btn-primary" data-search>Search stocks</button></div>`;
+      container.innerHTML = `<div class="st-empty"><h2>Stock 360°</h2><p>Search any stock to see its full report card: verdict, trend on every timeframe, fundamentals, ownership, F&amp;O picture, risk flags and your own rules.</p><button type="button" class="btn-primary" data-search>Search stocks</button></div>`;
       container.querySelector('[data-search]').onclick = () => root.Nav && Nav.search();
       return;
     }

@@ -144,7 +144,7 @@
     const fieldSel = (name, val, withNum) => `<select data-${name}>${withNum ? '<option value="#">a number</option>' : ''}${Object.entries(FIELDS).map(([k, l]) => `<option value="${k}" ${k === val ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
     const draw = () => {
       ov.innerHTML = `<div class="modal modal-wide"><button class="modal-close" data-x>&times;</button><h3>My rules</h3>
-        <p class="auth-text">A rule is a set of conditions that must all be true. Every kundli shows whether each of your rules passes for that stock.</p>
+        <p class="auth-text">A rule is a set of conditions that must all be true. Every Stock 360° shows whether each of your rules passes for that stock.</p>
         ${edit ? `<div class="rule-edit"><label>Rule name <input data-rname value="${esc(edit.name)}" maxlength="60"></label>
           ${edit.conds.map((c, i) => `<div class="rule-row" data-i="${i}">${fieldSel('f', c.f)}<select data-op><option ${c.op === '>' ? 'selected' : ''}>&gt;</option><option ${c.op === '<' ? 'selected' : ''}>&lt;</option></select>
             ${fieldSel('vf', typeof c.v === 'string' ? c.v : '#', true)}<input type="number" step="any" data-vn value="${typeof c.v === 'string' ? '' : esc(c.v)}" ${typeof c.v === 'string' ? 'hidden' : ''}><button class="btn-secondary btn-small" data-rm="${i}">✕</button></div>`).join('')}
@@ -355,8 +355,8 @@
     const body = ROWS.map(([n, k, w, f]) => { const x = A[k], y = B[k], wv = win(x, y, w); if (wv === 1) sa++; if (wv === 2) sb++; return `<tr><td>${n}</td><td class="${wv === 1 ? 'kd-best' : ''}">${x == null ? '—' : f(x)}</td><td class="${wv === 2 ? 'kd-best' : ''}">${y == null ? '—' : f(y)}</td></tr>`; }).join('');
     ov.innerHTML = `<div class="modal modal-wide"><button class="modal-close" data-x>&times;</button><h3>${esc(a)} vs ${esc(b)}</h3>
       <table class="screener-table"><thead><tr><th></th><th>${esc(a)}</th><th>${esc(b)}</th></tr></thead><tbody>${body}</tbody></table>
-      <p><b>${sa > sb ? esc(a) : sb > sa ? esc(b) : 'Neither'}</b> ${sa === sb ? 'stands out' : `is better on ${Math.max(sa, sb)} of ${sa + sb} compared lines`}. Open each kundli for the full verdict.</p>
-      <p><button class="btn-secondary btn-small" data-open="${esc(b)}">Open ${esc(b)} kundli</button> <button class="btn-secondary" data-x>Close</button></p></div>`;
+      <p><b>${sa > sb ? esc(a) : sb > sa ? esc(b) : 'Neither'}</b> ${sa === sb ? 'stands out' : `is better on ${Math.max(sa, sb)} of ${sa + sb} compared lines`}. Open each Stock 360° for the full verdict.</p>
+      <p><button class="btn-secondary btn-small" data-open="${esc(b)}">Open ${esc(b)} 360°</button> <button class="btn-secondary" data-x>Close</button></p></div>`;
     ov.querySelectorAll('[data-x]').forEach(x => (x.onclick = () => { ov.classList.add('hidden'); ov.innerHTML = ''; }));
     ov.querySelector('[data-open]').onclick = () => { ov.classList.add('hidden'); ov.innerHTML = ''; root.Stock && Stock.open(b); };
   }
@@ -450,7 +450,7 @@
       } catch (e) { list.innerHTML = `<li class="muted">${esc(e.message)}</li>`; }
     }, 350); };
     if (!FS.code) { try { FS.code = +localStorage.getItem('kd_fund') || null; } catch { /* none */ } }
-    if (FS.code) renderFund(body); else body.innerHTML = '<p class="home-empty">Search for a fund to see its kundli: growth vs NIFTY, returns, worst fall, consistency and a Keep / Review call.</p>';
+    if (FS.code) renderFund(body); else body.innerHTML = '<p class="home-empty">Search for a fund to see its 360° view: growth vs NIFTY, returns, worst fall, consistency and a Keep / Review call.</p>';
   }
 
   root.Kundli = { enrich, openRules, renderFundPage, metrics, FIELDS, scanRules, loadRules, compare };

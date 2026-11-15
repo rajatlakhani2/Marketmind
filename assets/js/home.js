@@ -134,9 +134,9 @@
     try {
       const r = await Kundli.scanRules();
       if (!r.results.length) return fill('home-rules', '<p class="home-empty">No rules yet. Create one under your name → <b>My rules</b> (try the "Trend template breakout" template), and every evening MarketMind lists the NIFTY 500 stocks that pass it.</p><button class="btn-secondary btn-small" data-myrules>Create a rule</button>');
-      fill('home-rules', r.results.map(x => `<div class="rule-hit"><b>${esc(x.rule.name)}</b> <span class="muted">${x.onlyFund ? 'uses fundamentals only: check it in a kundli' : `${x.hits.length} stock${x.hits.length === 1 ? '' : 's'}`}</span>
+      fill('home-rules', r.results.map(x => `<div class="rule-hit"><b>${esc(x.rule.name)}</b> <span class="muted">${x.onlyFund ? 'uses fundamentals only: check it in Stock 360°' : `${x.hits.length} stock${x.hits.length === 1 ? '' : 's'}`}</span>
         ${x.hits.length ? `<div class="chips">${x.hits.slice(0, 12).map(h => `<button data-sym="${esc(h.sym)}">${esc(h.sym)}</button>`).join('')}${x.hits.length > 12 ? `<span class="muted">+${x.hits.length - 12} more</span>` : ''}</div>` : ''}
-        ${x.skipped ? `<small class="muted">${x.skipped} fundamentals condition(s) checked in each stock's kundli</small>` : ''}</div>`).join('') + `<p class="citation">NIFTY 500, scan of ${esc(r.date)}. Tap a stock for its kundli.</p>`);
+        ${x.skipped ? `<small class="muted">${x.skipped} fundamentals condition(s) checked in each Stock 360°</small>` : ''}</div>`).join('') + `<p class="citation">NIFTY 500, scan of ${esc(r.date)}. Tap a stock for its 360° view.</p>`);
     } catch (e) { fill('home-rules', `<p class="home-empty">${esc(e.message)}. The list fills after the evening scan.</p>`); }
     const b = document.querySelector('[data-myrules]'); if (b) b.onclick = () => Kundli.openRules(() => myRules());
   }
