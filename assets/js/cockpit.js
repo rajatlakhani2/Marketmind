@@ -33,7 +33,7 @@
       if (vix > 20 && lvl < 2) lvl++;
       const [cls, label, hint] = MOODS[lvl];
       document.body.dataset.mood = cls;
-      el.innerHTML = `<div class="mood mood-${cls}"><b>${label}</b><span>${hint}</span>
+      el.innerHTML = `<div class="mood mood-${cls}"><i class="mood-dot"></i><b>${label}</b><span>${hint}</span>
         <small>NIFTY ${Math.round(last).toLocaleString('en-IN')} · 50-DMA ${Math.round(s50).toLocaleString('en-IN')} · 200-DMA ${s200 ? Math.round(s200).toLocaleString('en-IN') : '—'}${vix ? ` · VIX ${vix.toFixed(1)}` : ''}</small></div>`;
     } catch { el.innerHTML = ''; }
   }

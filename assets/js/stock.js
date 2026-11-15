@@ -105,6 +105,7 @@
       </div>
       <div id="kd-verdict" class="kd-verdict"><div class="skeleton" style="height:90px"></div></div>
       <div id="kd-swing"></div>
+      <nav class="kd-sections" aria-label="Sections">${[['top', 'Overview'], ['#st-tfs', 'Chart'], ['#kd-fund', 'Fundamentals'], ['#kd-fo', 'F&amp;O'], ['#kd-peers', 'Peers'], ['#kd-risk', 'Risk'], ['#kd-rules', 'My rules'], ['#st-matrix', 'Timeframes'], ['#st-events', 'Events & news']].map(([t, l], i) => `<button type="button" data-jump="${t}" class="${i ? '' : 'on'}">${l}</button>`).join('')}</nav>
       <div class="st-grid">
         <div class="st-main">
           <section class="card st-card st-o1">
@@ -173,6 +174,13 @@
     news(token);
     watchState();
     if (root.Kundli) Kundli.enrich(S.symbol, token);
+    container.querySelectorAll('[data-jump]').forEach(b => (b.onclick = () => {
+      container.querySelectorAll('[data-jump]').forEach(x => x.classList.toggle('on', x === b));
+      const t = b.dataset.jump, el = t === 'top' ? container : container.querySelector(t);
+      const box = el && (el.closest('section') || el);
+      if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (t === '#kd-fo' && document.getElementById('kd-fo-card') && document.getElementById('kd-fo-card').hidden && root.app) app.ui._toast('No F&O for this stock', 'info');
+    }));
     S.timer = setInterval(() => {
       const page = document.getElementById('page-stock');
       if (!page || !page.classList.contains('active')) { clearInterval(S.timer); return; }

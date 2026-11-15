@@ -42,7 +42,7 @@
 
   // ---------- card layout: order and hidden cards, per user (synced through Account) ----------
   const CARDS = [
-    { id: 'home-swing', title: "Today's swing setups", btn: ['insights', 'Tracker'] },
+    { id: 'home-swing', title: "Today's swing setups", btn: ['ideas', 'All'] },
     { id: 'home-rules', title: 'Passed my rules today', btn: null },
     { id: 'home-money', title: 'My money', btn: ['holdings', 'Holdings'] },
     { id: 'home-risk', title: 'Risk', btn: ['trading', 'Orders'], admin: true },
@@ -102,7 +102,8 @@
         <p>${istNow().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}</p></div>
         <span class="mkt-pill ${open ? 'open' : ''}"><i></i>${open ? 'Market open' : 'Market closed'}</span>
       </div>
-      ${isKundli() ? `<div class="kd-hero"><h2>What do you want to check?</h2><div class="kd-searchbox"><button class="btn-secondary" data-kdsearch>🔎 Stock, future or option…</button><button class="btn-secondary" data-go="fund">💰 Mutual fund…</button></div></div>` : ''}
+      <div class="home-search"><button type="button" class="home-searchbar" data-kdsearch aria-label="Search a stock, F&amp;O or fund"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span>Search a stock, F&amp;O or fund</span><kbd>/</kbd></button>
+        <button type="button" class="home-fundbtn" data-go="fund">Mutual fund</button></div>
       <div id="home-cockpit"></div>
       <div class="home-grid" id="home-grid">
         ${layout(admin).filter(c => !c.hidden).map(c => card(c.id, c.title, c.btn ? openBtn(c.btn[0], c.btn[1]) : '')).join('')}

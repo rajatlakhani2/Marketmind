@@ -36,7 +36,7 @@
   <script src="js/scan.js?v=17"></script>
   <script src="js/watchlist.js?v=21"></script>
   <script src="js/candlechart.js?v=21"></script>
-  <script src="js/stock.js?v=27"></script>
+  <script src="js/stock.js?v=28"></script>
   <script src="js/live.js?v=24"></script>
   <script src="js/optcalls.js?v=2"></script>
   <script src="js/corpact.js?v=2"></script>
@@ -48,8 +48,8 @@
   <script src="js/journal.js?v=1"></script>
   <script src="js/hub.js?v=1"></script>
   <script src="js/kundli.js?v=5"></script>
-  <script src="js/cockpit.js?v=5"></script>
-  <script src="js/home.js?v=29"></script>
+  <script src="js/cockpit.js?v=6"></script>
+  <script src="js/home.js?v=30"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1303,6 +1303,31 @@ html[data-theme="b"] .modal, html[data-theme="b"] input, html[data-theme="b"] se
 .hub-tile { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 14px 16px; min-height: 76px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); color: var(--text-primary); font: inherit; cursor: pointer; }
 .hub-tile:hover { border-color: var(--accent); }
 .hub-tile b { font-size: .98rem; } .hub-tile span { font-size: .83rem; color: var(--text-muted); }
+
+/* ===== Home and Stock 360° redesign (UI batch 2) ===== */
+.home-hello h2 { font-size: 1.35rem; }
+.home-search { display: flex; gap: 8px; margin: 4px 0 14px; }
+.home-searchbar { flex: 1; display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 0 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); color: var(--text-muted); font: inherit; font-size: 1rem; text-align: left; cursor: text; }
+.home-searchbar span { flex: 1; } .home-searchbar kbd { font: inherit; font-size: .75rem; padding: 2px 7px; border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); }
+.home-searchbar:hover { border-color: var(--accent); }
+.home-fundbtn { min-height: 50px; padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); font: inherit; font-weight: 600; box-shadow: var(--shadow); }
+.mood { border: 0; border-left: 0; align-items: center; }
+.mood-dot { width: 10px; height: 10px; border-radius: 999px; background: currentColor; display: inline-block; }
+.mood-up { background: var(--green-soft); color: var(--green); } .mood-warn { background: color-mix(in srgb, var(--yellow) 14%, var(--bg-card)); color: var(--yellow); } .mood-down { background: var(--red-soft); color: var(--red); }
+.mood span, .mood small { color: var(--text-primary); }
+.today { gap: 8px; } .today > b { display: none; }
+.today .act { border: 0; background: var(--accent-soft); color: var(--accent); font-weight: 600; min-height: 36px; }
+.today .act.attn { background: color-mix(in srgb, var(--yellow) 16%, var(--bg-card)); color: var(--yellow); }
+.home-card { border: 1px solid var(--border); }
+.home-card-head h3 { font-size: 1rem; font-weight: 700; }
+/* Stock 360°: section chips, verdict card */
+.kd-sections { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 10px; position: sticky; top: 0; z-index: 5; background: var(--bg-primary); }
+.kd-sections button { flex: none; min-height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); font: inherit; font-size: .88rem; font-weight: 600; }
+.kd-sections button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.kd-v { border: 1px solid var(--border); border-left-width: 4px; }
+.kd-call { min-width: 96px; padding: 10px 6px; border-radius: calc(var(--radius) - 4px); }
+.kd-v.buy .kd-call { background: var(--green-soft); } .kd-v.sell .kd-call { background: var(--red-soft); } .kd-v.wait .kd-call { background: color-mix(in srgb, var(--yellow) 14%, var(--bg-card)); }
+@media (max-width: 700px) { .home-search { flex-direction: column; } .home-fundbtn { min-height: 44px; } }
 </style>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
