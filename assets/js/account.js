@@ -564,7 +564,7 @@
       <div class="account-links">
         ${u.role === 'admin' ? `<a href="#" data-acc="users">Users${state.waiting ? ` <span class="user-badge warn">${state.waiting} new</span>` : ''}</a>` : ''}
         <a href="#" data-acc="brokers">Broker accounts</a>
-        <a href="#" data-acc="layout">Tabs &amp; theme</a>
+        <a href="#" data-acc="layout">Settings: theme &amp; tabs</a>
         <a href="#" data-acc="alerts">Alerts</a>
         <a href="#" data-acc="rules">My rules</a>
         <a href="#" data-acc="password">Password</a>

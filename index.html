@@ -25,7 +25,7 @@
   <script src="js/plain.js?v=2"></script>
   <script src="js/tiers.js?v=1"></script>
   <script src="js/consensus.js?v=18"></script>
-  <script src="js/account.js?v=21"></script>
+  <script src="js/account.js?v=22"></script>
   <script src="js/stockpicker.js?v=14"></script>
   <script src="js/mindguru.js?v=17"></script>
   <script src="js/knowledgesync.js?v=14"></script>
@@ -41,11 +41,12 @@
   <script src="js/optcalls.js?v=2"></script>
   <script src="js/corpact.js?v=2"></script>
   <script src="js/backtest.js?v=31"></script>
-  <script src="js/nav.js?v=30"></script>
+  <script src="js/nav.js?v=31"></script>
   <script src="js/overview.js?v=1"></script>
   <script src="js/ux.js?v=5"></script>
   <script src="js/insights.js?v=3"></script>
   <script src="js/journal.js?v=1"></script>
+  <script src="js/hub.js?v=1"></script>
   <script src="js/kundli.js?v=5"></script>
   <script src="js/cockpit.js?v=5"></script>
   <script src="js/home.js?v=29"></script>
@@ -1181,17 +1182,6 @@ table.ob .r { text-align: right; }
 
   
 /* ===== Themes, market mood and Home cockpit (dashboard revamp, phase 1) ===== */
-html[data-theme="dark"] {
-  --bg-primary: #0f141b; --bg-secondary: #141a22; --bg-card: #18202a; --bg-hover: #212b37;
-  --border: #2a3542; --text-primary: #e6ebf1; --text-secondary: #b3becb; --text-muted: #8592a1;
-  --accent: #6c9cff; --accent-hover: #8bb1ff; --accent-soft: #1d2b45; --green: #3fbf7f; --red: #f0685c;
-  --green-soft: #15322a; --red-soft: #3a1f1d; --yellow: #e0a63a; --orange: #f08a4b;
-}
-html[data-theme="dark"] #topbar { background: rgba(15,20,27,0.94); }
-html[data-theme="dark"] body, html[data-theme="dark"] .modal { color: var(--text-primary); }
-html[data-theme="dark"] .modal, html[data-theme="dark"] .home-card { background: var(--bg-card); }
-/* Colour-blind safe: blue for up/buy, orange for down/sell */
-html[data-theme="cb"] { --green: #1f6fd1; --red: #d4700a; --green-soft: #e5effb; --red-soft: #fcefe2; }
 #topbar { border-bottom: 3px solid var(--border); transition: border-color .3s; }
 body[data-mood="up"] #topbar { border-bottom-color: var(--green); }
 body[data-mood="warn"] #topbar { border-bottom-color: var(--yellow); }
@@ -1273,7 +1263,49 @@ body.is-offline #topbar::after { content: 'Offline · showing last loaded data';
 .rule-test { padding: 8px 10px; border-left: 3px solid var(--accent); margin: 0 0 10px; font-size: .88rem; }
 .kd-swing { margin: 6px 0 0; padding: 8px 12px; border-radius: var(--radius); background: var(--green-soft); font-size: .9rem; }
 .kd-best { background: var(--green-soft); font-weight: 600; } .rule-hit { margin-bottom: 10px; } .rule-hit .chips { margin-top: 4px; }
+
+/* ===== Themes (Settings → Tabs & theme). A Clean light is the default ===== */
+:root { --radius: 14px; --shadow: 0 1px 2px rgba(16,24,40,.06); --font-num: var(--font); }
+html[data-theme="a"], html:not([data-theme]) {
+  --bg-primary: #eef1f5; --bg-secondary: #f6f8fa; --bg-card: #ffffff; --bg-hover: #edf1f6; --border: #e3e7ed;
+  --text-primary: #111827; --text-secondary: #3d4756; --text-muted: #556070; --accent: #2457d6; --accent-hover: #1b45ad; --accent-soft: #e8eefc;
+  --green: #0b7a4b; --red: #b4410b; --green-soft: #e3f4ec; --red-soft: #fcebdd; --yellow: #8a5a00;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; --font-num: var(--font); --radius: 14px; --shadow: 0 1px 2px rgba(16,24,40,.06);
+}
+html[data-theme="b"] {
+  --bg-primary: #05080c; --bg-secondary: #0b1016; --bg-card: #121922; --bg-hover: #1a2430; --border: #223041;
+  --text-primary: #e8eef4; --text-secondary: #c3cdd8; --text-muted: #9daab8; --accent: #5b9bff; --accent-hover: #86b5ff; --accent-soft: #16263d;
+  --green: #3dd68c; --red: #ff8a5b; --green-soft: #11291f; --red-soft: #33190f; --yellow: #f2c14e; --orange: #ff9f5a; --purple: #b39cff; --cyan: #4fd1e8;
+  --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; --font-num: 'IBM Plex Mono', ui-monospace, monospace; --radius: 10px; --shadow: none;
+  color-scheme: dark;
+}
+html[data-theme="c"] {
+  --bg-primary: #ede9fb; --bg-secondary: #f7f5ff; --bg-card: #ffffff; --bg-hover: #f1edff; --border: #e6e1f7;
+  --text-primary: #1c1640; --text-secondary: #3c3566; --text-muted: #5b5580; --accent: #5b3df5; --accent-hover: #4428d6; --accent-soft: #eeeaff;
+  --green: #0a7a55; --red: #b8450c; --green-soft: #ddf5ea; --red-soft: #fde8da; --yellow: #835a00;
+  --font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; --font-num: var(--font); --radius: 20px; --shadow: 0 4px 14px rgba(60,40,140,.08);
+}
+/* Colour-blind safe: Clean light with blue for up/buy and orange for down/sell */
+html[data-theme="cb"] {
+  --bg-primary: #eef1f5; --bg-secondary: #f6f8fa; --bg-card: #ffffff; --bg-hover: #edf1f6; --border: #e3e7ed;
+  --text-primary: #111827; --text-secondary: #3d4756; --text-muted: #556070; --accent: #4b3fb0; --accent-soft: #ecebfa;
+  --green: #1f63c8; --red: #b5560a; --green-soft: #e5effb; --red-soft: #fcefe2; --yellow: #8a5a00;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; --font-num: var(--font); --radius: 14px; --shadow: 0 1px 2px rgba(16,24,40,.06);
+}
+html[data-theme="b"] #topbar { background: rgba(5,8,12,.94); }
+html[data-theme="b"] .modal, html[data-theme="b"] input, html[data-theme="b"] select, html[data-theme="b"] textarea { background: var(--bg-card); color: var(--text-primary); border-color: var(--border); }
+.card, .home-card, .st-card, .modal, .kd-v, .mood { border-radius: var(--radius); box-shadow: var(--shadow); }
+.q-num b, .q-num span, .money-total b, .st-px b, .dr-price b, .screener-table td, .idx b { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+/* More hub and Ideas */
+.hub { display: flex; flex-direction: column; gap: 22px; }
+.hub h3 { margin: 0 0 10px; font-size: 1rem; }
+.hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.hub-tile { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 14px 16px; min-height: 76px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); color: var(--text-primary); font: inherit; cursor: pointer; }
+.hub-tile:hover { border-color: var(--accent); }
+.hub-tile b { font-size: .98rem; } .hub-tile span { font-size: .83rem; color: var(--text-muted); }
 </style>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 </head>
 <body>
   <div id="app">
@@ -1293,6 +1325,8 @@ body.is-offline #topbar::after { content: 'Offline · showing last loaded data';
         <li><a href="#" data-page="stock"><span class="nav-icon">&#x1F50E;</span> Stock</a></li>
         <li><a href="#" data-page="live"><span class="nav-icon">&#x1F4CA;</span> Live buyers</a></li>
         <li><a href="#" data-page="optcalls"><span class="nav-icon">&#x1F3AF;</span> Option calls</a></li>
+        <li><a href="#" data-page="ideas"><span class="nav-icon">&#x1F4A1;</span> Ideas</a></li>
+        <li><a href="#" data-page="more"><span class="nav-icon">&#x2630;</span> More</a></li>
         <li><a href="#" data-page="fund"><span class="nav-icon">&#x1F4B0;</span> Fund 360°</a></li>
         <li><a href="#" data-page="insights"><span class="nav-icon">&#x1F4C8;</span> Insights</a></li>
         <li><a href="#" data-page="corpactions"><span class="nav-icon">&#x1F4B0;</span> Corporate actions</a></li>
@@ -1470,6 +1504,14 @@ body.is-offline #topbar::after { content: 'Offline · showing last loaded data';
       </div>
       <div id="page-stock" class="page">
         <div id="stock-container"></div>
+      </div>
+      <div id="page-ideas" class="page">
+        <header class="page-header"><h2>Ideas</h2><p class="muted">Today's swing setups, stocks close to a breakout, and stocks passing your rules</p></header>
+        <div id="ideas-container"></div>
+      </div>
+      <div id="page-more" class="page">
+        <header class="page-header"><h2>More</h2><p class="muted">Markets, F&amp;O, research, learning and settings</p></header>
+        <div id="more-container"></div>
       </div>
       <div id="page-fund" class="page">
         <header class="page-header"><h2>Fund 360°</h2><p class="muted">Any mutual fund: growth vs NIFTY, returns, worst fall, consistency and a Keep / Review call</p></header>
@@ -3628,6 +3670,8 @@ class App {
       case 'backtest': await Backtest.renderPage(document.getElementById('backtest-container')); break;
       case 'live': await LivePage.renderPage(document.getElementById('live-container')); break;
       case 'optcalls': await OptCalls.renderPage(document.getElementById('optcalls-container')); break;
+      case 'ideas': await Hub.renderIdeas(document.getElementById('ideas-container')); break;
+      case 'more': Hub.renderMore(document.getElementById('more-container')); break;
       case 'fund': await Kundli.renderFundPage(document.getElementById('fund-container')); break;
       case 'journal': await Journal.renderPage(document.getElementById('journal-container')); break;
       case 'insights': await Insights.renderPage(document.getElementById('insights-container')); break;

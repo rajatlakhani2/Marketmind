@@ -10,6 +10,9 @@
     markets: '<path d="M3 17l5-5 4 4 8-8"/><path d="M15 8h5v5"/>',
     trade: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
     stocks: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
+    ideas: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/>',
+    x360: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+    more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
     fno: '<path d="M4 18c3-8 5-12 8-12s5 4 8 12"/><path d="M12 6v12"/>',
     portfolio: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>',
     research: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
@@ -20,12 +23,11 @@
 
   const ALL_GROUPS = [
     { id: 'home', label: 'Home', pages: [['dashboard', 'Home']] },
-    { id: 'markets', label: 'Markets', pages: [['insights', 'Insights'], ['events', 'Events & News'], ['corpactions', 'Corporate actions'], ['results', 'Results']] },
-    { id: 'stocks', label: 'Stocks', pages: [['stock', 'Stock 360°'], ['fund', 'Fund 360°'], ['analyze', 'Analyze'], ['screener', 'Screener'], ['opps', 'Opportunities'], ['live', 'Live buyers']] },
-    { id: 'fno', label: 'F&O', pages: [['optcalls', 'Option calls'], ['fno', 'Option chain & futures']] },
-    { id: 'portfolio', label: 'Portfolio', pages: [['holdings', 'Holdings'], ['watchlist', 'Watchlist'], ['trading', 'Orders'], ['journal', 'Journal']] },
-    { id: 'research', label: 'Research', pages: [['backtest', 'Back-test'], ['strategies', 'Strategies'], ['mindguru', 'MindGuru']] },
-    { id: 'learn', label: 'Learn', pages: [['concepts', 'Concepts'], ['knowledge', 'Library'], ['theory', 'Theory'], ['methodology', 'Methodology']] },
+    { id: 'ideas', label: 'Ideas', pages: [['ideas', 'Today'], ['screener', 'Screener'], ['opps', 'Opportunities'], ['optcalls', 'Option calls']] },
+    { id: 'x360', label: '360°', pages: [['stock', 'Stock 360°'], ['fund', 'Fund 360°'], ['analyze', 'Full analysis'], ['live', 'Live buyers']] },
+    { id: 'portfolio', label: 'Portfolio', pages: [['holdings', 'Holdings'], ['watchlist', 'Watchlist'], ['journal', 'Journal'], ['trading', 'Orders']] },
+    { id: 'more', label: 'More', pages: [['more', 'All'], ['insights', 'Insights'], ['events', 'Events & News'], ['corpactions', 'Corporate actions'], ['results', 'Results'], ['fno', 'Option chain & futures'],
+      ['backtest', 'Back-test'], ['strategies', 'Strategies'], ['mindguru', 'MindGuru'], ['concepts', 'Concepts'], ['knowledge', 'Library'], ['theory', 'Theory'], ['methodology', 'Methodology']] },
   ];
   // Each user's own tab order, hidden pages and pinned favourites (synced through Account)
   const NKEY = 'marketmind_nav_layout';
@@ -49,18 +51,19 @@
 
   // ---------- theme: light (default), dark, colour-blind safe ----------
   const TKEY = 'marketmind_theme';
-  function applyTheme() { let t = 'light'; try { t = JSON.parse(localStorage.getItem(TKEY)) || 'light'; } catch { /* default */ } document.documentElement.dataset.theme = t; }
+  const THEME_MAP = { light: 'a', dark: 'b' };
+  function applyTheme() { let t = 'a'; try { t = JSON.parse(localStorage.getItem(TKEY)) || 'a'; } catch { /* default */ } t = THEME_MAP[t] || t; if (!['a', 'b', 'c', 'cb'].includes(t)) t = 'a'; document.documentElement.dataset.theme = t; }
   applyTheme();
 
   function openCustomize() {
     const p = navPrefs(); p.order = p.order || ALL_GROUPS.map(g => g.id); p.hidden = p.hidden || []; p.pins = p.pins || [];
     const ov = document.getElementById('modal-overlay');
-    const theme = document.documentElement.dataset.theme || 'light';
+    const theme = document.documentElement.dataset.theme || 'a';
     const draw = () => {
       const groups = ALL_GROUPS.filter(g => g.id !== 'home').sort((a, b) => p.order.indexOf(a.id) - p.order.indexOf(b.id));
-      ov.innerHTML = `<div class="modal modal-wide"><button class="modal-close" data-x>&times;</button><h3>Tabs and theme</h3>
+      ov.innerHTML = `<div class="modal modal-wide"><button class="modal-close" data-x>&times;</button><h3>Settings: theme and tabs</h3>
         <label class="auth-text">Layout <select id="nv-layout"><option value="classic">Classic</option><option value="kundli">Simple (search first)</option></select></label>
-        <label class="auth-text">Theme <select id="nv-theme"><option value="light">Light</option><option value="dark">Dark</option><option value="cb">Colour-blind safe</option></select></label>
+        <label class="auth-text">Theme <select id="nv-theme"><option value="a">A · Clean light</option><option value="b">B · Pro dark</option><option value="c">C · Soft colour</option><option value="cb">Colour-blind safe</option></select></label>
         <p class="auth-text">Move tabs up or down. Untick a page to hide it; ★ pins it to a Favourites tab at the front.</p>
         <ul class="cust-list">${groups.map((g, i) => `<li class="cust-group"><b>${esc(g.label)}</b><span><button class="btn-secondary btn-small" data-up="${g.id}" ${i ? '' : 'disabled'}>↑</button><button class="btn-secondary btn-small" data-dn="${g.id}" ${i < groups.length - 1 ? '' : 'disabled'}>↓</button></span>
           <div class="cust-pages">${g.pages.map(([x, l]) => `<label><input type="checkbox" data-hide="${x}" ${p.hidden.includes(x) ? '' : 'checked'}> ${esc(l)} <button type="button" class="pin ${p.pins.includes(x) ? 'on' : ''}" data-pin="${x}" title="Pin to Favourites">★</button></label>`).join('')}</div></li>`).join('')}</ul>
@@ -104,7 +107,8 @@
     }).join('');
     document.getElementById('tb-groups').innerHTML = tabs;
     document.getElementById('bottombar').innerHTML = tabs;
-    const subs = visiblePages(g);
+    let subs = visiblePages(g);
+    if (g.id === 'more') subs = subs.filter(([p]) => p === 'more' || p === current);
     const sub = document.getElementById('subnav');
     sub.classList.toggle('hidden', subs.length < 2);
     sub.innerHTML = `<div class="subnav-inner">${subs.map(([p, label]) => `<button type="button" class="${p === current ? 'active' : ''}" data-sub="${p}">${label}${badgeOf(p) ? `<i class="tab-badge">${badgeOf(p)}</i>` : ''}</button>`).join('')}</div>`;
@@ -165,7 +169,7 @@
 
   // ---------- universal search: stocks, pages, strategies, concepts ----------
   const PAGE_WORDS = {
-    dashboard: 'home overview index nifty sensex', fund: 'fund mutual fund mf nav sip 360 kundli', stock: 'stock 360 kundli report', insights: 'insights breadth sector rotation strongest relative strength movers fii dii holidays', watchlist: 'watchlist calls buy sell my stocks', stock: 'stock chart price', live: 'live buyers sellers order book depth market depth pressure',
+    dashboard: 'home overview index nifty sensex', ideas: 'ideas today swing setups breakouts rules', more: 'more menu all pages', fund: 'fund mutual fund mf nav sip 360 kundli', stock: 'stock 360 kundli report', insights: 'insights breadth sector rotation strongest relative strength movers fii dii holidays', watchlist: 'watchlist calls buy sell my stocks', stock: 'stock chart price', live: 'live buyers sellers order book depth market depth pressure',
     opps: 'opportunities scan setups ideas', fno: 'f&o fno options futures option chain calls puts strategy builder iron condor straddle', analyze: 'analyze analysis verdict',
     events: 'events news results dividend corporate actions calendar', screener: 'screener filter', trading: 'orders trading algo approve', holdings: 'holdings portfolio', journal: 'journal notes trades scorecard tax what if patterns',
     mindguru: 'mindguru learning record accuracy', backtest: 'backtest back-test test history results accuracy', strategies: 'strategies', concepts: 'concepts', knowledge: 'library documents upload books', theory: 'theory', methodology: 'methodology sources',
@@ -260,10 +264,10 @@
       else if (e.key === 'Escape' && !ov.classList.contains('hidden')) closeSearch();
       else if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // g then a letter jumps to a tab; ? lists the shortcuts
-        const KEYS = { h: 'home', m: 'markets', s: 'stocks', f: 'fno', p: 'portfolio', r: 'research', l: 'learn' };
+        const KEYS = { h: 'home', i: 'ideas', s: 'x360', p: 'portfolio', m: 'more' };
         if (gPending && KEYS[e.key]) { const g = GROUPS.find(x => x.id === KEYS[e.key]); const ps = g ? visiblePages(g) : []; if (ps.length) go(ps[0][0]); gPending = false; return; }
         gPending = e.key === 'g';
-        if (e.key === '?') toast('Shortcuts: / search · g h Home · g m Markets · g s Stocks · g f F&O · g p Portfolio · g r Research · g l Learn');
+        if (e.key === '?') toast('Shortcuts: / search · g h Home · g i Ideas · g s 360° · g p Portfolio · g m More');
       }
     });
   }
