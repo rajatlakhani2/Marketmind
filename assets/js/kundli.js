@@ -36,6 +36,7 @@
     return {
       trendTemplate: !!(s150 && sma(c, 200) && s200ago && p > s150 && s150 > sma(c, 200) && sma(c, 200) > s200ago && sma(c, 50) > s150 && lo && p > 1.3 * lo && hi && p > 0.75 * hi) ? 1 : 0,
       breakout20: hi20 && p > hi20 ? 1 : 0, sma150: s150,
+      atr: (() => { if (h.length < 16) return null; let a = null; for (let i = 1; i < h.length; i++) { const tr = Math.max(h[i].high - h[i].low, Math.abs(h[i].high - c[i - 1]), Math.abs(h[i].low - c[i - 1])); a = a == null ? tr : (a * 13 + tr) / 14; } return a; })(),
       price: p, rsi: root.MarketData && c.length > 15 ? MarketData.rsi(c, 14) : null, sma50: sma(c, 50), sma200: sma(c, 200),
       chg1m: back(21), chg3m: back(63), from52h: hi ? (p / hi - 1) * 100 : null,
       volRatio: v.length > 21 && sma(v.slice(0, -1), 20) ? v[v.length - 1] / sma(v.slice(0, -1), 20) : null,
@@ -262,8 +263,10 @@
 
   function verdict(st, m, risk) {
     const c = st.cs && st.cs.conclusion, d = st.calls['1d'] || {}, w = st.calls['1w'] || {}, mk = root.Tiers && Tiers.market ? Tiers.market() : null;
+    // the swing breakout from the research (trend template + close above the 20-day high, NIFTY above its 200-day) counts as a tested buy signal
+    const sw = m.trendTemplate === 1 && m.breakout20 === 1 && (!mk || mk.above200), long = !!((c && c.tone === 'long') || sw);
     const checks = [
-      ['A tested strategy (Proven / Watch) gives a buy signal', c ? c.tone === 'long' : null, 20],
+      ['A tested strategy gives a buy signal' + (sw ? ' (trend-template breakout)' : ''), c || sw ? long : null, 20],
       ['Daily trend is up', d.trend ? d.trend === 'Bullish' : null, 8],
       ['Weekly trend is up', w.trend ? w.trend === 'Bullish' : null, 12],
       ['Price is above its 200-day average', m.sma200 ? m.price > m.sma200 : null, 12],
@@ -280,11 +283,11 @@
     const score100 = Math.max(0, Math.round((wAll ? known.filter(x => x[1]).reduce((a, x) => a + x[2], 0) / wAll * 100 : 0) - 15 * red.length)), score = score100 / 100;
     let call, why;
     if ((c && c.tone === 'short') || (d.action === 'SELL' && d.trend === 'Bearish' && w.trend === 'Bearish')) { call = 'SELL'; why = 'Downtrend on daily and weekly, or a tested sell signal: exit or avoid.'; }
-    else if (c && c.tone === 'long' && !red.length && score >= 0.6) { call = 'BUY'; why = score >= 0.8 ? 'A tested strategy says buy and most checks agree.' : 'A tested strategy says buy; some checks disagree, so use a smaller size.'; }
-    else if (c && c.tone === 'long' && red.length) { call = 'WAIT'; why = 'A tested strategy says buy, but a red risk flag says wait.'; }
-    else { call = 'WAIT'; why = c && c.tone !== 'long' ? 'No tested strategy has a buy signal today.' : 'Not enough checks agree.'; }
+    else if (long && !red.length && score >= 0.6) { call = 'BUY'; why = score >= 0.8 ? 'A tested strategy says buy and most checks agree.' : 'A tested strategy says buy; some checks disagree, so use a smaller size.'; }
+    else if (long && red.length) { call = 'WAIT'; why = 'A tested strategy says buy, but a red risk flag says wait.'; }
+    else { call = 'WAIT'; why = !long ? 'No tested strategy has a buy signal today.' : 'Not enough checks agree.'; }
     const strength = call === 'WAIT' ? '' : score >= 0.8 ? 'strong' : score >= 0.6 ? 'medium' : 'weak';
-    const lv = c && c.tone === 'long' ? { entry: c.buyLow === c.buyHigh ? rs(c.buyLow) : `${rs(c.buyLow)}–${rs(c.buyHigh)}`, stop: c.stop, target: c.sell1 } : d.action === 'BUY' ? { entry: rs(d.entry), stop: d.stop, target: d.target } : null;
+    const lv = sw && !(c && c.tone === 'long') && m.atr ? { entry: rs(m.price), stop: m.price - 2 * m.atr, target: 'trail the 10-day low once up 1R' } : c && c.tone === 'long' ? { entry: c.buyLow === c.buyHigh ? rs(c.buyLow) : `${rs(c.buyLow)}–${rs(c.buyHigh)}`, stop: c.stop, target: c.sell1 } : d.action === 'BUY' ? { entry: rs(d.entry), stop: d.stop, target: d.target } : null;
     return { call, why, strength, checks, pass, total: known.length, lv, score100 };
   }
 
@@ -294,7 +297,7 @@
     const top = [...v.checks.filter(x => x[1] === (v.call !== 'BUY' ? false : true)), ...v.checks.filter(x => x[1] === (v.call !== 'BUY'))].filter(x => x[1] !== null).slice(0, 3);
     put('kd-verdict', `<div class="kd-v ${cls}"><div class="kd-call"><b>${v.call}</b>${v.strength ? `<span>${v.strength}</span>` : ''}<div class="kd-ring" style="--p:${v.score100}" title="Weighted score out of 100"><i>${v.score100}</i></div><span>score</span></div>
       <div class="kd-why"><p><b>Score ${v.score100}/100 · ${v.pass} of ${v.total} checks pass.</b> ${esc(v.why)}</p>
-      ${v.lv ? `<p class="kd-lv">Entry ${v.lv.entry} · Stop ${rs(v.lv.stop)} · Target ${rs(v.lv.target)}${v.lv.stop && m.price ? ` · risk ${pct((v.lv.stop / m.price - 1) * 100)}` : ''}</p>` : ''}
+      ${v.lv ? `<p class="kd-lv">Entry ${v.lv.entry} · Stop ${rs(v.lv.stop)} · ${typeof v.lv.target === 'string' ? 'Exit: ' + v.lv.target : 'Target ' + rs(v.lv.target)}${v.lv.stop && m.price ? ` · risk ${pct((v.lv.stop / m.price - 1) * 100)}` : ''}</p>` : ''}
       ${(() => { const z = v.call === 'BUY' && v.lv && root.Plan ? Plan.size(m.price, v.lv.stop) : null; return z && z.qty ? `<p class="kd-size">Size: <b>${z.qty} shares</b> (${rs(z.value)}), risking ${rs(z.risk)} of your ${rs(Plan.settings().capital)} capital</p>` : ''; })()}
       <ul class="kd-checks">${(mode === 'expert' ? v.checks : top).map(([t, ok, wt]) => `<li class="${ok === null ? 'muted' : ok ? 'up' : 'down'}">${ok === null ? '–' : ok ? '✓' : '✗'} ${esc(t)}${mode === 'expert' ? ` <small class="muted">weight ${wt}</small>` : ''}</li>`).join('')}</ul>
       <button class="link-btn" data-kdmode>${mode === 'expert' ? 'Simple view' : 'Show all checks (expert)'}</button></div></div>
