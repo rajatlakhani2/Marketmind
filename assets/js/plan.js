@@ -108,11 +108,30 @@
       line(!weak.length, weak.length ? `${weak.length} holding${weak.length > 1 ? 's' : ''} below the 200-day average` : 'No holding below its 200-day average', weak.length ? esc(weak.map(h => h.sym).join(', ')) + ': long-term trend broken.' : 'Every tracked holding is in a long-term uptrend.'),
       line(drop / total < 0.12, `If NIFTY falls 10%: about −${rs(drop)} (${(drop / total * 100).toFixed(1)}%)`, `${haveBeta ? 'Uses each stock\'s one-year sensitivity to NIFTY (beta)' : 'Assumes every stock falls with NIFTY (betas arrive with the next evening scan)'}.${hits.length ? ` ${hits.length} would break their stop: ${esc(hits.map(h => h.sym).join(', '))}.` : ''}`),
     ];
+    const lossH = rowsH.filter(h => h.avg && h.ltp < h.avg), lossSum = lossH.reduce((a, h) => a + (h.avg - h.ltp) * h.qty, 0), expo = rowsH.reduce((a, h) => a + h.val * (h.m && h.m.beta != null ? h.m.beta : 1), 0);
+    const info = (t, d) => `<li class="doc-row"><span class="doc-ic info">i</span><div><b>${t}</b><small>${d}</small></div></li>`;
+    if (lossH.length) items.push(info(`Unrealised losses: ${rs(lossSum)} in ${lossH.length} holding${lossH.length > 1 ? 's' : ''}`, `${esc(lossH.map(h => h.sym).slice(0, 5).join(', '))}. A loss booked before 31 March can be set off against capital gains of the year (a long-term loss only against long-term gains). Check holding periods in your own records.`));
+    items.push(info(`Hedge size: your shares move like ${rs(expo)} of NIFTY`, 'That is the amount a NIFTY put or short future would need to cover for a full hedge. See the cost on the F&amp;O page; a hedge costs money every month.'));
     const bad = items.filter(x => x.includes('doc-ic bad')).length;
     el.innerHTML = `<p class="doc-grade ${bad ? (bad > 1 ? 'red' : 'amber') : 'green'}">${bad ? `${bad} thing${bad > 1 ? 's' : ''} to look at` : 'Healthy'} <small>· ${rowsH.length} holdings worth ${rs(total)}</small></p>
       <ul class="doc-list">${items.join('')}</ul>
       <p class="citation">${noData.length ? `${noData.length} holding${noData.length > 1 ? 's are' : ' is'} outside the NIFTY 500 scan (${esc(noData.map(h => h.sym).slice(0, 4).join(', '))}) and only counted for size. ` : ''}A rough estimate, not a forecast.</p>`;
   }
 
-  root.Plan = { signal, render, settings, size, holdAction, actionFor, preload };
+  // ---------- goal planner: monthly SIP needed to reach a target ----------
+  function planner(el) {
+    if (!el) return;
+    let g = { target: 10000000, years: 10, have: 0, ret: 12 }; try { g = { ...g, ...(JSON.parse(localStorage.getItem('marketmind_goalplan')) || {}) }; } catch { /* default */ }
+    const calc = () => { const n = g.years * 12, i = g.ret / 100 / 12, grown = g.have * Math.pow(1 + i, n), need = Math.max(0, g.target - grown), sip = i ? need * i / (Math.pow(1 + i, n) - 1) : need / n; return { grown, sip, low: (() => { const j2 = (g.ret - 3) / 100 / 12, gr = g.have * Math.pow(1 + j2, n); return j2 ? Math.max(0, g.target - gr) * j2 / (Math.pow(1 + j2, n) - 1) : 0; })() }; };
+    const draw = () => { const c = calc();
+      el.innerHTML = `<section class="home-card" style="margin-top:16px"><div class="home-card-head"><h3>Goal planner</h3></div><div class="home-card-body">
+        <form class="plan-form"><label>Target ₹<input name="target" type="number" min="10000" step="10000" value="${g.target}"></label><label>Years<input name="years" type="number" min="1" max="40" value="${g.years}"></label>
+        <label>Already invested ₹<input name="have" type="number" min="0" step="10000" value="${g.have}"></label><label>Expected return % a year<input name="ret" type="number" min="1" max="25" step="0.5" value="${g.ret}"></label><button class="btn-primary btn-small" type="submit">Work out</button></form>
+        <div class="plan-stats"><div><span>Monthly SIP needed</span><b>${rs(c.sip)}</b></div><div><span>If returns are ${g.ret - 3}%</span><b>${rs(c.low)}</b></div><div><span>Today's money grows to</span><b>${rs(c.grown)}</b></div><div><span>Target</span><b>${rs(g.target)}</b></div></div>
+        <p class="citation">Simple compounding at a steady yearly return; real returns vary every year and inflation is not included. The second figure shows the SIP needed if returns come in 3 points lower.</p></div></section>`;
+      el.querySelector('form').onsubmit = e => { e.preventDefault(); const d = new FormData(e.target); for (const k of Object.keys(g)) { const v = parseFloat(d.get(k)); if (v >= 0) g[k] = v; } if (!(g.years > 0)) g.years = 10; if (!(g.ret > 0)) g.ret = 12; try { localStorage.setItem('marketmind_goalplan', JSON.stringify(g)); } catch { /* ignore */ } draw(); }; };
+    draw();
+  }
+
+  root.Plan = { planner, signal, render, settings, size, holdAction, actionFor, preload };
 })(typeof window !== 'undefined' ? window : globalThis);

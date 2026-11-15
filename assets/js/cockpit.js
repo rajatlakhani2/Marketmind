@@ -92,7 +92,7 @@
     const st = ctx.trade && ctx.trade.settings, per = st ? +st.maxPerTrade || 25000 : 25000, risk = st ? (+st.account || 100000) * (+st.riskPct || 1) / 100 : null;
     el.innerHTML = `<div class="money-total"><div><span>Free cash</span><b>${rs(free)}</b></div><div><span>Trades it covers</span><b>${Math.floor(free / per)}</b></div>${risk ? `<div><span>Risk a trade</span><b>${rs(risk)}</b></div>` : ''}</div>
       <ul class="q-list">${res.map(r => `<li><div><b>${esc(r.label)}</b><small>${r.err ? esc(r.err) : `equity ${rs(r.equity)} · F&amp;O ${rs(r.fno)}`}</small></div><div class="q-num"><span>${r.err ? '' : rs(r.free != null ? r.free : r.bank)}</span></div></li>`).join('')}</ul>
-      <p class="citation">Trades covered = free cash ÷ ${rs(per)} (your largest order size).</p>`;
+      <p class="citation">Trades covered = free cash ÷ ${rs(per)} (your largest order size).${free > 10000 ? ` Idle cash earns nothing in the trading account: at an assumed 6.5% a year in a liquid fund, ${rs(free)} would earn about ${rs(free * 0.065 / 12)} a month.` : ''}</p>`;
   }
 
   // ---------- portfolio X-ray: sector split, biggest holdings, size mix ----------

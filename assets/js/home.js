@@ -46,6 +46,7 @@
     { id: 'home-rules', title: 'Passed my rules today', btn: null },
     { id: 'home-money', title: 'My money', btn: ['holdings', 'Holdings'] },
     { id: 'home-risk', title: 'Risk', btn: ['trading', 'Orders'], admin: true },
+    { id: 'home-global', title: 'Global cues', btn: null },
     { id: 'home-doctor', title: 'Portfolio doctor', btn: ['holdings', 'Holdings'] },
     { id: 'home-xray', title: 'Portfolio X-ray', btn: ['holdings', 'Holdings'] },
     { id: 'home-goal', title: 'Goal & benchmark', btn: null },
@@ -131,6 +132,20 @@
     lesson();
     swing();
     myRules();
+    globalCues();
+  }
+
+  // Overnight markets that set the tone for the Indian open (Yahoo, delayed)
+  const GLOBAL = [['S&P 500 (US)', '^GSPC', 1], ['Nasdaq (US)', '^IXIC', 1], ['Nikkei (Japan)', '^N225', 1], ['Brent crude', 'BZ=F', -1], ['US dollar in ₹', 'INR=X', -1], ['Gold', 'GC=F', 0]];
+  async function globalCues() {
+    if (!document.querySelector('#home-global')) return;
+    const out = await Promise.all(GLOBAL.map(([n, s, dir]) => yahoo(s).then(q => [n, q, dir]).catch(() => [n, null, dir])));
+    const ok = out.filter(x => x[1] && x[1].changePct != null);
+    if (!ok.length) return fill('home-global', empty('Global prices are not available right now.'));
+    const score = ok.reduce((a, [, q, dir]) => a + (Math.abs(q.changePct) < 0.3 ? 0 : Math.sign(q.changePct) * dir), 0);
+    const read = score >= 2 ? ['up', 'Supportive: overseas markets are up and crude or the dollar are not rising.'] : score <= -2 ? ['down', 'Weak: overseas markets fell, or crude and the dollar rose. Expect a soft open.'] : ['', 'Mixed: no clear push from overseas.'];
+    fill('home-global', `<p class="${read[0]}"><b>${read[1]}</b></p><ul class="q-list">${out.map(([n, q]) => `<li><div><b>${n}</b></div><div class="q-num"><b>${q ? num(q.ltp) : '—'}</b><small class="${tone(q && q.changePct)}">${q && q.changePct != null ? pct(q.changePct) : 'unavailable'}</small></div></li>`).join('')}</ul>
+      <p class="citation">Last close or latest delayed price from Yahoo. Rising crude and a rising dollar usually weigh on Indian shares. A reading of the mood, not a forecast.</p>`);
   }
 
   async function myRules() {

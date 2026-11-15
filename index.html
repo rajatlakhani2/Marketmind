@@ -41,16 +41,16 @@
   <script src="js/optcalls.js?v=2"></script>
   <script src="js/corpact.js?v=2"></script>
   <script src="js/backtest.js?v=31"></script>
-  <script src="js/nav.js?v=32"></script>
+  <script src="js/nav.js?v=33"></script>
   <script src="js/overview.js?v=1"></script>
   <script src="js/ux.js?v=5"></script>
   <script src="js/insights.js?v=3"></script>
   <script src="js/journal.js?v=3"></script>
-  <script src="js/plan.js?v=3"></script>
+  <script src="js/plan.js?v=4"></script>
   <script src="js/hub.js?v=1"></script>
   <script src="js/kundli.js?v=10"></script>
-  <script src="js/cockpit.js?v=7"></script>
-  <script src="js/home.js?v=33"></script>
+  <script src="js/cockpit.js?v=8"></script>
+  <script src="js/home.js?v=34"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1362,7 +1362,7 @@ html[data-theme="b"] .icici-banner a, html[data-theme="b"] .icici-banner button.
 .doc-list, .coach-list { list-style: none; margin: 0; padding: 0; }
 .doc-row { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); } .doc-row small { display: block; color: var(--text-muted); }
 .doc-ic { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: .8rem; }
-.doc-ic.ok { background: rgba(16,185,129,.16); color: var(--green); } .doc-ic.bad { background: rgba(245,158,11,.2); color: var(--orange, #d97706); }
+.doc-ic.info { background: rgba(127,127,127,.16); color: var(--text-muted); font-style: italic; } .doc-ic.ok { background: rgba(16,185,129,.16); color: var(--green); } .doc-ic.bad { background: rgba(245,158,11,.2); color: var(--orange, #d97706); }
 .coach-list li { padding: 8px 0 8px 14px; border-left: 3px solid var(--accent); margin: 0 0 8px; }
 .home-card { transition: transform .15s ease, box-shadow .15s ease; }
 @media (hover: hover) { .home-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.10); } }
@@ -3742,7 +3742,7 @@ class App {
       case 'optcalls': await OptCalls.renderPage(document.getElementById('optcalls-container')); break;
       case 'ideas': await Hub.renderIdeas(document.getElementById('ideas-container')); break;
       case 'more': Hub.renderMore(document.getElementById('more-container')); break;
-      case 'fund': await Kundli.renderFundPage(document.getElementById('fund-container')); break;
+      case 'fund': { const fc = document.getElementById('fund-container'); await Kundli.renderFundPage(fc); let gp = document.getElementById('goal-planner'); if (!gp) { gp = document.createElement('div'); gp.id = 'goal-planner'; fc.after(gp); } if (window.Plan) Plan.planner(gp); break; }
       case 'journal': await Journal.renderPage(document.getElementById('journal-container')); break;
       case 'insights': await Insights.renderPage(document.getElementById('insights-container')); break;
       case 'corpactions': await CorpActions.renderPage(document.getElementById('corpactions-container')); break;

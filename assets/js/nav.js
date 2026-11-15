@@ -203,6 +203,12 @@
         if (!visible(id)) continue;
         if (label.toLowerCase().includes(ql) || (PAGE_WORDS[id] || '').includes(ql)) items.push({ kind: 'page', title: label, sub: g.label, run: () => go(id) });
       }
+      // commands: themes and settings
+      const setTheme = t => { try { localStorage.setItem('marketmind_theme', JSON.stringify(t)); } catch { /* ignore */ } applyTheme(); };
+      [['Theme: Clean light', 'theme light clean white', () => setTheme('a')], ['Theme: Pro dark', 'theme dark pro night black', () => setTheme('b')], ['Theme: Soft colour', 'theme soft colour color purple', () => setTheme('c')], ['Theme: Colour-blind safe', 'theme colour blind color accessible', () => setTheme('cb')],
+        ['Customize Home and tabs', 'customize settings layout tabs cards', () => openCustomize()], ["Capital and risk for Today's plan", 'capital risk size plan position money', () => { go('dashboard'); setTimeout(() => { const b = document.querySelector('[data-plan-set]'); if (b) { b.scrollIntoView({ block: 'center' }); b.click(); } }, 1500); }],
+        ['Goal planner (SIP needed)', 'goal planner sip target retirement', () => go('fund')]]
+        .forEach(([title, words, run]) => { if (title.toLowerCase().includes(ql) || words.includes(ql)) items.push({ kind: 'page', title, sub: 'Command', run }); });
       // strategies & concepts from the knowledge base
       const eng = root.app && app.ui && app.ui.engine;
       if (eng && q.length >= 2) {

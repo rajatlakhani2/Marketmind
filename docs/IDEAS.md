@@ -1,5 +1,8 @@
 # MarketMind idea list (agreed 15 Nov 2026)
 
+Done (15 Nov, later): global cues card, idle-cash line, tax-loss and hedge-size lines in Portfolio doctor, goal planner (Fund 360°), theme and settings commands in search.
+Already existed before the list: option strategy builder (F&O page), sector rotation (Insights), customise Home, money across accounts.
+
 Done: Today's plan card · weighted score · hold/tighten/exit on holdings · live/delayed label · position sizing.
 Tested and dropped (no edge on unseen years): pullback setup, breadth filter, relative-strength ranking, health switch.
 
