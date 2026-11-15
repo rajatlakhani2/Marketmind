@@ -11,7 +11,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 
-const KD_CACHE = __DIR__ . '/.kundli-cache';
+const KD_CACHE = __DIR__ . '/.kundli-cache2'; // v2: P/E sanity check
 const KD_NSE = 'https://www.nseindia.com';
 const KD_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 
@@ -73,8 +73,9 @@ function kd_fundamentals(string $sym): array {
     $niTtm = count($ni4) === 4 ? array_sum($ni4) : $last('annualNetIncome');
     $out = [
         'price' => $price, 'q' => array_slice($q, -12), 'epsTtm' => $epsTtm,
-        'pe' => $price && $epsTtm && $epsTtm > 0 ? round($price / $epsTtm, 1) : null,
-        'roe' => $niTtm !== null && $equity ? round($niTtm / $equity * 100, 1) : null,
+        // P/E above 300 usually means Yahoo reports this company's EPS in another currency (e.g. Infosys in USD): leave it out
+        'pe' => $price && $epsTtm && $epsTtm > 0 && $price / $epsTtm <= 300 ? round($price / $epsTtm, 1) : null,
+        'roe' => $niTtm !== null && $equity && abs($niTtm / $equity) <= 2 ? round($niTtm / $equity * 100, 1) : null,
         'de' => $debt !== null && $equity ? round($debt / $equity, 2) : null,
         'debt' => $debt, 'equity' => $equity,
     ];

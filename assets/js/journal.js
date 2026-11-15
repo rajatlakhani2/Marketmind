@@ -26,7 +26,7 @@
   async function whatIf(btn, t) {
     btn.disabled = true; btn.textContent = '…';
     try {
-      const x = await j(`api/chart.php?symbol=${encodeURIComponent(t.symbol + '.NS')}&interval=1d&range=1y`), r = x.chart.result[0];
+      const x = await j(`api/chart.php?symbol=${encodeURIComponent(t.symbol + (/^\d{6}$/.test(t.symbol) ? '.BO' : '.NS'))}&interval=1d&range=1y`), r = x.chart.result[0];
       const days = r.timestamp.map(s => new Date(s * 1000 + 5.5 * 3600e3).toISOString().slice(0, 10)), cl = r.indicators.quote[0].close;
       const k = days.findIndex(d => d > istDay(t.closed_at));
       const after = k >= 0 ? cl.slice(k, k + 20).filter(v => v != null) : [];

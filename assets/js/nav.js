@@ -34,7 +34,7 @@
   const navPrefs = () => { try { return JSON.parse(localStorage.getItem(NKEY)) || {}; } catch { return {}; } };
   let GROUPS = ALL_GROUPS;
   function applyPrefs() {
-    const p = navPrefs(), order = p.order || [], hidden = new Set(p.hidden || []), pins = (p.pins || []).filter(x => !hidden.has(x));
+    const p = navPrefs(), known = ALL_GROUPS.map(g => g.id), order = (p.order || []).every(x => known.includes(x)) ? (p.order || []) : [], hidden = new Set(p.hidden || []), pins = (p.pins || []).filter(x => !hidden.has(x));
     const label = id => { for (const g of ALL_GROUPS) for (const [x, l] of g.pages) if (x === id) return l; return id; };
     GROUPS = [
       ...(pins.length ? [{ id: 'fav', label: 'Favourites', pages: pins.map(x => [x, label(x)]) }] : []),

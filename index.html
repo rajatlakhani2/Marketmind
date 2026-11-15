@@ -27,7 +27,7 @@
   <script src="js/consensus.js?v=18"></script>
   <script src="js/account.js?v=22"></script>
   <script src="js/stockpicker.js?v=14"></script>
-  <script src="js/mindguru.js?v=17"></script>
+  <script src="js/mindguru.js?v=18"></script>
   <script src="js/knowledgesync.js?v=14"></script>
   <script src="js/optbuilder.js?v=16"></script>
   <script src="js/fno.js?v=16"></script>
@@ -41,15 +41,15 @@
   <script src="js/optcalls.js?v=2"></script>
   <script src="js/corpact.js?v=2"></script>
   <script src="js/backtest.js?v=31"></script>
-  <script src="js/nav.js?v=31"></script>
+  <script src="js/nav.js?v=32"></script>
   <script src="js/overview.js?v=1"></script>
   <script src="js/ux.js?v=5"></script>
   <script src="js/insights.js?v=3"></script>
-  <script src="js/journal.js?v=1"></script>
+  <script src="js/journal.js?v=2"></script>
   <script src="js/hub.js?v=1"></script>
   <script src="js/kundli.js?v=5"></script>
   <script src="js/cockpit.js?v=6"></script>
-  <script src="js/home.js?v=30"></script>
+  <script src="js/home.js?v=31"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1328,6 +1328,8 @@ html[data-theme="b"] .modal, html[data-theme="b"] input, html[data-theme="b"] se
 .kd-call { min-width: 96px; padding: 10px 6px; border-radius: calc(var(--radius) - 4px); }
 .kd-v.buy .kd-call { background: var(--green-soft); } .kd-v.sell .kd-call { background: var(--red-soft); } .kd-v.wait .kd-call { background: color-mix(in srgb, var(--yellow) 14%, var(--bg-card)); }
 @media (max-width: 700px) { .home-search { flex-direction: column; } .home-fundbtn { min-height: 44px; } }
+html[data-theme="b"] .icici-banner { background: #2e2510; border-color: #5c4a1c; color: var(--text-primary); }
+html[data-theme="b"] .icici-banner a, html[data-theme="b"] .icici-banner button.link-btn { color: var(--yellow); }
 </style>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">

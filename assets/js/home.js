@@ -30,7 +30,7 @@
   }
   async function quote(sym) {
     try { const q = await MarketData.getQuote(sym); if (q && q.ltp) return q; } catch { /* fall back */ }
-    return yahoo(sym + '.NS');
+    return yahoo(/^\d{6}$/.test(sym) ? sym + '.BO' : sym + '.NS');
   }
 
   const INDICES = [['NIFTY 50', '^NSEI'], ['BANK NIFTY', '^NSEBANK'], ['SENSEX', '^BSESN']];
@@ -180,7 +180,7 @@
       const li = document.querySelector(`#home-watch [data-sym="${i.symbol}"] > div`);
       if (!li) return;
       try {
-        if (!sparks.has(i.symbol)) { const x = await getJSON(`api/chart.php?symbol=${encodeURIComponent(i.symbol + '.NS')}&interval=1d&range=1mo`); sparks.set(i.symbol, (x.chart.result[0].indicators.quote[0].close || []).filter(v => v != null)); }
+        if (!sparks.has(i.symbol)) { const x = await getJSON(`api/chart.php?symbol=${encodeURIComponent(i.symbol + (/^\d{6}$/.test(i.symbol) ? '.BO' : '.NS'))}&interval=1d&range=1mo`); sparks.set(i.symbol, (x.chart.result[0].indicators.quote[0].close || []).filter(v => v != null)); }
         const c = sparks.get(i.symbol); if (c.length < 2) return;
         const lo = Math.min(...c), hi = Math.max(...c);
         li.insertAdjacentHTML('beforeend', `<svg class="mini-spark" viewBox="0 0 60 18"><polyline fill="none" stroke="${c[c.length - 1] >= c[0] ? 'var(--green)' : 'var(--red)'}" stroke-width="1.5" points="${c.map((v, k) => `${(k / (c.length - 1) * 60).toFixed(1)},${(17 - (v - lo) / (hi - lo || 1) * 16).toFixed(1)}`).join(' ')}"/></svg>`);
