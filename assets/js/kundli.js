@@ -438,8 +438,28 @@
         ${nav.length > 2 ? navChart(nav, isDebt ? null : bench) : '<p class="muted">Not enough history for this range.</p>'}</section>
       <div class="money-total kd-mf"><div><span>1 year</span><b class="${tone(c1)}">${pct(c1)}</b></div><div><span>3 years (a year)</span><b class="${tone(c3)}">${pct(c3)}</b></div><div><span>5 years (a year)</span><b class="${tone(c5)}">${pct(c5)}</b></div>
         <div><span>Worst fall</span><b class="down">${pct(mdd * 100)}</b></div><div><span>Positive 1-year periods</span><b>${posShare != null ? num(posShare, 0) + '%' : '—'}</b></div>${!isDebt ? `<div><span>NIFTY 50, 3 years</span><b>${pct(nifty3)}</b></div>` : ''}</div>
+      ${!isDebt && c3 != null && nifty3 != null ? '<div id="kd-switch"></div>' : ''}
       <p class="citation">NAV from AMFI via mfapi.in. Expense ratio and holdings are not in this free source; check the fund's factsheet. For information, not investment advice.</p>`;
     el.querySelectorAll('[data-r]').forEach(b => (b.onclick = () => renderFund(el, b.dataset.r)));
+    drawSwitch(el.querySelector('#kd-switch'), c3, nifty3);
+  }
+  // Switch adviser: what leaving this fund for a NIFTY index fund would cost (tax + exit load) and how long the return gap takes to pay it back
+  function drawSwitch(el, c3, nifty3) {
+    if (!el) return;
+    let g = { value: 500000, invested: 400000, long: true, load: 0 }; try { g = { ...g, ...(JSON.parse(localStorage.getItem('kd_switch')) || {}) }; } catch { /* default */ }
+    const gap = nifty3 - c3, gain = Math.max(0, g.value - g.invested);
+    const tax = (g.long ? 0.125 * Math.max(0, gain - 125000) : 0.20 * gain) * 1.04, load = g.value * g.load / 100, cost = tax + load, left = g.value - cost;
+    const yrs = gap > 0 && left > 0 ? cost / (left * gap / 100) : null;
+    const msg = gap <= 0 ? `This fund beat NIFTY by ${num(-gap, 1)}% a year over 3 years. On returns there is no case for switching.`
+      : cost <= 0 ? `The fund lags NIFTY by ${num(gap, 1)}% a year and switching costs nothing here, so a NIFTY index fund is worth considering.`
+      : `Switching costs about ${rs(cost)} (${num(cost / g.value * 100, 1)}% of your money). If the ${num(gap, 1)}% a year gap continues, a NIFTY index fund earns that back in about ${yrs < 1 ? Math.max(1, Math.round(yrs * 12)) + ' months' : num(yrs, 1) + ' years'}.${yrs > 3 ? ' That is a long payback: waiting, or stopping new SIPs here instead, may be better.' : ''}`;
+    el.innerHTML = `<section class="card st-card"><div class="st-card-head"><h3>Should I switch?</h3></div>
+      <form class="plan-form"><label>Value today ₹<input name="value" type="number" min="0" step="1000" value="${g.value}"></label><label>Amount invested ₹<input name="invested" type="number" min="0" step="1000" value="${g.invested}"></label>
+      <label>Exit load %<input name="load" type="number" min="0" max="5" step="0.25" value="${g.load}"></label><label>Held over 12 months<select name="long"><option value="1"${g.long ? ' selected' : ''}>Yes</option><option value="0"${g.long ? '' : ' selected'}>No</option></select></label><button class="btn-primary btn-small" type="submit">Work out</button></form>
+      <div class="money-total kd-mf"><div><span>Tax on selling</span><b>${rs(tax)}</b></div><div><span>Exit load</span><b>${rs(load)}</b></div><div><span>Gap vs NIFTY, 3 years</span><b class="${tone(-gap)}">${pct(-gap)}</b></div></div>
+      <p><b>${esc(msg)}</b></p>
+      <p class="citation">Equity-fund tax for FY 2026-27: 12.5% on long-term gains above ₹1,25,000 a year (assumes you have not used that allowance elsewhere), 20% on short-term gains, plus 4% cess. Exit load is in the fund's factsheet (often 1% in the first year). NIFTY here excludes dividends, so a real index fund did a little better than shown. Past gaps need not continue. Not tax or investment advice.</p></section>`;
+    el.querySelector('form').onsubmit = e => { e.preventDefault(); const d = new FormData(e.target); g = { value: +d.get('value') || 0, invested: +d.get('invested') || 0, load: +d.get('load') || 0, long: d.get('long') === '1' }; try { localStorage.setItem('kd_switch', JSON.stringify(g)); } catch { /* ignore */ } drawSwitch(el, c3, nifty3); };
   }
   async function renderFundPage(container) {
     if (!container) return;

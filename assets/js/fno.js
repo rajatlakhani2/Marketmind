@@ -330,7 +330,7 @@
         <p class="ps-foot">Educational idea, not a recommendation. Options can lose 100% of the premium. Check liquidity (bid/ask gap) before trading.</p>
       </div>`;
 
-    const tabs = ['summary', 'calls', 'puts', 'futures', 'builder'].map(t => `<button type="button" class="fno-tab${state.tab === t ? ' active' : ''}" data-tab="${t}">${{ summary: 'Summary', calls: 'Calls (CE)', puts: 'Puts (PE)', futures: 'Futures', builder: 'Strategy builder' }[t]}</button>`).join('');
+    const tabs = ['summary', 'oimap', 'calls', 'puts', 'futures', 'builder'].map(t => `<button type="button" class="fno-tab${state.tab === t ? ' active' : ''}" data-tab="${t}">${{ summary: 'Summary', oimap: 'OI map', calls: 'Calls (CE)', puts: 'Puts (PE)', futures: 'Futures', builder: 'Strategy builder' }[t]}</button>`).join('');
 
     let panel = '';
     let P = null;
@@ -340,6 +340,7 @@
     }
     const plansBox = only => `<div class="analysis-section" style="margin-top:0;"><h3>Option buy &amp; sell points <span class="muted" style="font-weight:400;font-size:0.8rem;">from ${esc(u.symbol)}'s demand and supply zones (daily chart)</span></h3>${data.verdictDone ? plansHtml(P, only) : '<p class="muted">Working out the zones…</p>'}</div>`;
     if (state.tab === 'summary') panel = verdictHtml + plansBox() + tiles + oiNotes(A);
+    if (state.tab === 'oimap') panel = oiMap(data, A, spot);
     if (state.tab === 'calls') panel = plansBox('calls') + chainTable(data.calls, true, A, spot);
     if (state.tab === 'puts') panel = plansBox('puts') + chainTable(data.puts, false, A, spot);
     if (state.tab === 'futures') panel = futuresTable(data.futures, spot, u);
@@ -361,6 +362,23 @@
   }
 
   const tile = (label, value, sub) => `<div class="v-tile"><div class="label">${label}</div><div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+
+  // Open-interest heat map: calls and puts side by side per strike; darker = more contracts open there
+  function oiMap(data, A, spot) {
+    const m = new Map();
+    for (const r of data.calls || []) m.set(r.strike, { strike: r.strike, c: r.oi || 0, cc: r.oiChange || 0, p: 0, pc: 0 });
+    for (const r of data.puts || []) { const o = m.get(r.strike) || { strike: r.strike, c: 0, cc: 0 }; o.p = r.oi || 0; o.pc = r.oiChange || 0; m.set(r.strike, o); }
+    let rows = [...m.values()].sort((a, b) => a.strike - b.strike);
+    if (!rows.length) return '<p class="muted">No option chain loaded.</p>';
+    const i = rows.findIndex(r => r.strike === A.atm); if (i >= 0) rows = rows.slice(Math.max(0, i - 12), i + 13);
+    const mx = Math.max(...rows.map(r => Math.max(r.c, r.p)), 1), ch = v => (v ? `<small class="${v > 0 ? 'text-green' : 'text-red'}">${v > 0 ? '+' : ''}${big(v)}</small>` : '');
+    const tag = r => [r.strike === A.resistance ? '<span class="tag tag-red">Resistance</span>' : '', r.strike === A.support ? '<span class="tag tag-green">Support</span>' : '', r.strike === A.maxPain ? '<span class="tag">Max pain</span>' : '', r.strike === A.atm ? '<span class="tag">ATM</span>' : ''].join(' ');
+    return `<div class="oi-legend"><span><i class="oi-sw call"></i>Call OI: sellers expect the price to stay below</span><span><i class="oi-sw put"></i>Put OI: sellers expect the price to stay above</span></div>
+      <div class="fno-tablewrap"><table class="screener-table oi-map"><thead><tr><th>Change today</th><th>Call OI</th><th>Strike</th><th>Put OI</th><th>Change today</th></tr></thead><tbody>
+      ${rows.map(r => `<tr class="${r.strike === A.atm ? 'fno-atm' : ''}"><td>${ch(r.cc)}</td><td class="oi-cell" style="background:rgba(239,68,68,${(r.c / mx * 0.55).toFixed(2)})">${big(r.c)}</td>
+        <td class="oi-strike"><b>${int(r.strike)}</b> ${tag(r)}</td><td class="oi-cell" style="background:rgba(16,185,129,${(r.p / mx * 0.55).toFixed(2)})">${big(r.p)}</td><td>${ch(r.pc)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="citation">${A.resistance ? `Biggest call wall above the price: ${int(A.resistance)}. ` : ''}${A.support ? `Biggest put wall below: ${int(A.support)}. ` : ''}${spot ? `Spot ${num(spot)}. ` : ''}Walls show where option sellers are positioned for this expiry; they can and do break. 12 strikes either side of the money.</p>`;
+  }
 
   function oiNotes(A) {
     const lines = [];

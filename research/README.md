@@ -60,3 +60,10 @@ and a "health switch" (pause while the last 20-50 closed signals average below z
 Nothing fixes FY 25-26, and no filter improves steadily as it is tightened (breadth 50% helps, 60% hurts), which is what
 noise looks like. Conclusion: keep C unchanged; do not add filters. The gain available is in risk control (fixed risk per
 trade, a cap on open positions and per sector), not in prediction.
+
+## Similar-days finder, 15 Nov 2026 (`research/similar.mjs`): tested and not shipped
+
+For the latest NIFTY day, find the 15 most similar past days (5/20/60-day return, distance from the 200-day, 20-day volatility)
+and look at the next 20 days. Walk-forward over the last 5 years (62 tests): the similar days pointed the right way
+(above or below a normal 20-day move) 36 times of 62 (58%), correlation 0.08. That is not distinguishable from chance,
+so it is not shown in the app.
