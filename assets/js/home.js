@@ -101,10 +101,12 @@
         <div><h2>${hello}${name ? ', ' + esc(name) : ''}</h2>
         <p>${istNow().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}</p></div>
         <span class="mkt-pill ${open ? 'open' : ''}"><i></i>${open ? 'Market open' : 'Market closed'}</span>
+        <span class="mkt-pill src" id="src-pill" hidden></span>
       </div>
       <div class="home-search"><button type="button" class="home-searchbar" data-kdsearch aria-label="Search a stock, F&amp;O or fund"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span>Search a stock, F&amp;O or fund</span><kbd>/</kbd></button>
         <button type="button" class="home-fundbtn" data-go="fund">Mutual fund</button></div>
       <div id="home-cockpit"></div>
+      ${card('home-plan', "Today's plan", '<button type="button" class="link-btn" data-plan-set>Capital &amp; risk ›</button>').replace('class="home-card"', 'class="home-card plan-hero"')}
       <div class="home-grid" id="home-grid">
         ${layout(admin).filter(c => !c.hidden).map(c => card(c.id, c.title, c.btn ? openBtn(c.btn[0], c.btn[1]) : '')).join('')}
       </div>

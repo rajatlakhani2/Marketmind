@@ -299,6 +299,8 @@
     for (const x of out) if (x.avg && x.ltp) { invested += x.avg * x.qty; value += x.ltp * x.qty; }
     const flags = x => {
       const f = [];
+      const pa = root.Plan ? Plan.actionFor(x.symbol, x.ltp, x.avg) : null;
+      if (pa && pa.kind !== 'none') f.push(`<span class="tag ${pa.kind === 'exit' ? 'tag-red' : pa.kind === 'tighten' ? 'tag-orange' : 'tag-green'}" title="${esc(pa.why)}">${pa.label}</span>`);
       if (!x.r) return x.err ? `<span class="muted">${esc(x.err)}</span>` : '';
       if (x.r.tone === 'short') f.push('<span class="tag tag-red">Verdict: sell / avoid</span>');
       const stop = x.r.stop ?? x.r.demandBelow;
@@ -334,5 +336,5 @@
   }
 
   root.Opportunities = { renderPage: renderOppsPage, runScan, verdict };
-  root.Holdings = { renderPage: async c => { await resultsSoon(); return renderHoldingsPage(c); } };
+  root.Holdings = { renderPage: async c => { await resultsSoon(); if (root.Plan) await Plan.preload().catch(() => {}); return renderHoldingsPage(c); } };
 })(typeof window !== 'undefined' ? window : globalThis);

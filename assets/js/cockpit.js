@@ -67,6 +67,7 @@
   // ---------- my money across connected accounts ----------
   const POS = new Map(); // symbol -> current value, across accounts (for the X-ray)
   const WHERE = new Map(); // symbol -> account labels holding it
+  const HOLD = new Map(); // symbol -> { sym, qty, avg, ltp } across accounts (for Today's plan)
   function sumHoldings(h) {
     const src = h.holdings && h.holdings.length ? h.holdings : (h.demat || []);
     let inv = 0, val = 0, n = 0;
@@ -77,6 +78,7 @@
       if (a && l) { inv += a * q; val += l * q; }
       const sym = (h.symbols || {})[String(r.stock_code || '').toUpperCase()] || String(r.stock_code || '').toUpperCase();
       if (l) POS.set(sym, (POS.get(sym) || 0) + l * q);
+      { const o = HOLD.get(sym) || { sym, qty: 0, cost: 0, ltp: l }; o.qty += q; o.cost += (a || 0) * q; o.ltp = l || o.ltp; o.avg = o.qty ? o.cost / o.qty : null; HOLD.set(sym, o); }
       if (h._label) { if (!WHERE.has(sym)) WHERE.set(sym, new Set()); WHERE.get(sym).add(h._label); }
     }
     return { inv, val, n };
@@ -142,12 +144,13 @@
         <p class="citation">${gain >= goalPct ? 'On track for the yearly goal.' : 'Behind the yearly goal so far.'} Money added or withdrawn is left out.</p>`;
   }
   async function money(el, ctx) {
-    POS.clear(); WHERE.clear();
+    POS.clear(); WHERE.clear(); HOLD.clear();
     const b = ctx.brokers || { accounts: [] };
     const accts = [...(b.main && b.main.connectedToday ? [{ label: 'ICICI · main', url: 'api/breeze.php?action=holdings' }] : []),
       ...b.accounts.filter(a => a.connectedToday).map(a => ({ label: a.label, url: `api/brokers.php?action=holdings&id=${a.id}` })),
       ...(b.shared || []).filter(a => a.connectedToday).map(a => ({ label: `${a.label} (${a.owner})`, url: `api/brokers.php?action=holdings&id=${a.id}` }))];
     if (!accts.length) {
+      if (root.Plan) Plan.render({ holdings: [], connected: false, live: false });
       xray(document.querySelector('#home-xray .home-card-body')); goal(document.querySelector('#home-goal .home-card-body'), {});
       const ce = document.querySelector('#home-cash .home-card-body'); if (ce) ce.innerHTML = '<p class="home-empty">Shows once a broker account is connected today.</p>';
       el.innerHTML = `<p class="home-empty">${b.main || b.accounts.length ? 'Log in to your broker accounts for today to see your money here.' : 'Add your broker account under <b>Broker accounts</b> (your name, top right) to see holdings and P&amp;L here.'}</p>`;
@@ -156,6 +159,7 @@
     const syms = new Set();
     const rows = await Promise.all(accts.map(async a => { try { const h = await j(a.url); h._label = a.label; [...(h.holdings || []), ...(h.demat || [])].forEach(r => r.stock_code && syms.add((h.symbols || {})[String(r.stock_code).toUpperCase()] || String(r.stock_code).toUpperCase())); return { ...a, ...sumHoldings(h) }; } catch (e) { return { ...a, err: e.message }; } }));
     resultsDue([...syms]);
+    if (root.Plan) Plan.render({ holdings: [...HOLD.values()], connected: true, live: !!(b.main && b.main.connectedToday) });
     cash(document.querySelector('#home-cash .home-card-body'), accts, ctx);
     xray(document.querySelector('#home-xray .home-card-body'));
     const t = rows.reduce((s, r) => ({ inv: s.inv + (r.inv || 0), val: s.val + (r.val || 0) }), { inv: 0, val: 0 });

@@ -126,7 +126,7 @@ for (const s of syms) {
   const r1 = x => (x == null || !isFinite(x) ? null : +x.toFixed(2));
   const v20 = v.length > 21 ? v.slice(-21, -1).reduce((a, x) => a + x, 0) / 20 : null;
   rows[s] = [r1(p), r1(rsi14(c.slice(-120))), r1(sma(c, 50, i)), r1(sma(c, 150, i)), r1(sma(c, 200, i)), r1(i >= 21 ? (p / c[i - 21] - 1) * 100 : null), r1(i >= 63 ? (p / c[i - 63] - 1) * 100 : null),
-    r1((p / Math.max(...c.slice(-252)) - 1) * 100), r1(v20 ? v[i] / v20 : null), st && st.trend ? 1 : 0, st && st.breakout ? 1 : 0, U[s].g, U[s].ind, b[i].d];
+    r1((p / Math.max(...c.slice(-252)) - 1) * 100), r1(v20 ? v[i] / v20 : null), st && st.trend ? 1 : 0, st && st.breakout ? 1 : 0, U[s].g, U[s].ind, b[i].d, r1(b.length > 20 ? atrAt(b, i) : null), r1(i >= 10 ? Math.min(...b.slice(i - 10, i).map(x => x.l)) : null)];
 }
-writeFileSync(outPath.replace(/swing\.json$/, 'metrics.json'), JSON.stringify({ date: today, cols: ['price', 'rsi', 'sma50', 'sma150', 'sma200', 'chg1m', 'chg3m', 'from52h', 'volRatio', 'trendTemplate', 'breakout20', 'g', 'ind', 'd'], rows }));
+writeFileSync(outPath.replace(/swing\.json$/, 'metrics.json'), JSON.stringify({ date: today, cols: ['price', 'rsi', 'sma50', 'sma150', 'sma200', 'chg1m', 'chg3m', 'from52h', 'volRatio', 'trendTemplate', 'breakout20', 'g', 'ind', 'd', 'atr', 'lo10'], rows }));
 console.log(`${today}: fetched ${fetched}/${syms.length}, market ${marketUp ? 'up' : 'down'}, ${signals.length} signals, ${near.length} near, ${out.open.length} open, ${closed.length} closed (${out.closedStats.avgR ?? '—'}R avg)`);

@@ -263,19 +263,21 @@
   function verdict(st, m, risk) {
     const c = st.cs && st.cs.conclusion, d = st.calls['1d'] || {}, w = st.calls['1w'] || {}, mk = root.Tiers && Tiers.market ? Tiers.market() : null;
     const checks = [
-      ['A tested strategy (Proven / Watch) gives a buy signal', c ? c.tone === 'long' : null],
-      ['Daily trend is up', d.trend ? d.trend === 'Bullish' : null],
-      ['Weekly trend is up', w.trend ? w.trend === 'Bullish' : null],
-      ['Price is above its 200-day average', m.sma200 ? m.price > m.sma200 : null],
-      ['Strong uptrend (trend template: 50 > 150 > 200-day, near 52-week high)', m.sma150 ? m.trendTemplate === 1 : null],
-      ['Not inside a daily sell (supply) zone', d.action ? d.action !== 'SELL' : null],
-      ['RSI is not overbought (below 70)', m.rsi != null ? m.rsi < 70 : null],
-      ['NIFTY is above its 200-day average', mk ? mk.above200 : null],
-      ['Profit is growing year on year', m.profitGrowth != null ? m.profitGrowth > 0 : null],
-      ['Delivery is 40% or more (real buying)', m.delivery != null ? m.delivery >= 40 : null],
+      ['A tested strategy (Proven / Watch) gives a buy signal', c ? c.tone === 'long' : null, 20],
+      ['Daily trend is up', d.trend ? d.trend === 'Bullish' : null, 8],
+      ['Weekly trend is up', w.trend ? w.trend === 'Bullish' : null, 12],
+      ['Price is above its 200-day average', m.sma200 ? m.price > m.sma200 : null, 12],
+      ['Strong uptrend (trend template: 50 > 150 > 200-day, near 52-week high)', m.sma150 ? m.trendTemplate === 1 : null, 15],
+      ['Not inside a daily sell (supply) zone', d.action ? d.action !== 'SELL' : null, 6],
+      ['RSI is not overbought (below 70)', m.rsi != null ? m.rsi < 70 : null, 5],
+      ['NIFTY is above its 200-day average', mk ? mk.above200 : null, 10],
+      ['Profit is growing year on year', m.profitGrowth != null ? m.profitGrowth > 0 : null, 7],
+      ['Delivery is 40% or more (real buying)', m.delivery != null ? m.delivery >= 40 : null, 5],
     ];
-    const known = checks.filter(x => x[1] !== null), pass = known.filter(x => x[1]).length, score = known.length ? pass / known.length : 0;
     const red = risk.filter(r => r[0] === 'red');
+    // weighted score out of 100: each check counts by its weight (unknown ones are left out), minus 15 for every red risk flag
+    const known = checks.filter(x => x[1] !== null), pass = known.filter(x => x[1]).length, wAll = known.reduce((a, x) => a + x[2], 0);
+    const score100 = Math.max(0, Math.round((wAll ? known.filter(x => x[1]).reduce((a, x) => a + x[2], 0) / wAll * 100 : 0) - 15 * red.length)), score = score100 / 100;
     let call, why;
     if ((c && c.tone === 'short') || (d.action === 'SELL' && d.trend === 'Bearish' && w.trend === 'Bearish')) { call = 'SELL'; why = 'Downtrend on daily and weekly, or a tested sell signal: exit or avoid.'; }
     else if (c && c.tone === 'long' && !red.length && score >= 0.6) { call = 'BUY'; why = score >= 0.8 ? 'A tested strategy says buy and most checks agree.' : 'A tested strategy says buy; some checks disagree, so use a smaller size.'; }
@@ -283,17 +285,18 @@
     else { call = 'WAIT'; why = c && c.tone !== 'long' ? 'No tested strategy has a buy signal today.' : 'Not enough checks agree.'; }
     const strength = call === 'WAIT' ? '' : score >= 0.8 ? 'strong' : score >= 0.6 ? 'medium' : 'weak';
     const lv = c && c.tone === 'long' ? { entry: c.buyLow === c.buyHigh ? rs(c.buyLow) : `${rs(c.buyLow)}–${rs(c.buyHigh)}`, stop: c.stop, target: c.sell1 } : d.action === 'BUY' ? { entry: rs(d.entry), stop: d.stop, target: d.target } : null;
-    return { call, why, strength, checks, pass, total: known.length, lv };
+    return { call, why, strength, checks, pass, total: known.length, lv, score100 };
   }
 
   function drawVerdict(v, m) {
     const mode = (() => { try { return localStorage.getItem('kd_mode') || 'simple'; } catch { return 'simple'; } })();
     const cls = v.call === 'BUY' ? 'buy' : v.call === 'SELL' ? 'sell' : 'wait';
     const top = [...v.checks.filter(x => x[1] === (v.call !== 'BUY' ? false : true)), ...v.checks.filter(x => x[1] === (v.call !== 'BUY'))].filter(x => x[1] !== null).slice(0, 3);
-    put('kd-verdict', `<div class="kd-v ${cls}"><div class="kd-call"><b>${v.call}</b>${v.strength ? `<span>${v.strength}</span>` : ''}</div>
-      <div class="kd-why"><p><b>${v.pass} of ${v.total} checks pass.</b> ${esc(v.why)}</p>
+    put('kd-verdict', `<div class="kd-v ${cls}"><div class="kd-call"><b>${v.call}</b>${v.strength ? `<span>${v.strength}</span>` : ''}<div class="kd-ring" style="--p:${v.score100}" title="Weighted score out of 100"><i>${v.score100}</i></div><span>score</span></div>
+      <div class="kd-why"><p><b>Score ${v.score100}/100 · ${v.pass} of ${v.total} checks pass.</b> ${esc(v.why)}</p>
       ${v.lv ? `<p class="kd-lv">Entry ${v.lv.entry} · Stop ${rs(v.lv.stop)} · Target ${rs(v.lv.target)}${v.lv.stop && m.price ? ` · risk ${pct((v.lv.stop / m.price - 1) * 100)}` : ''}</p>` : ''}
-      <ul class="kd-checks">${(mode === 'expert' ? v.checks : top).map(([t, ok]) => `<li class="${ok === null ? 'muted' : ok ? 'up' : 'down'}">${ok === null ? '–' : ok ? '✓' : '✗'} ${esc(t)}</li>`).join('')}</ul>
+      ${(() => { const z = v.call === 'BUY' && v.lv && root.Plan ? Plan.size(m.price, v.lv.stop) : null; return z && z.qty ? `<p class="kd-size">Size: <b>${z.qty} shares</b> (${rs(z.value)}), risking ${rs(z.risk)} of your ${rs(Plan.settings().capital)} capital</p>` : ''; })()}
+      <ul class="kd-checks">${(mode === 'expert' ? v.checks : top).map(([t, ok, wt]) => `<li class="${ok === null ? 'muted' : ok ? 'up' : 'down'}">${ok === null ? '–' : ok ? '✓' : '✗'} ${esc(t)}${mode === 'expert' ? ` <small class="muted">weight ${wt}</small>` : ''}</li>`).join('')}</ul>
       <button class="link-btn" data-kdmode>${mode === 'expert' ? 'Simple view' : 'Show all checks (expert)'}</button></div></div>
       <p class="citation">For information, not investment advice. The verdict combines the back-tested strategies with trend, valuation, ownership and risk checks.</p>`);
     const b = document.querySelector('[data-kdmode]');
@@ -453,5 +456,5 @@
     if (FS.code) renderFund(body); else body.innerHTML = '<p class="home-empty">Search for a fund to see its 360° view: growth vs NIFTY, returns, worst fall, consistency and a Keep / Review call.</p>';
   }
 
-  root.Kundli = { enrich, openRules, renderFundPage, metrics, FIELDS, scanRules, loadRules, compare };
+  root.Kundli = { todayMetrics: loadMetrics, enrich, openRules, renderFundPage, metrics, FIELDS, scanRules, loadRules, compare };
 })(typeof window !== 'undefined' ? window : globalThis);

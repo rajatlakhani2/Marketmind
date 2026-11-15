@@ -41,3 +41,22 @@ C holds +0.10 to +0.14R a trade in the training years across small changes (10/5
 about double the current Combined system (+0.05R). It loses in FY 25-26 in every variant and needs the NIFTY filter
 (without it FY 26-27 is −0.26R). Profits again come mostly from trending years (FY 20-21, 23-24). Not proven for live money:
 added to the app as a kundli check and a rule template ("Trend template breakout"), to be tracked live.
+
+## Stage 4, 15 Nov 2026 (`node research/stage4.mjs data`): can C be made stronger?
+
+Tested on top of C (same exits, ranked portfolio of 5): breadth (share of the 99 stocks above their 200-day or 50-day),
+relative-strength ranking (top 50/30/20% by 6-month return), a pullback to the 20-day average inside a trend-template stock,
+and a "health switch" (pause while the last 20-50 closed signals average below zero).
+
+| Variant | Train | FY 25-26 | FY 26-27 | 5 open: total, deepest drop, positive years |
+|---|---|---|---|---|
+| C baseline | +0.13 | −0.18 | +0.06 | 56R, 24R, 7/10 |
+| + breadth200 ≥ 50% | +0.14 | −0.17 | +0.06 | 73R, 18R, 7/10 |
+| + breadth200 ≥ 60% | +0.11 | −0.17 | −0.14 | 12R, 34R, 3/10 |
+| + RS top 30% | +0.10 | −0.19 | +0.13 | 34R, 22R, 7/10 |
+| Pullback to 20-day | +0.17 | −0.14 | −0.52 | 52R, 37R, 5/10 |
+| Health switch (last 30, floor 0) | +0.10 | −0.30 | +0.10 | 46R, 17R, 7/10 |
+
+Nothing fixes FY 25-26, and no filter improves steadily as it is tightened (breadth 50% helps, 60% hurts), which is what
+noise looks like. Conclusion: keep C unchanged; do not add filters. The gain available is in risk control (fixed risk per
+trade, a cap on open positions and per sector), not in prediction.
