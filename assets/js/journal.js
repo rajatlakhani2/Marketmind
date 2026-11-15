@@ -45,8 +45,22 @@
     const month = istDay(new Date().toISOString().replace('T', ' ').slice(0, 19)).slice(0, 7);
     const thisMonth = closed.filter(t => istDay(t.closed_at).startsWith(month));
     const wins = l => (l.length ? Math.round(l.filter(t => +t.pnl > 0).length / l.length * 100) : 0);
-    // Patterns
     const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    // Coach: plain-language findings from your own closed trades (needs 10 or more)
+    const coach = (() => {
+      if (closed.length < 10) return [`The coach needs 10 closed trades to find your patterns; you have ${closed.length}. Keep tagging the mood on each trade.`];
+      const out = [], W = closed.filter(t => +t.pnl > 0), L = closed.filter(t => +t.pnl <= 0), days = t => Math.max(0, (Date.parse(t.closed_at) - Date.parse(t.filled_at || t.created_at)) / 864e5), avg = (l, f) => (l.length ? l.reduce((a, t) => a + f(t), 0) / l.length : 0);
+      const aw = avg(W, t => +t.pnl), al = Math.abs(avg(L, t => +t.pnl));
+      if (W.length && L.length) out.push(aw < al ? `Your average loss (${rs(al)}) is bigger than your average win (${rs(aw)}). Cut losers at the stop and let winners run.` : `Your average win (${rs(aw)}) is bigger than your average loss (${rs(al)}). Keep doing that.`);
+      if (W.length && L.length && avg(L, days) > avg(W, days) * 1.3) out.push(`You hold losers longer (${avg(L, days).toFixed(1)} days) than winners (${avg(W, days).toFixed(1)} days): a sign of hoping instead of following the stop.`);
+      const by = (f) => group(closed, f).filter(([, l]) => l.length >= 3).map(([k, l]) => [k, avgR(l), l.length]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1]);
+      const dw = by(t => DOW[new Date(istDay(t.filled_at || t.created_at) + 'T00:00:00').getDay()]); if (dw.length > 1 && dw[0][1] < 0) out.push(`${dw[0][0]} is your worst day to enter (${r2(dw[0][1])} over ${dw[0][2]} trades).`);
+      const md = by(t => TAGS[t.note_tag || ''] || '').filter(x => x[0] && x[0] !== '—'); if (md.length && md[0][1] < 0) out.push(`Trades tagged "${md[0][0]}" lose on average (${r2(md[0][1])} over ${md[0][2]} trades). Skip trades in that state.`);
+      let streak = 0, after = []; [...closed].sort((a, b) => a.closed_at.localeCompare(b.closed_at)).forEach(t => { if (streak >= 2) after.push(t); streak = +t.pnl <= 0 ? streak + 1 : 0; });
+      if (after.length >= 3 && avgR(after) != null && avgR(after) < (avgR(closed) || 0)) out.push(`After two losses in a row your next trades do worse (${r2(avgR(after))} vs ${r2(avgR(closed))} overall). Take a break after two losses.`);
+      return out.length ? out : ['No harmful pattern found in your trades so far.'];
+    })();
+    // Patterns
     const pat = (title, rows) => `<h4>${title}</h4><table class="screener-table"><tbody>${rows.map(([k, l]) => `<tr><td>${esc(k)}</td><td>${l.length} trades</td><td>${wins(l)}% wins</td><td class="${tone(avgR(l))}">${r2(avgR(l))}</td></tr>`).join('')}</tbody></table>`;
     // Tax: trades closed this financial year (delivery: short-term if held under a year; intraday is speculative income)
     const fy = closed.filter(t => istDay(t.closed_at) >= fyStart());
@@ -58,6 +72,7 @@
           <div class="money-total"><div><span>Closed trades</span><b>${thisMonth.length}</b></div><div><span>Wins</span><b>${wins(thisMonth)}%</b></div>
           <div><span>Average</span><b class="${tone(avgR(thisMonth))}">${r2(avgR(thisMonth))}</b></div></div>
           <p class="citation">Back-test expectation for the combined system: ${r2(BACKTEST_R)} a trade. ${thisMonth.length < 10 ? 'Fewer than 10 trades this month, so this is mostly luck either way.' : avgR(thisMonth) >= BACKTEST_R ? 'At or above expectation.' : 'Below expectation.'} All time: ${closed.length} trades, ${wins(closed)}% wins, ${r2(avgR(closed))}.</p></div></section>
+        <section class="home-card"><div class="home-card-head"><h3>Your coach</h3></div><div class="home-card-body"><ul class="coach-list">${coach.map(c => `<li>${esc(c)}</li>`).join('')}</ul><p class="citation">From your own closed trades in MarketMind. Small samples mislead; treat these as prompts, not rules.</p></div></section>
         <section class="home-card"><div class="home-card-head"><h3>Patterns</h3></div><div class="home-card-body">
           ${closed.length ? pat('By mood', group(closed, t => TAGS[t.note_tag || ''] || '—')) + pat('By weekday', group(closed, t => DOW[new Date(istDay(t.filled_at || t.created_at) + 'T00:00:00').getDay()])) + pat('By product', group(closed, t => t.product)) : '<p class="home-empty">Patterns show after the first closed trades.</p>'}</div></section>
         <section class="home-card"><div class="home-card-head"><h3>Tax view · FY from ${new Date(fyStart() + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</h3></div><div class="home-card-body">

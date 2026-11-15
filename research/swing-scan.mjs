@@ -119,6 +119,9 @@ writeFileSync(outPath, JSON.stringify(out));
 // Today's figures for every stock (for "my rules" scans, peers and compare in the app)
 const rsi14 = c => { if (c.length < 16) return null; let g = 0, l = 0; for (let i = 1; i <= 14; i++) { const d = c[i] - c[i - 1]; d > 0 ? (g += d) : (l -= d); } g /= 14; l /= 14;
   for (let i = 15; i < c.length; i++) { const d = c[i] - c[i - 1]; g = (g * 13 + Math.max(d, 0)) / 14; l = (l * 13 + Math.max(-d, 0)) / 14; } return l === 0 ? 100 : 100 - 100 / (1 + g / l); };
+const nRet = new Map(nifty.slice(1).map((x, k) => [x.d, x.c / nifty[k].c - 1]));
+const betaOf = b => { const xs = [], ys = []; for (let k = Math.max(1, b.length - 250); k < b.length; k++) { const n = nRet.get(b[k].d); if (n != null) { xs.push(n); ys.push(b[k].c / b[k - 1].c - 1); } }
+  if (xs.length < 120) return null; const mx = xs.reduce((a, v) => a + v, 0) / xs.length, my = ys.reduce((a, v) => a + v, 0) / ys.length; let cv = 0, vr = 0; xs.forEach((v, k) => { cv += (v - mx) * (ys[k] - my); vr += (v - mx) ** 2; }); return vr ? cv / vr : null; };
 const rows = {};
 for (const s of syms) {
   const b = bars[s]; if (!b || b.length < 30) continue;
@@ -126,7 +129,7 @@ for (const s of syms) {
   const r1 = x => (x == null || !isFinite(x) ? null : +x.toFixed(2));
   const v20 = v.length > 21 ? v.slice(-21, -1).reduce((a, x) => a + x, 0) / 20 : null;
   rows[s] = [r1(p), r1(rsi14(c.slice(-120))), r1(sma(c, 50, i)), r1(sma(c, 150, i)), r1(sma(c, 200, i)), r1(i >= 21 ? (p / c[i - 21] - 1) * 100 : null), r1(i >= 63 ? (p / c[i - 63] - 1) * 100 : null),
-    r1((p / Math.max(...c.slice(-252)) - 1) * 100), r1(v20 ? v[i] / v20 : null), st && st.trend ? 1 : 0, st && st.breakout ? 1 : 0, U[s].g, U[s].ind, b[i].d, r1(b.length > 20 ? atrAt(b, i) : null), r1(i >= 10 ? Math.min(...b.slice(i - 10, i).map(x => x.l)) : null)];
+    r1((p / Math.max(...c.slice(-252)) - 1) * 100), r1(v20 ? v[i] / v20 : null), st && st.trend ? 1 : 0, st && st.breakout ? 1 : 0, U[s].g, U[s].ind, b[i].d, r1(b.length > 20 ? atrAt(b, i) : null), r1(i >= 10 ? Math.min(...b.slice(i - 10, i).map(x => x.l)) : null), r1(betaOf(b))];
 }
-writeFileSync(outPath.replace(/swing\.json$/, 'metrics.json'), JSON.stringify({ date: today, cols: ['price', 'rsi', 'sma50', 'sma150', 'sma200', 'chg1m', 'chg3m', 'from52h', 'volRatio', 'trendTemplate', 'breakout20', 'g', 'ind', 'd', 'atr', 'lo10'], rows }));
+writeFileSync(outPath.replace(/swing\.json$/, 'metrics.json'), JSON.stringify({ date: today, cols: ['price', 'rsi', 'sma50', 'sma150', 'sma200', 'chg1m', 'chg3m', 'from52h', 'volRatio', 'trendTemplate', 'breakout20', 'g', 'ind', 'd', 'atr', 'lo10', 'beta'], rows }));
 console.log(`${today}: fetched ${fetched}/${syms.length}, market ${marketUp ? 'up' : 'down'}, ${signals.length} signals, ${near.length} near, ${out.open.length} open, ${closed.length} closed (${out.closedStats.avgR ?? '—'}R avg)`);

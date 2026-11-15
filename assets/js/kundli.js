@@ -36,7 +36,7 @@
     return {
       trendTemplate: !!(s150 && sma(c, 200) && s200ago && p > s150 && s150 > sma(c, 200) && sma(c, 200) > s200ago && sma(c, 50) > s150 && lo && p > 1.3 * lo && hi && p > 0.75 * hi) ? 1 : 0,
       breakout20: hi20 && p > hi20 ? 1 : 0, sma150: s150,
-      atr: (() => { if (h.length < 16) return null; let a = null; for (let i = 1; i < h.length; i++) { const tr = Math.max(h[i].high - h[i].low, Math.abs(h[i].high - c[i - 1]), Math.abs(h[i].low - c[i - 1])); a = a == null ? tr : (a * 13 + tr) / 14; } return a; })(),
+      atr: (() => { const n = h.length; if (n < 16) return null; let t = 0; for (let i = n - 14; i < n; i++) t += Math.max(h[i].high - h[i].low, Math.abs(h[i].high - c[i - 1]), Math.abs(h[i].low - c[i - 1])); return t / 14; })(),
       price: p, rsi: root.MarketData && c.length > 15 ? MarketData.rsi(c, 14) : null, sma50: sma(c, 50), sma200: sma(c, 200),
       chg1m: back(21), chg3m: back(63), from52h: hi ? (p / hi - 1) * 100 : null,
       volRatio: v.length > 21 && sma(v.slice(0, -1), 20) ? v[v.length - 1] / sma(v.slice(0, -1), 20) : null,

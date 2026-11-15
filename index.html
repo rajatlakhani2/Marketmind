@@ -45,12 +45,12 @@
   <script src="js/overview.js?v=1"></script>
   <script src="js/ux.js?v=5"></script>
   <script src="js/insights.js?v=3"></script>
-  <script src="js/journal.js?v=2"></script>
-  <script src="js/plan.js?v=1"></script>
+  <script src="js/journal.js?v=3"></script>
+  <script src="js/plan.js?v=2"></script>
   <script src="js/hub.js?v=1"></script>
-  <script src="js/kundli.js?v=8"></script>
+  <script src="js/kundli.js?v=9"></script>
   <script src="js/cockpit.js?v=7"></script>
-  <script src="js/home.js?v=32"></script>
+  <script src="js/home.js?v=33"></script>
   <style>
 /* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1354,6 +1354,25 @@ html[data-theme="b"] .icici-banner a, html[data-theme="b"] .icici-banner button.
 .kd-size { background: rgba(16,185,129,.1); border-radius: 8px; padding: 6px 10px; display: inline-block; }
 .tag-green { background: rgba(16,185,129,.18); color: var(--green); }
 @media (max-width: 700px) { .plan-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .plan-tag { min-width: 62px; } .home-hello { flex-wrap: wrap; gap: 8px; } }
+/* ===== Health, doctor, coach, polish ===== */
+.plan-health { display: flex; gap: 8px; align-items: baseline; margin: 8px 0 2px; font-size: .9rem; } .plan-health b { margin-right: 4px; }
+.dot { flex: none; width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: var(--text-muted); } .dot.green { background: var(--green); } .dot.red { background: var(--red); }
+.doc-grade { font-weight: 800; font-size: 1.05rem; margin: 0 0 8px; } .doc-grade small { font-weight: 500; color: var(--text-muted); }
+.doc-grade.green { color: var(--green); } .doc-grade.amber { color: var(--orange, #d97706); } .doc-grade.red { color: var(--red); }
+.doc-list, .coach-list { list-style: none; margin: 0; padding: 0; }
+.doc-row { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); } .doc-row small { display: block; color: var(--text-muted); }
+.doc-ic { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: .8rem; }
+.doc-ic.ok { background: rgba(16,185,129,.16); color: var(--green); } .doc-ic.bad { background: rgba(245,158,11,.2); color: var(--orange, #d97706); }
+.coach-list li { padding: 8px 0 8px 14px; border-left: 3px solid var(--accent); margin: 0 0 8px; }
+.home-card { transition: transform .15s ease, box-shadow .15s ease; }
+@media (hover: hover) { .home-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.10); } }
+.home-card-head h3 { display: flex; align-items: center; gap: 8px; } .home-card-head h3::before { content: ''; width: 4px; height: 16px; border-radius: 2px; background: var(--accent); }
+.q-num b, .plan-stats b, .money-total b, .screener-table td { font-variant-numeric: tabular-nums; }
+.q-list li { transition: background .12s ease; border-radius: 8px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@keyframes mm-shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+.skeleton { background: linear-gradient(90deg, rgba(127,127,127,.10) 25%, rgba(127,127,127,.22) 50%, rgba(127,127,127,.10) 75%); background-size: 400px 100%; animation: mm-shimmer 1.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } .home-card { transition: none; } }
 </style>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">

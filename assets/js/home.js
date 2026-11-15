@@ -46,6 +46,7 @@
     { id: 'home-rules', title: 'Passed my rules today', btn: null },
     { id: 'home-money', title: 'My money', btn: ['holdings', 'Holdings'] },
     { id: 'home-risk', title: 'Risk', btn: ['trading', 'Orders'], admin: true },
+    { id: 'home-doctor', title: 'Portfolio doctor', btn: ['holdings', 'Holdings'] },
     { id: 'home-xray', title: 'Portfolio X-ray', btn: ['holdings', 'Holdings'] },
     { id: 'home-goal', title: 'Goal & benchmark', btn: null },
     { id: 'home-cash', title: 'Cash', btn: null },

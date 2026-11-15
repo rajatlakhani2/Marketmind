@@ -60,10 +60,16 @@
       ...near.map(x => row('WATCH', 'grey', x.sym, `Breaks out above ${rs(x.trigger, 2)} (${x.gap}% away)`, rs(x.close, 2), '')),
     ];
     const mkt = !sw || !sw.market ? '' : up ? `<span class="up">Uptrend</span>` : `<span class="down">Downtrend: no new buys</span>`;
+    // strategy health: the last 20 closed paper trades of the scan
+    const rc = (sw && sw.recentClosed) || [], l20 = rc.slice(0, 20), hAvg = l20.length ? l20.reduce((a, t) => a + t.r, 0) / l20.length : null;
+    const health = !sw || !sw.date ? '' : l20.length < 20 ? `<p class="plan-health"><i class="dot grey"></i><b>Strategy health: too early.</b> Only ${l20.length} paper trades closed so far; 20 are needed to judge.</p>`
+      : `<p class="plan-health"><i class="dot ${hAvg > 0 ? 'green' : 'red'}"></i><b>Strategy health: ${hAvg > 0.1 ? 'working' : hAvg > 0 ? 'barely working' : 'not working lately'}.</b> The last 20 paper trades averaged ${hAvg > 0 ? '+' : ''}${hAvg.toFixed(2)}R${hAvg <= 0 ? '. Breakouts are failing in this market: consider half size until this turns up' : ''}.</p>`;
+    doctor(holdings, met);
     el.innerHTML = `
       <div class="plan-stats"><div><span>Capital</span><b>${rs(S.capital)}</b></div><div><span>Risk a trade</span><b>${rs(S.capital * S.riskPct / 100)}</b><small>${S.riskPct}%</small></div>
         <div><span>Market</span><b>${mkt || '—'}</b></div><div><span>Holdings</span><b>${holdings.length ? `${ok.length} fine · ${tight.length + exits.length} need a look` : ctx && ctx.connected ? 'none' : 'not connected'}</b></div></div>
       ${rows.length ? `<ul class="q-list plan-list">${rows.join('')}</ul>` : `<p class="plan-none"><b>No action needed today.</b> ${sw && sw.date ? (up ? 'No breakout in the last scan and your holdings are fine.' : 'The market is below its 200-day average, so the plan is to wait.') : 'The evening scan has not run yet.'} Doing nothing is a valid plan.</p>`}
+      ${health}
       <div id="plan-form" hidden></div>
       <p class="citation">${sw && sw.date ? `Scan of ${esc(sw.date)}. ` : ''}Buys: trend-template breakouts, at most ${S.maxPos} at a time and ${S.perSector} per sector; size = the smaller of ${S.riskPct}% risk to the stop and ${rs(S.capital / S.maxPos)} a stock. Holdings: exit below the 200-day average, tighten below the 50-day. Rules, not advice; you place every order.</p>`;
     el.querySelectorAll('[data-plan-sym]').forEach(li => (li.onclick = () => root.Stock && Stock.open(li.dataset.planSym)));
@@ -78,6 +84,32 @@
         <button class="btn-primary btn-small" type="submit">Save</button></form>`;
       f.querySelector('form').onsubmit = e => { e.preventDefault(); const d = new FormData(e.target), n = {}; for (const k of Object.keys(DEF)) { const v = parseFloat(d.get(k)); n[k] = v > 0 ? v : DEF[k]; } save(n); render(ctx); };
     };
+  }
+
+  // ---------- portfolio doctor: concentration, weak holdings and a NIFTY -10% stress test ----------
+  function doctor(holdings, met) {
+    const el = document.querySelector('#home-doctor .home-card-body'); if (!el) return;
+    if (!holdings.length) { el.innerHTML = '<p class="home-empty">Shows once a broker account is connected today.</p>'; return; }
+    const rowsH = holdings.map(h => ({ ...h, val: (h.ltp || 0) * h.qty, m: met && met.map[h.sym] })).filter(h => h.val > 0), total = rowsH.reduce((a, h) => a + h.val, 0);
+    if (!total) { el.innerHTML = '<p class="home-empty">No prices for your holdings yet.</p>'; return; }
+    const big = [...rowsH].sort((a, b) => b.val - a.val)[0], sec = {};
+    rowsH.forEach(h => { const k = (h.m && h.m.ind) || 'Other / not in scan'; sec[k] = (sec[k] || 0) + h.val; });
+    const [topSec, topVal] = Object.entries(sec).sort((a, b) => b[1] - a[1])[0];
+    const weak = rowsH.filter(h => h.m && h.m.sma200 && h.ltp < h.m.sma200), noData = rowsH.filter(h => !h.m);
+    const drop = rowsH.reduce((a, h) => a + h.val * 0.10 * (h.m && h.m.beta != null ? h.m.beta : 1), 0), haveBeta = rowsH.some(h => h.m && h.m.beta != null);
+    const hits = rowsH.filter(h => { const st = h.m && (h.m.lo10 < h.ltp ? h.m.lo10 : h.m.sma200); return st && h.ltp * (1 - 0.10 * (h.m.beta != null ? h.m.beta : 1)) < st; });
+    const pc = v => Math.round(v / total * 100);
+    const line = (ok, t, d) => `<li class="doc-row"><span class="doc-ic ${ok ? 'ok' : 'bad'}">${ok ? '✓' : '!'}</span><div><b>${t}</b><small>${d}</small></div></li>`;
+    const items = [
+      line(pc(big.val) <= 25, `Biggest holding: ${esc(big.sym)} ${pc(big.val)}%`, pc(big.val) <= 25 ? 'No single stock dominates.' : 'More than a quarter of your money is in one stock.'),
+      line(pc(topVal) <= 40, `Biggest sector: ${esc(topSec)} ${pc(topVal)}%`, pc(topVal) <= 40 ? 'Sector spread is reasonable.' : 'Over 40% in one sector: one bad sector result hurts everything.'),
+      line(!weak.length, weak.length ? `${weak.length} holding${weak.length > 1 ? 's' : ''} below the 200-day average` : 'No holding below its 200-day average', weak.length ? esc(weak.map(h => h.sym).join(', ')) + ': long-term trend broken.' : 'Every tracked holding is in a long-term uptrend.'),
+      line(drop / total < 0.12, `If NIFTY falls 10%: about −${rs(drop)} (${(drop / total * 100).toFixed(1)}%)`, `${haveBeta ? 'Uses each stock\'s one-year sensitivity to NIFTY (beta)' : 'Assumes every stock falls with NIFTY (betas arrive with the next evening scan)'}.${hits.length ? ` ${hits.length} would break their stop: ${esc(hits.map(h => h.sym).join(', '))}.` : ''}`),
+    ];
+    const bad = items.filter(x => x.includes('doc-ic bad')).length;
+    el.innerHTML = `<p class="doc-grade ${bad ? (bad > 1 ? 'red' : 'amber') : 'green'}">${bad ? `${bad} thing${bad > 1 ? 's' : ''} to look at` : 'Healthy'} <small>· ${rowsH.length} holdings worth ${rs(total)}</small></p>
+      <ul class="doc-list">${items.join('')}</ul>
+      <p class="citation">${noData.length ? `${noData.length} holding${noData.length > 1 ? 's are' : ' is'} outside the NIFTY 500 scan (${esc(noData.map(h => h.sym).slice(0, 4).join(', '))}) and only counted for size. ` : ''}A rough estimate, not a forecast.</p>`;
   }
 
   root.Plan = { render, settings, size, holdAction, actionFor, preload };
