@@ -287,7 +287,7 @@
     else if (long && red.length) { call = 'WAIT'; why = 'A tested strategy says buy, but a red risk flag says wait.'; }
     else { call = 'WAIT'; why = !long ? 'No tested strategy has a buy signal today.' : 'Not enough checks agree.'; }
     const strength = call === 'WAIT' ? '' : score >= 0.8 ? 'strong' : score >= 0.6 ? 'medium' : 'weak';
-    const lv = sw && !(c && c.tone === 'long') && m.atr ? { entry: rs(m.price), stop: m.price - 2 * m.atr, target: 'trail the 10-day low once up 1R' } : c && c.tone === 'long' ? { entry: c.buyLow === c.buyHigh ? rs(c.buyLow) : `${rs(c.buyLow)}–${rs(c.buyHigh)}`, stop: c.stop, target: c.sell1 } : d.action === 'BUY' ? { entry: rs(d.entry), stop: d.stop, target: d.target } : null;
+    const lv = sw && !(c && c.tone === 'long') && m.atr ? { entry: rs(m.price), stop: (root.Plan && Plan.signal(st.symbol || (st.md && st.md.symbol)) || {}).stop || m.price - 2 * m.atr, target: 'trail the 10-day low once up 1R' } : c && c.tone === 'long' ? { entry: c.buyLow === c.buyHigh ? rs(c.buyLow) : `${rs(c.buyLow)}–${rs(c.buyHigh)}`, stop: c.stop, target: c.sell1 } : d.action === 'BUY' ? { entry: rs(d.entry), stop: d.stop, target: d.target } : null;
     return { call, why, strength, checks, pass, total: known.length, lv, score100 };
   }
 

@@ -29,7 +29,8 @@
     return { kind: 'hold', label: 'HOLD', why: (m.trendTemplate ? 'Strong uptrend.' : 'Uptrend intact.') + loss, stop };
   }
 
-  let MET = null;
+  let MET = null, SW = null;
+  const signal = sym => (SW && SW.signals ? SW.signals.find(x => x.sym === sym) : null) || null; // today's scan row for a stock, if it is a buy
   async function preload() { if (!MET && root.Kundli && Kundli.todayMetrics) MET = await Kundli.todayMetrics(); return MET; }
   const actionFor = (sym, ltp, avg) => holdAction(MET && MET.map[sym], ltp, avg);
 
@@ -41,6 +42,7 @@
     const pill = document.getElementById('src-pill');
     if (pill && ctx) { pill.hidden = false; pill.className = 'mkt-pill src ' + (ctx.live ? 'open' : ''); pill.innerHTML = `<i></i>${ctx.live ? 'Live prices · ICICI' : 'Delayed prices · Yahoo'}`; }
     const [sw, met] = await Promise.all([j('api/swing.php?action=latest').catch(() => null), preload().catch(() => null)]);
+    SW = sw;
     const held = new Set(holdings.map(h => h.sym));
     const acts = holdings.map(h => ({ ...h, a: holdAction(met && met.map[h.sym], h.ltp, h.avg) }));
     const exits = acts.filter(x => x.a.kind === 'exit'), tight = acts.filter(x => x.a.kind === 'tighten'), ok = acts.filter(x => x.a.kind === 'hold');
@@ -112,5 +114,5 @@
       <p class="citation">${noData.length ? `${noData.length} holding${noData.length > 1 ? 's are' : ' is'} outside the NIFTY 500 scan (${esc(noData.map(h => h.sym).slice(0, 4).join(', '))}) and only counted for size. ` : ''}A rough estimate, not a forecast.</p>`;
   }
 
-  root.Plan = { render, settings, size, holdAction, actionFor, preload };
+  root.Plan = { signal, render, settings, size, holdAction, actionFor, preload };
 })(typeof window !== 'undefined' ? window : globalThis);
