@@ -45,7 +45,7 @@
   <script src="js/overview.js?v=1"></script>
   <script src="js/ux.js?v=5"></script>
   <script src="js/insights.js?v=3"></script>
-  <script src="js/journal.js?v=3"></script>
+  <script src="js/journal.js?v=4"></script>
   <script src="js/plan.js?v=4"></script>
   <script src="js/hub.js?v=1"></script>
   <script src="js/kundli.js?v=11"></script>
@@ -1377,6 +1377,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .oi-map td, .oi-map th { text-align: center; } .oi-cell { font-variant-numeric: tabular-nums; font-weight: 600; } .oi-strike { white-space: nowrap; }
 .oi-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: .82rem; color: var(--text-muted); margin: 4px 0 8px; } .oi-sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 .oi-sw.call { background: rgba(239,68,68,.55); } .oi-sw.put { background: rgba(16,185,129,.55); }
+/* ===== Trade autopsy ===== */
+.autopsy-row td { background: var(--bg-secondary, rgba(127,127,127,.06)); white-space: normal; text-align: left; }
+.autopsy ul { list-style: none; margin: 8px 0; padding: 0; } .autopsy li { padding: 3px 0; } .autopsy li.ok { color: var(--text-primary); } .autopsy li.bad { color: var(--orange, #d97706); font-weight: 600; }
 </style>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
