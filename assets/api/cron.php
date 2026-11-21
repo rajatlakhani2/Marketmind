@@ -24,6 +24,8 @@ if ($mode === 'alerts') {
     require __DIR__ . '/lib/alerts.php';
     $n = new DateTime('now', new DateTimeZone('Asia/Kolkata')); $m = (int) $n->format('G') * 60 + (int) $n->format('i');
     if ((int) $n->format('N') <= 5 && $m >= 555 && $m <= 935) { $f = mm_alerts_check(mm_db()); $log(count($f) . ' alert(s) fired'); }
+    // Morning push round (trade ideas, watchlist results and dividends) once a weekday from 8:45 am
+    if ((int) $n->format('N') <= 5 && $m >= 525 && $m <= 935) { $r = mm_push_morning(mm_db()); $log('morning push: ' . json_encode($r)); }
     exit(0);
 }
 if ($mode === 'weekly') {

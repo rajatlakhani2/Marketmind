@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="w_bg">#F7FFFFFF</color>
+    <color name="w_text">#16202A</color>
+    <color name="w_muted">#6B7785</color>
+    <color name="w_accent">#1F4E9E</color>
+    <string name="widget_desc">NIFTY, Bank NIFTY, SENSEX and India VIX at a glance</string>
+</resources>

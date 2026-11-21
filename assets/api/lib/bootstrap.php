@@ -341,6 +341,20 @@ function mm_migrations(): array {
             "CREATE INDEX ix_price_alerts_active ON price_alerts (active)",
             "ALTER TABLE broker_accounts ADD COLUMN shared_with VARCHAR(255) NOT NULL DEFAULT ''",
         ],
+        // Phones that receive push notifications from the Android app
+        13 => [
+            "CREATE TABLE push_tokens (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                user_id INT UNSIGNED NOT NULL,
+                token VARCHAR(255) NOT NULL,
+                platform VARCHAR(12) NOT NULL DEFAULT 'android',
+                prefs VARCHAR(255) NOT NULL DEFAULT '',
+                created_at DATETIME NOT NULL,
+                last_seen DATETIME NOT NULL
+            )$t",
+            "CREATE UNIQUE INDEX ux_push_tokens ON push_tokens (token)",
+            "CREATE INDEX ix_push_tokens_user ON push_tokens (user_id)",
+        ],
     ];
 }
 

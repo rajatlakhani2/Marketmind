@@ -25,11 +25,20 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Install Capacitor
-        run: npm install --no-audit --no-fund
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          npm install --no-audit --no-fund
+          # Push notifications need the Firebase file; without it the app is built without them (and still works).
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then npm install --no-audit --no-fund @capacitor/push-notifications@^6.0.0; echo "Push: on"; else echo "::warning::GOOGLE_SERVICES_JSON secret is not set, so this APK has no push notifications."; fi
       - name: Create the Android project
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           npx cap add android
-          npx capacitor-assets generate --android --iconBackgroundColor '#1f4e9e' --splashBackgroundColor '#ffffff'
+          npx capacitor-assets generate --android --iconBackgroundColor '#1f4e9e' --iconBackgroundColorDark '#1f4e9e' --splashBackgroundColor '#ffffff' --splashBackgroundColorDark '#05080c'
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json; fi
+          node scripts/patch-android.mjs
           npx cap sync android
       - name: Signing key
         env:
@@ -75,6 +84,6 @@ jobs:
         with:
           tag_name: android-${{ github.run_number }}
           name: MarketMind Android ${{ github.run_number }}
-          body: Install MarketMind.apk on your Android phone. The app opens https://marketmind.kuhu.org.in, so features update without a new APK.
+          body: Install MarketMind.apk on your Android phone. Long-press your home screen → Widgets → MarketMind to add the index widget. The app opens https://marketmind.kuhu.org.in, so features update without a new APK.
           files: MarketMind.apk
           make_latest: true

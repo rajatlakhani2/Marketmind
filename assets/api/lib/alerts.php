@@ -6,6 +6,8 @@
 declare(strict_types=1);
 if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === realpath(__FILE__)) { http_response_code(404); exit; }
 
+require_once __DIR__ . '/push.php';
+
 const MM_ALERT_KINDS = [
     'above' => 'price rises above', 'below' => 'price falls below',
     'rsi_above' => 'RSI(14) rises above', 'rsi_below' => 'RSI(14) falls below',
@@ -66,6 +68,7 @@ function mm_alerts_check(PDO $pdo): array {
         $pdo->prepare('UPDATE price_alerts SET active = 0, seen = 0, message = ?, triggered_at = ? WHERE id = ?')->execute([substr($msg, 0, 250), mm_now(), $a['id']]);
         $fired[] = $a + ['message' => $msg];
         $st = $pdo->prepare('SELECT contact, display_name FROM users WHERE id = ?'); $st->execute([$a['user_id']]); $u = $st->fetch();
+        if (function_exists('mm_push_user')) { try { mm_push_user($pdo, (int) $a['user_id'], 'alerts', 'Alert: ' . $a['symbol'], $msg, ['symbol' => $a['symbol']]); } catch (Throwable $e) { error_log('MarketMind push: ' . $e->getMessage()); } }
         if ($u && filter_var($u['contact'], FILTER_VALIDATE_EMAIL)) @mail($u['contact'], 'MarketMind alert: ' . $a['symbol'], $msg . "\n\nOpen MarketMind to see the stock.", 'Content-Type: text/plain; charset=utf-8');
     }
     return $fired;

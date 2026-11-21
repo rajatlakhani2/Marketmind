@@ -113,17 +113,8 @@
     clearTimeout(lp); if (tip && tip.title) lp = setTimeout(() => toast(tip.title), 550);
   }, { passive: true });
   document.addEventListener('touchmove', () => clearTimeout(lp), { passive: true });
-  document.addEventListener('touchend', e => {
-    clearTimeout(lp);
-    const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
-    if (Date.now() - st > 600 || e.target.closest('input, textarea, select, table, .fno-tablewrap, .ov-heat, svg, #ux-drawer, .modal')) return;
-    if (Math.abs(dx) > 90 && Math.abs(dy) < 40) {
-      const subs = [...document.querySelectorAll('#subnav [data-sub]')], i = subs.findIndex(b => b.classList.contains('active'));
-      const next = subs[i + (dx < 0 ? 1 : -1)]; if (next) next.click();
-    } else if (dy > 120 && Math.abs(dx) < 40 && window.scrollY <= 0) {
-      const act = document.querySelector('#subnav .active, #tb-groups .active'); toast('Refreshing…'); if (act) act.click();
-    }
-  }, { passive: true });
+  // Swipe between tabs and pull to refresh now live in native.js (with the page following your finger)
+  document.addEventListener('touchend', () => clearTimeout(lp), { passive: true });
 
   // ---------- offline notice ----------
   const net = () => document.body.classList.toggle('is-offline', !navigator.onLine);

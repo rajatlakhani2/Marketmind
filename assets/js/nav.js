@@ -52,8 +52,10 @@
   // ---------- theme: light (default), dark, colour-blind safe ----------
   const TKEY = 'marketmind_theme';
   const THEME_MAP = { light: 'a', dark: 'b' };
-  function applyTheme() { let t = 'a'; try { t = JSON.parse(localStorage.getItem(TKEY)) || 'a'; } catch { /* default */ } t = THEME_MAP[t] || t; if (!['a', 'b', 'c', 'cb'].includes(t)) t = 'a'; document.documentElement.dataset.theme = t; }
+  const darkQ = root.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+  function applyTheme() { let t = 'a'; try { t = JSON.parse(localStorage.getItem(TKEY)) || 'a'; } catch { /* default */ } t = THEME_MAP[t] || t; if (t === 'auto') t = darkQ && darkQ.matches ? 'b' : 'a'; if (!['a', 'b', 'c', 'cb'].includes(t)) t = 'a'; document.documentElement.dataset.theme = t; }
   applyTheme();
+  if (darkQ && darkQ.addEventListener) darkQ.addEventListener('change', applyTheme); // "Follow phone" switches with the phone's dark mode
 
   function openCustomize() {
     const p = navPrefs(); p.order = p.order || ALL_GROUPS.map(g => g.id); p.hidden = p.hidden || []; p.pins = p.pins || [];
@@ -63,12 +65,13 @@
       const groups = ALL_GROUPS.filter(g => g.id !== 'home').sort((a, b) => p.order.indexOf(a.id) - p.order.indexOf(b.id));
       ov.innerHTML = `<div class="modal modal-wide"><button class="modal-close" data-x>&times;</button><h3>Settings: theme and tabs</h3>
         <label class="auth-text">Layout <select id="nv-layout"><option value="classic">Classic</option><option value="kundli">Simple (search first)</option></select></label>
-        <label class="auth-text">Theme <select id="nv-theme"><option value="a">A · Clean light</option><option value="b">B · Pro dark</option><option value="c">C · Soft colour</option><option value="cb">Colour-blind safe</option></select></label>
+        <label class="auth-text">Theme <select id="nv-theme"><option value="auto">Follow phone (light by day, dark at night)</option><option value="a">A · Clean light</option><option value="b">B · Pro dark</option><option value="c">C · Soft colour</option><option value="cb">Colour-blind safe</option></select></label>
         <p class="auth-text">Move tabs up or down. Untick a page to hide it; ★ pins it to a Favourites tab at the front.</p>
         <ul class="cust-list">${groups.map((g, i) => `<li class="cust-group"><b>${esc(g.label)}</b><span><button class="btn-secondary btn-small" data-up="${g.id}" ${i ? '' : 'disabled'}>↑</button><button class="btn-secondary btn-small" data-dn="${g.id}" ${i < groups.length - 1 ? '' : 'disabled'}>↓</button></span>
           <div class="cust-pages">${g.pages.map(([x, l]) => `<label><input type="checkbox" data-hide="${x}" ${p.hidden.includes(x) ? '' : 'checked'}> ${esc(l)} <button type="button" class="pin ${p.pins.includes(x) ? 'on' : ''}" data-pin="${x}" title="Pin to Favourites">★</button></label>`).join('')}</div></li>`).join('')}</ul>
         <button class="btn-secondary" data-reset>Reset to default</button> <button class="btn-primary" data-x>Done</button></div>`;
-      ov.querySelector('#nv-theme').value = theme;
+      let saved = theme; try { saved = JSON.parse(localStorage.getItem(TKEY)) === 'auto' ? 'auto' : theme; } catch { /* default */ }
+      ov.querySelector('#nv-theme').value = saved;
       let lay = 'classic'; try { lay = JSON.parse(localStorage.getItem('marketmind_layout')) || 'classic'; } catch { /* default */ }
       ov.querySelector('#nv-layout').value = lay;
       ov.querySelector('#nv-layout').onchange = e => { try { localStorage.setItem('marketmind_layout', JSON.stringify(e.target.value)); } catch { /* ignore */ } if (root.Account) Account.saveSetting('marketmind_layout', e.target.value); const hp = document.getElementById('page-dashboard'); if (hp && hp.classList.contains('active')) go('dashboard'); };
