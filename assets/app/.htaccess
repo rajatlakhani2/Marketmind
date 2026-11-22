@@ -1,5 +1,6 @@
 AddType application/vnd.android.package-archive .apk
-<Files "MarketMind.apk">
-  Header set Content-Disposition "attachment; filename=MarketMind.apk"
-  Header set Cache-Control "no-cache"
-</Files>
+<IfModule mod_headers.c>
+  <Files "MarketMind.apk">
+    Header set Content-Disposition "attachment; filename=MarketMind.apk"
+  </Files>
+</IfModule>
