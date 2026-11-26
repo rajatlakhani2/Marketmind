@@ -77,6 +77,31 @@ try {
         mm_json(200, ['ok' => true, 'user' => mm_public_user(mm_user_by_id($id))]);
     }
 
+    // Admin forgot the password: prove it with the setup_key from marketmind-config.php, then choose a new one.
+    // Resets the first admin account, shows its username, signs out every device, and signs this one in.
+    if ($action === 'reset_admin') {
+        $body = mm_require_post();
+        $pdo = mm_db();
+        $key = (string) (mm_config()['setup_key'] ?? '');
+        if ($key === '' || strpos($key, 'PASTE') !== false) mm_json(503, ['error' => 'There is no setup_key in marketmind-config.php']);
+        mm_check_rate_limit('__reset__');
+        if (!hash_equals($key, mm_str($body, 'setupKey', 500))) {
+            mm_record_attempt('__reset__', false);
+            mm_json(403, ['error' => 'Setup key is not correct']);
+        }
+        $u = $pdo->query("SELECT * FROM users WHERE role = 'admin' ORDER BY id LIMIT 1")->fetch();
+        if (!$u) mm_json(404, ['error' => 'There is no admin account yet. Reload the page to create one.']);
+        $password = (string) ($body['password'] ?? '');
+        mm_check_password($password);
+        mm_record_attempt('__reset__', true);
+        $pdo->prepare('UPDATE users SET password_hash = ?, must_change_password = 0, is_active = 1, password_changed_at = ? WHERE id = ?')
+            ->execute([password_hash($password, PASSWORD_DEFAULT), mm_now(), $u['id']]);
+        $pdo->prepare('DELETE FROM sessions WHERE user_id = ?')->execute([$u['id']]);
+        mm_start_session((int) $u['id'], true);
+        $pdo->prepare('UPDATE users SET last_login_at = ? WHERE id = ?')->execute([mm_now(), $u['id']]);
+        mm_json(200, ['ok' => true, 'username' => $u['username'], 'user' => mm_public_user(mm_user_by_id((int) $u['id']))]);
+    }
+
     if ($action === 'login') {
         $body = mm_require_post();
         $pdo = mm_db();

@@ -114,13 +114,38 @@
           <p class="auth-error"></p>
           <button type="submit" class="btn-primary auth-wide">Sign in</button>
         </form>
+        <p class="auth-text auth-switch"><a href="#" id="auth-to-reset">Forgot username or password?</a></p>
         ${state.signupOpen ? '<p class="auth-text auth-switch">New here? <a href="#" id="auth-to-signup">Create an account</a></p>' : ''}`);
       const form = document.querySelector('#auth-screen form');
       form.querySelector('input[name="username"]').focus();
+      document.getElementById('auth-to-reset').onclick = (e) => { e.preventDefault(); showReset().then(resolve); };
       const link = document.getElementById('auth-to-signup');
       if (link) link.onclick = (e) => { e.preventDefault(); showSignup().then(resolve); };
       bindForm(form, async (v) => {
         const r = await request(`${AUTH}?action=login`, { username: v.username, password: v.password, remember: !!v.remember });
+        resolve(r.user);
+      });
+    });
+  }
+
+  // Admin forgot the login: the setup key from marketmind-config.php proves it is the owner.
+  function showReset() {
+    return new Promise((resolve) => {
+      screen().innerHTML = card('Reset the admin login', 'For the owner. Other users: ask the admin to reset your password.', `
+        <form class="auth-form" autocomplete="off">
+          <label>Setup key<input name="setupKey" type="password" required placeholder="setup_key from marketmind-config.php" /></label>
+          <label>New password<input name="password" type="password" required minlength="8" autocomplete="new-password" /></label>
+          <label>Repeat new password<input name="password2" type="password" required minlength="8" autocomplete="new-password" /></label>
+          <p class="auth-error"></p>
+          <button type="submit" class="btn-primary auth-wide">Reset and sign in</button>
+        </form>
+        <p class="auth-text">The setup key is in <code>marketmind-config.php</code> in your cPanel home folder, above public_html.</p>
+        <p class="auth-text auth-switch"><a href="#" id="auth-to-login">Back to sign in</a></p>`);
+      document.getElementById('auth-to-login').onclick = (e) => { e.preventDefault(); showLogin().then(resolve); };
+      bindForm(document.querySelector('#auth-screen form'), async (v) => {
+        if (v.password !== v.password2) throw new Error("The two passwords don't match");
+        const r = await request(`${AUTH}?action=reset_admin`, { setupKey: v.setupKey, password: v.password });
+        alert(`Password changed. Your username is: ${r.username}`);
         resolve(r.user);
       });
     });
